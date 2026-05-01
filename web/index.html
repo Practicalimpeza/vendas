@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NexoVarejo</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main class="shell">
+    <aside class="rail" aria-label="Etapas">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <div>
+          <strong>NexoVarejo</strong>
+          <small>org_practica / loja_1</small>
+        </div>
+      </div>
+
+      <nav class="steps" id="steps">
+        <button class="step active" data-step="dados">
+          <span class="step-index">1</span>
+          <span><strong>Dados</strong><small>base e qualidade</small></span>
+        </button>
+        <button class="step" data-step="compras">
+          <span class="step-index">2</span>
+          <span><strong>Compras</strong><small>ruptura e reposicao</small></span>
+        </button>
+        <button class="step" data-step="clientes">
+          <span class="step-index">3</span>
+          <span><strong>Clientes</strong><small>risco e retorno</small></span>
+        </button>
+        <button class="step" data-step="mix">
+          <span class="step-index">4</span>
+          <span><strong>Mix</strong><small>curva e giro</small></span>
+        </button>
+        <button class="step" data-step="acoes">
+          <span class="step-index">5</span>
+          <span><strong>Acoes</strong><small>fila do dia</small></span>
+        </button>
+      </nav>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="stageEyebrow">Etapa 1</p>
+          <h1 id="stageTitle">Dados prontos para decidir</h1>
+        </div>
+        <div class="top-actions">
+          <span class="sync-state" id="syncState">Carregando</span>
+          <button id="importButton" class="primary">Importar dados</button>
+        </div>
+      </header>
+
+      <section class="metrics" id="metrics"></section>
+
+      <section class="stage active" data-panel="dados">
+        <div class="decision-board">
+          <div class="canvas-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Mapa vivo</p>
+                <h2>Vendas, estoque e servicos</h2>
+              </div>
+              <span id="healthBadge" class="badge">sem dados</span>
+            </div>
+            <canvas id="decisionMap" width="960" height="420" aria-label="Mapa visual dos dados"></canvas>
+          </div>
+
+          <div class="task-panel">
+            <div class="panel-head compact">
+              <div>
+                <p class="eyebrow">Sequencia</p>
+                <h2>Hoje</h2>
+              </div>
+            </div>
+            <ol class="day-flow" id="dayFlow"></ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage" data-panel="compras">
+        <div class="table-band">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Reposicao</p>
+              <h2>Comprar primeiro</h2>
+            </div>
+            <span class="badge" id="purchaseCount">0 itens</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Produto</th><th>Marca</th><th>Estoque</th><th>Comprar</th><th>Cobertura</th></tr></thead>
+              <tbody id="purchaseRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage" data-panel="clientes">
+        <div class="split-band">
+          <div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">RFM</p>
+                <h2>Clientes para recuperar</h2>
+              </div>
+            </div>
+            <div class="rank-list" id="rfmRows"></div>
+          </div>
+          <div class="visual-band">
+            <canvas id="clientCanvas" width="520" height="520" aria-label="Visualizacao de clientes"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage" data-panel="mix">
+        <div class="split-band">
+          <div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Curva ABC</p>
+                <h2>Produtos que movem a loja</h2>
+              </div>
+            </div>
+            <div class="rank-list" id="abcRows"></div>
+          </div>
+          <div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Ranking</p>
+                <h2>Top faturamento</h2>
+              </div>
+            </div>
+            <div class="rank-list" id="topRows"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage" data-panel="acoes">
+        <div class="action-grid" id="actionGrid"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

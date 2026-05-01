@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 .tools/
 data/
+*.log
+output-*.png
 *.db
 *.db-shm
 *.db-wal

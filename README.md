@@ -79,3 +79,16 @@ Com as dependencias instaladas, `src/nexovarejo/api/main.py` expoe:
 - `GET /v1/organizations/{organization_id}/customers/rfm`
 
 O caminho do banco pode ser configurado por `NEXO_DB_PATH`.
+
+## Interface web local
+
+A tela inicial do produto fica em `web/` e pode ser servida sem instalar
+FastAPI:
+
+```powershell
+& "C:\Users\gabri\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scripts\serve_web.py --db data\nexovarejo.db
+```
+
+Depois acesse:
+
+`http://127.0.0.1:8010`
