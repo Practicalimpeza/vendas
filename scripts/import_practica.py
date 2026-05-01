@@ -20,6 +20,7 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="Caminho do SQLite.")
     parser.add_argument("--organization-id", default="org_practica")
     parser.add_argument("--store-id", default="loja_1")
+    parser.add_argument("--manual-dir", type=Path, default=None, help="Opcional. Use apenas para importar cadastros manuais existentes.")
     args = parser.parse_args()
 
     result = import_practica_directory(
@@ -27,6 +28,7 @@ def main() -> int:
         database_path=args.db,
         organization_id=args.organization_id,
         store_id=args.store_id,
+        manual_dir=args.manual_dir,
     )
     conn = connect(args.db)
     try:

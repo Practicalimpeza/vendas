@@ -20,24 +20,32 @@
       </div>
 
       <nav class="steps" id="steps">
-        <button class="step active" data-step="dados">
+        <button class="step active manual-step" data-step="implantacao">
           <span class="step-index">1</span>
+          <span><strong>Implantacao</strong><small>cadastros manuais</small></span>
+        </button>
+        <button class="step" data-step="dados">
+          <span class="step-index">2</span>
           <span><strong>Dados</strong><small>base e qualidade</small></span>
         </button>
         <button class="step" data-step="compras">
-          <span class="step-index">2</span>
+          <span class="step-index">3</span>
           <span><strong>Compras</strong><small>ruptura e reposicao</small></span>
         </button>
+        <button class="step" data-step="fornecedores">
+          <span class="step-index">4</span>
+          <span><strong>Fornecedores</strong><small>mínimos e marcas</small></span>
+        </button>
+        <button class="step" data-step="produtos">
+          <span class="step-index">5</span>
+          <span><strong>Produtos</strong><small>mix e estoque</small></span>
+        </button>
         <button class="step" data-step="clientes">
-          <span class="step-index">3</span>
+          <span class="step-index">6</span>
           <span><strong>Clientes</strong><small>risco e retorno</small></span>
         </button>
-        <button class="step" data-step="mix">
-          <span class="step-index">4</span>
-          <span><strong>Mix</strong><small>curva e giro</small></span>
-        </button>
         <button class="step" data-step="acoes">
-          <span class="step-index">5</span>
+          <span class="step-index">7</span>
           <span><strong>Acoes</strong><small>fila do dia</small></span>
         </button>
       </nav>
@@ -47,7 +55,7 @@
       <header class="topbar">
         <div>
           <p class="eyebrow" id="stageEyebrow">Etapa 1</p>
-          <h1 id="stageTitle">Dados prontos para decidir</h1>
+          <h1 id="stageTitle">Implantacao do cliente</h1>
         </div>
         <div class="top-actions">
           <span class="sync-state" id="syncState">Carregando</span>
@@ -57,7 +65,31 @@
 
       <section class="metrics" id="metrics"></section>
 
-      <section class="stage active" data-panel="dados">
+      <section class="stage active" data-panel="implantacao">
+        <div class="split-band">
+          <div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow manual-label">Dados manuais</p>
+                <h2>Checklist de implantação</h2>
+              </div>
+              <span class="badge" id="manualProgress">0%</span>
+            </div>
+            <div class="setup-grid" id="setupGrid"></div>
+          </div>
+          <div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow manual-label">Pendências</p>
+                <h2>Marcas sem fornecedor</h2>
+              </div>
+            </div>
+            <div class="rank-list" id="manualPendingRows"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage" data-panel="dados">
         <div class="decision-board">
           <div class="canvas-panel">
             <div class="panel-head">
@@ -83,19 +115,73 @@
       </section>
 
       <section class="stage" data-panel="compras">
+        <div class="split-band">
+          <div class="table-band flush">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Alertas</p>
+                <h2>Corrigir antes de comprar</h2>
+              </div>
+              <span class="badge" id="alertCount">0 alertas</span>
+            </div>
+            <div class="rank-list" id="alertRows"></div>
+          </div>
+          <div class="table-band flush">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Reposicao</p>
+                <h2>Comprar primeiro</h2>
+              </div>
+              <span class="badge" id="purchaseCount">0 itens</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Produto</th><th>Fornecedor</th><th>Estoque</th><th>Comprar</th><th>Cobertura</th></tr></thead>
+                <tbody id="purchaseRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage" data-panel="fornecedores">
         <div class="table-band">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">Reposicao</p>
-              <h2>Comprar primeiro</h2>
+              <p class="eyebrow manual-label">Dados manuais + compra</p>
+              <h2>Fornecedores do pedido</h2>
             </div>
-            <span class="badge" id="purchaseCount">0 itens</span>
+            <span class="badge" id="supplierCount">0 fornecedores</span>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Produto</th><th>Marca</th><th>Estoque</th><th>Comprar</th><th>Cobertura</th></tr></thead>
-              <tbody id="purchaseRows"></tbody>
+              <thead><tr><th>Fornecedor</th><th>Itens</th><th>Críticos</th><th>Qtd. sugerida</th><th>Mínimo manual</th></tr></thead>
+              <tbody id="supplierRows"></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage" data-panel="produtos">
+        <div class="split-band">
+          <div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Produtos</p>
+                <h2>Catálogo operacional</h2>
+              </div>
+              <input id="productSearch" class="search" placeholder="Buscar produto, marca ou código">
+            </div>
+            <div class="rank-list" id="productRows"></div>
+          </div>
+          <div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Curva ABC</p>
+                <h2>Produtos que movem a loja</h2>
+              </div>
+            </div>
+            <div class="rank-list" id="abcRows"></div>
           </div>
         </div>
       </section>
@@ -113,29 +199,6 @@
           </div>
           <div class="visual-band">
             <canvas id="clientCanvas" width="520" height="520" aria-label="Visualizacao de clientes"></canvas>
-          </div>
-        </div>
-      </section>
-
-      <section class="stage" data-panel="mix">
-        <div class="split-band">
-          <div>
-            <div class="panel-head">
-              <div>
-                <p class="eyebrow">Curva ABC</p>
-                <h2>Produtos que movem a loja</h2>
-              </div>
-            </div>
-            <div class="rank-list" id="abcRows"></div>
-          </div>
-          <div>
-            <div class="panel-head">
-              <div>
-                <p class="eyebrow">Ranking</p>
-                <h2>Top faturamento</h2>
-              </div>
-            </div>
-            <div class="rank-list" id="topRows"></div>
           </div>
         </div>
       </section>

@@ -5,7 +5,17 @@ import unittest
 from pathlib import Path
 
 from nexovarejo.ingestion.contracts import CanonicalBatch
-from nexovarejo.services import abc_report, customer_rfm, executive_summary, purchase_suggestions, top_products
+from nexovarejo.services import (
+    abc_report,
+    customer_rfm,
+    executive_summary,
+    manual_setup_status,
+    product_catalog,
+    purchase_suggestions,
+    stock_alerts,
+    supplier_summary,
+    top_products,
+)
 from nexovarejo.storage import connect, initialize_database, persist_batch
 
 
@@ -36,6 +46,9 @@ class ServicesTest(unittest.TestCase):
                     {"organization_id": "org", "store_id": "loja", "product_id": "org:2", "customer_id": "org:cliente:1", "sold_at": "2026-01-02", "quantity": "1", "gross_amount": "20"},
                 ])
                 persist_batch(conn, batch, import_batch_id="batch")
+                conn.execute("INSERT INTO suppliers (id, organization_id, name, minimum_order_value) VALUES ('sup1', 'org', 'Fornecedor A', 1000)")
+                conn.execute("INSERT INTO brand_supplier_rules (organization_id, brand, supplier_id) VALUES ('org', 'Marca', 'sup1')")
+                conn.commit()
 
                 summary = executive_summary(conn, "org", "loja")
                 self.assertEqual(summary["products"], 2)
@@ -50,6 +63,20 @@ class ServicesTest(unittest.TestCase):
 
                 suggestions = purchase_suggestions(conn, "org", store_id="loja")
                 self.assertEqual(suggestions[0]["source_code"], "1")
+                self.assertEqual(suggestions[0]["supplier"], "Fornecedor A")
+
+                suppliers = supplier_summary(conn, "org", store_id="loja")
+                self.assertEqual(suppliers[0]["supplier"], "Fornecedor A")
+
+                setup = manual_setup_status(conn, "org")
+                self.assertEqual(setup["suppliers"], 1)
+                self.assertEqual(setup["mapped_brands"], 1)
+
+                alerts = stock_alerts(conn, "org", store_id="loja")
+                self.assertTrue(alerts)
+
+                catalog = product_catalog(conn, "org", store_id="loja", q="Produto")
+                self.assertEqual(len(catalog), 2)
 
                 rfm = customer_rfm(conn, "org")
                 self.assertEqual(rfm[0]["customer_name"], "Cliente 1")

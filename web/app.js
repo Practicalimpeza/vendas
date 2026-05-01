@@ -7,14 +7,20 @@ const state = {
   rfm: [],
   abc: [],
   top: [],
+  manual: null,
+  suppliers: [],
+  alerts: [],
+  products: [],
 };
 
 const stageCopy = {
-  dados: ['Etapa 1', 'Dados prontos para decidir'],
-  compras: ['Etapa 2', 'Compras em ordem de urgencia'],
-  clientes: ['Etapa 3', 'Clientes que pedem movimento'],
-  mix: ['Etapa 4', 'Mix com foco comercial'],
-  acoes: ['Etapa 5', 'Fila objetiva do dia'],
+  implantacao: ['Etapa 1', 'Implantacao do cliente'],
+  dados: ['Etapa 2', 'Dados prontos para decidir'],
+  compras: ['Etapa 3', 'Compras em ordem de urgencia'],
+  fornecedores: ['Etapa 4', 'Fornecedores e marcas'],
+  produtos: ['Etapa 5', 'Produtos, mix e estoque'],
+  clientes: ['Etapa 6', 'Clientes que pedem movimento'],
+  acoes: ['Etapa 7', 'Fila objetiva do dia'],
 };
 
 function $(id) {
@@ -70,11 +76,12 @@ function renderMetrics() {
 
 function renderDayFlow() {
   const s = state.summary || {};
+  const m = state.manual || {};
   const items = [
+    ['Implantar manual', `${fmtNum(m.unmapped_brands)} marcas sem fornecedor e ${fmtNum(m.products_without_purchase_settings)} produtos sem regra.`],
     ['Conferir base', `${fmtNum(s.sales_lines)} vendas, ${fmtNum(s.products)} produtos e ${fmtNum(s.customers)} clientes.`],
     ['Atacar compras', `${fmtNum(state.purchases.length)} itens com sugestao calculada.`],
     ['Recuperar clientes', `${fmtNum(state.rfm.filter(r => r.segment === 'em_risco').length)} clientes em risco na amostra.`],
-    ['Rever mix', `${fmtNum(state.abc.filter(r => r.abc_class === 'A').length)} itens classe A no recorte.`],
   ];
   $('dayFlow').innerHTML = items.map((item, index) => `
     <li><b>${index + 1}</b><span><strong>${item[0]}</strong><small>${item[1]}</small></span></li>
@@ -82,12 +89,42 @@ function renderDayFlow() {
   $('healthBadge').textContent = s.sales_lines ? 'base carregada' : 'sem carga';
 }
 
+function renderManualSetup() {
+  const m = state.manual || {};
+  const avgProgress = ((Number(m.brand_mapping_progress || 0) + Number(m.purchase_settings_progress || 0)) / 2);
+  $('manualProgress').textContent = `${fmtNum(avgProgress, 0)}% pronto`;
+  const cards = [
+    ['Fornecedores', fmtNum(m.suppliers), 'Cadastro manual que define mínimos, contato e prazo.'],
+    ['Marcas mapeadas', `${fmtNum(m.mapped_brands)} / ${fmtNum(m.product_brands)}`, 'Marca -> fornecedor. Principal tarefa da implantação.'],
+    ['Regras de compra', `${fmtNum(m.products_with_purchase_settings)} / ${fmtNum(m.products)}`, 'Caixa, fator, bloqueio e ajustes por produto.'],
+    ['Bloqueios manuais', fmtNum(m.blocked_products), 'Produtos marcados para não comprar.'],
+  ];
+  $('setupGrid').innerHTML = cards.map(([label, value, copy]) => `
+    <article class="setup-card">
+      <small>${label}</small>
+      <strong>${value}</strong>
+      <p>${copy}</p>
+    </article>
+  `).join('');
+  const pending = m.unmapped_brand_examples || [];
+  $('manualPendingRows').innerHTML = pending.length ? pending.map(row => `
+    <div class="rank-item">
+      <span><strong>${row.brand || 'Sem marca'}</strong><small>${fmtNum(row.products)} produtos aguardando fornecedor</small></span>
+      <span class="amount">manual</span>
+    </div>
+  `).join('') : `
+    <div class="rank-item">
+      <span><strong>Nenhuma pendencia manual</strong><small>O cliente ja tem marcas e regras mapeadas.</small></span>
+    </div>
+  `;
+}
+
 function renderPurchases() {
   $('purchaseCount').textContent = `${fmtNum(state.purchases.length)} itens`;
   $('purchaseRows').innerHTML = state.purchases.slice(0, 80).map(item => `
     <tr>
       <td><strong>${clampText(item.name, 60)}</strong><br><small>${item.source_code}</small></td>
-      <td>${item.brand || '-'}</td>
+      <td>${item.supplier || 'Sem fornecedor'}</td>
       <td>${fmtNum(item.stock_on_hand, 1)}</td>
       <td>${fmtNum(item.suggested_quantity, 1)}</td>
       <td>${fmtNum(item.coverage_days, 1)} dias</td>
@@ -95,27 +132,62 @@ function renderPurchases() {
   `).join('');
 }
 
+function renderSuppliers() {
+  $('supplierCount').textContent = `${fmtNum(state.suppliers.length)} fornecedores`;
+  $('supplierRows').innerHTML = state.suppliers.map(row => `
+    <tr>
+      <td><strong>${clampText(row.supplier, 62)}</strong>${row.supplier === 'Sem fornecedor' ? '<br><small class="manual-note">pendente manual</small>' : ''}</td>
+      <td>${fmtNum(row.items)}</td>
+      <td>${fmtNum(row.critical_items)}</td>
+      <td>${fmtNum(row.suggested_quantity, 1)}</td>
+      <td>${fmtMoney(row.minimum_order || 0)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderAlerts() {
+  $('alertCount').textContent = `${fmtNum(state.alerts.length)} alertas`;
+  $('alertRows').innerHTML = state.alerts.slice(0, 18).map(row => `
+    <div class="rank-item">
+      <span><strong>${clampText(row.name, 58)}</strong><small>${row.alert} - ${fmtNum(row.coverage_days, 1)} dias - ${row.supplier}</small></span>
+      <span class="amount">${row.severity}</span>
+    </div>
+  `).join('');
+}
+
+function renderProducts() {
+  $('productRows').innerHTML = state.products.slice(0, 60).map(row => `
+    <div class="rank-item">
+      <span><strong>${clampText(row.name, 68)}</strong><small>${row.source_code} - ${row.brand || '-'} - ${row.supplier || 'Sem fornecedor'}</small></span>
+      <span class="amount">${fmtMoney(row.gross_amount)}</span>
+    </div>
+  `).join('');
+}
+
 function renderRanks() {
   $('rfmRows').innerHTML = state.rfm.slice(0, 12).map(row => `
     <div class="rank-item">
-      <span><strong>${clampText(row.customer_name, 72)}</strong><small>${row.frequency} compras · ${row.recency_days} dias</small></span>
+      <span><strong>${clampText(row.customer_name, 72)}</strong><small>${row.frequency} compras - ${row.recency_days} dias</small></span>
       <span class="amount">${fmtMoney(row.monetary)}</span>
     </div>
   `).join('');
 
   $('abcRows').innerHTML = state.abc.slice(0, 14).map(row => `
     <div class="rank-item">
-      <span><strong>${clampText(row.name, 72)}</strong><small>Classe ${row.abc_class} · ${(row.share * 100).toFixed(1)}%</small></span>
+      <span><strong>${clampText(row.name, 72)}</strong><small>Classe ${row.abc_class} - ${(row.share * 100).toFixed(1)}%</small></span>
       <span class="amount">${fmtMoney(row.gross_amount)}</span>
     </div>
   `).join('');
 
-  $('topRows').innerHTML = state.top.slice(0, 14).map(row => `
-    <div class="rank-item">
-      <span><strong>${clampText(row.name, 72)}</strong><small>${row.brand || '-'} · ${fmtNum(row.quantity, 1)} un.</small></span>
-      <span class="amount">${fmtMoney(row.gross_amount)}</span>
-    </div>
-  `).join('');
+  const topRows = $('topRows');
+  if (topRows) {
+    topRows.innerHTML = state.top.slice(0, 14).map(row => `
+      <div class="rank-item">
+        <span><strong>${clampText(row.name, 72)}</strong><small>${row.brand || '-'} - ${fmtNum(row.quantity, 1)} un.</small></span>
+        <span class="amount">${fmtMoney(row.gross_amount)}</span>
+      </div>
+    `).join('');
+  }
 }
 
 function renderActions() {
@@ -123,6 +195,7 @@ function renderActions() {
   const firstClient = state.rfm[0];
   const firstProduct = state.abc[0];
   const actions = [
+    ['Implantacao', `${fmtNum((state.manual || {}).unmapped_brands)} marcas sem fornecedor`, 'Cadastrar fornecedores e mapear marcas antes de confiar na compra.'],
     ['Compra', firstPurchase ? firstPurchase.name : 'Sem item urgente', firstPurchase ? `${fmtNum(firstPurchase.suggested_quantity, 1)} unidades sugeridas` : 'Nenhuma sugestao no recorte atual'],
     ['Cliente', firstClient ? firstClient.customer_name : 'Sem cliente em risco', firstClient ? `${fmtMoney(firstClient.monetary)} historico` : 'RFM sem pendencias'],
     ['Mix', firstProduct ? firstProduct.name : 'Sem curva ABC', firstProduct ? `Classe ${firstProduct.abc_class} em ${fmtMoney(firstProduct.gross_amount)}` : 'Importe vendas para calcular'],
@@ -150,7 +223,7 @@ function drawDecisionMap() {
     { label: 'Vendas', value: s.sales_gross_amount || 0, x: 160, y: 135, color: '#0f8f72' },
     { label: 'Estoque', value: s.stock_sale_value || 0, x: 480, y: 88, color: '#4aa8b5' },
     { label: 'Servicos', value: s.service_gross_amount || 0, x: 790, y: 150, color: '#e05f3f' },
-    { label: 'Compras', value: state.purchases.length || 0, x: 310, y: 315, color: '#f2b84b' },
+    { label: 'Manual', value: (state.manual || {}).unmapped_brands || 0, x: 310, y: 315, color: '#e05f3f' },
     { label: 'Clientes', value: state.rfm.length || 0, x: 650, y: 315, color: '#6c5a8f' },
   ];
 
@@ -222,21 +295,33 @@ function drawClientCanvas() {
 async function loadAll() {
   $('syncState').textContent = 'Atualizando';
   const qs = `organization_id=${orgId}&store_id=${storeId}`;
-  const [summary, purchases, rfm, abc, top] = await Promise.all([
+  const [summary, manual, purchases, rfm, abc, top, suppliers, alerts, products] = await Promise.all([
     api(`/api/summary?${qs}`),
+    api(`/api/manual-setup?${qs}`),
     api(`/api/purchase-suggestions?${qs}&limit=150`),
     api(`/api/rfm?organization_id=${orgId}&limit=80`),
     api(`/api/abc?${qs}&limit=80`),
     api(`/api/top-products?${qs}&limit=80`),
+    api(`/api/suppliers?${qs}&limit=120`),
+    api(`/api/alerts?${qs}&limit=120`),
+    api(`/api/products?${qs}&limit=120`),
   ]);
   state.summary = summary;
+  state.manual = manual;
   state.purchases = purchases.items || [];
   state.rfm = rfm.items || [];
   state.abc = abc.items || [];
   state.top = top.items || [];
+  state.suppliers = suppliers.items || [];
+  state.alerts = alerts.items || [];
+  state.products = products.items || [];
   renderMetrics();
+  renderManualSetup();
   renderDayFlow();
   renderPurchases();
+  renderSuppliers();
+  renderAlerts();
+  renderProducts();
   renderRanks();
   renderActions();
   drawDecisionMap();
@@ -266,6 +351,12 @@ document.querySelectorAll('.step').forEach(btn => {
 });
 
 $('importButton').addEventListener('click', importData);
+$('productSearch').addEventListener('input', async event => {
+  const qs = `organization_id=${orgId}&store_id=${storeId}&limit=120&q=${encodeURIComponent(event.target.value)}`;
+  const products = await api(`/api/products?${qs}`);
+  state.products = products.items || [];
+  renderProducts();
+});
 
 loadAll().catch(error => {
   $('syncState').textContent = 'Sem base';

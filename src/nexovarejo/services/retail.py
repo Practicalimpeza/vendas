@@ -110,6 +110,86 @@ def top_products(
     return [dict(row) for row in rows]
 
 
+def manual_setup_status(conn: sqlite3.Connection, organization_id: str) -> dict[str, Any]:
+    suppliers = conn.execute(
+        "SELECT COUNT(*) FROM suppliers WHERE organization_id = ? AND active = 1",
+        (organization_id,),
+    ).fetchone()[0]
+    product_brands = conn.execute(
+        """
+        SELECT COUNT(DISTINCT brand)
+        FROM products
+        WHERE organization_id = ? AND active = 1 AND TRIM(COALESCE(brand, '')) != ''
+        """,
+        (organization_id,),
+    ).fetchone()[0]
+    mapped_brands = conn.execute(
+        """
+        SELECT COUNT(DISTINCT p.brand)
+        FROM products p
+        JOIN brand_supplier_rules bsr
+          ON bsr.organization_id = p.organization_id
+         AND bsr.brand = p.brand
+         AND bsr.active = 1
+         AND bsr.supplier_id IS NOT NULL
+        WHERE p.organization_id = ? AND p.active = 1 AND TRIM(COALESCE(p.brand, '')) != ''
+        """,
+        (organization_id,),
+    ).fetchone()[0]
+    product_count = conn.execute(
+        "SELECT COUNT(*) FROM products WHERE organization_id = ? AND active = 1",
+        (organization_id,),
+    ).fetchone()[0]
+    products_with_settings = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM purchase_settings
+        WHERE organization_id = ?
+        """,
+        (organization_id,),
+    ).fetchone()[0]
+    blocked_products = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM purchase_settings
+        WHERE organization_id = ? AND blocked = 1
+        """,
+        (organization_id,),
+    ).fetchone()[0]
+    unmapped = conn.execute(
+        """
+        SELECT p.brand, COUNT(*) AS products
+        FROM products p
+        LEFT JOIN brand_supplier_rules bsr
+          ON bsr.organization_id = p.organization_id
+         AND bsr.brand = p.brand
+         AND bsr.active = 1
+         AND bsr.supplier_id IS NOT NULL
+        WHERE p.organization_id = ?
+          AND p.active = 1
+          AND TRIM(COALESCE(p.brand, '')) != ''
+          AND bsr.supplier_id IS NULL
+        GROUP BY p.brand
+        ORDER BY products DESC, p.brand
+        LIMIT 20
+        """,
+        (organization_id,),
+    ).fetchall()
+    return {
+        "suppliers": int(suppliers),
+        "product_brands": int(product_brands),
+        "mapped_brands": int(mapped_brands),
+        "unmapped_brands": max(int(product_brands) - int(mapped_brands), 0),
+        "products": int(product_count),
+        "products_with_purchase_settings": int(products_with_settings),
+        "products_without_purchase_settings": max(int(product_count) - int(products_with_settings), 0),
+        "blocked_products": int(blocked_products),
+        "brand_mapping_progress": round((mapped_brands / product_brands) * 100, 2) if product_brands else 0.0,
+        "purchase_settings_progress": round((products_with_settings / product_count) * 100, 2) if product_count else 0.0,
+        "unmapped_brand_examples": [dict(row) for row in unmapped],
+    }
+
+
 def abc_report(
     conn: sqlite3.Connection,
     organization_id: str,
@@ -214,11 +294,15 @@ def purchase_suggestions(
                COALESCE(d.span_days, 1) AS span_days,
                COALESCE(ps.package_size, 1) AS package_size,
                COALESCE(ps.target_coverage_days, 45) AS target_coverage_days,
-               COALESCE(ps.blocked, 0) AS blocked
+               COALESCE(ps.blocked, 0) AS blocked,
+               COALESCE(s.name, 'Sem fornecedor') AS supplier_name,
+               COALESCE(s.minimum_order_value, 0) AS supplier_minimum_order
         FROM latest_inventory li
         JOIN products p ON p.id = li.product_id
         LEFT JOIN demand d ON d.product_id = li.product_id
         LEFT JOIN purchase_settings ps ON ps.product_id = li.product_id AND ps.organization_id = p.organization_id
+        LEFT JOIN brand_supplier_rules bsr ON bsr.organization_id = p.organization_id AND bsr.brand = p.brand AND bsr.active = 1
+        LEFT JOIN suppliers s ON s.id = COALESCE(ps.supplier_id, bsr.supplier_id)
         ORDER BY p.name
         """,
         [*latest_params, *demand_params],
@@ -243,6 +327,8 @@ def purchase_suggestions(
                 "source_code": row["source_code"],
                 "name": row["name"],
                 "brand": row["brand"],
+                "supplier": row["supplier_name"],
+                "supplier_minimum_order": float(_decimal(row["supplier_minimum_order"])),
                 "average_daily_demand": float(average_daily),
                 "stock_on_hand": float(_decimal(row["quantity_on_hand"])),
                 "target_stock": float(suggestion.target_stock),
@@ -253,6 +339,120 @@ def purchase_suggestions(
             })
     result.sort(key=lambda item: (item["coverage_days"], -item["suggested_quantity"]))
     return result[:limit]
+
+
+def supplier_summary(
+    conn: sqlite3.Connection,
+    organization_id: str,
+    *,
+    store_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    suggestions = purchase_suggestions(conn, organization_id, store_id=store_id, limit=10000)
+    grouped: dict[str, dict[str, Any]] = {}
+    for item in suggestions:
+        supplier = item.get("supplier") or "Sem fornecedor"
+        current = grouped.setdefault(
+            supplier,
+            {
+                "supplier": supplier,
+                "items": 0,
+                "suggested_quantity": 0.0,
+                "minimum_order": item.get("supplier_minimum_order", 0.0),
+                "critical_items": 0,
+            },
+        )
+        current["items"] += 1
+        current["suggested_quantity"] += float(item.get("suggested_quantity", 0) or 0)
+        current["critical_items"] += 1 if float(item.get("coverage_days", 999999) or 999999) <= 15 else 0
+    rows = list(grouped.values())
+    rows.sort(key=lambda row: (-row["critical_items"], -row["items"], row["supplier"]))
+    return rows[:limit]
+
+
+def stock_alerts(
+    conn: sqlite3.Connection,
+    organization_id: str,
+    *,
+    store_id: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    suggestions = purchase_suggestions(conn, organization_id, store_id=store_id, limit=10000)
+    alerts = []
+    for item in suggestions:
+        coverage = float(item.get("coverage_days", 999999) or 999999)
+        if coverage <= 7:
+            alert = "ruptura_iminente"
+            severity = "critico"
+        elif coverage <= 15:
+            alert = "cobertura_baixa"
+            severity = "atencao"
+        elif not item.get("supplier") or item.get("supplier") == "Sem fornecedor":
+            alert = "sem_fornecedor"
+            severity = "cadastro"
+        else:
+            continue
+        alerts.append({**item, "alert": alert, "severity": severity})
+    alerts.sort(key=lambda row: (row["coverage_days"], row["supplier"], row["name"]))
+    return alerts[:limit]
+
+
+def product_catalog(
+    conn: sqlite3.Connection,
+    organization_id: str,
+    *,
+    store_id: str | None = None,
+    q: str = "",
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    latest_params: list[Any] = [organization_id]
+    store_filter = ""
+    if store_id:
+        store_filter = " AND store_id = ?"
+        latest_params.append(store_id)
+    final_params: list[Any] = [*latest_params, organization_id, organization_id]
+    search_filter = ""
+    if q:
+        search_filter = " AND (p.name LIKE ? OR p.brand LIKE ? OR p.source_code LIKE ?)"
+        like = f"%{q}%"
+        final_params.extend([like, like, like])
+    final_params.append(limit)
+    rows = conn.execute(
+        f"""
+        WITH latest_inventory AS (
+            SELECT i.*
+            FROM inventory_snapshots i
+            JOIN (
+                SELECT store_id, product_id, MAX(id) AS max_id
+                FROM inventory_snapshots
+                WHERE organization_id = ?{store_filter}
+                GROUP BY store_id, product_id
+            ) latest ON latest.max_id = i.id
+        ),
+        sales_total AS (
+            SELECT product_id, SUM(quantity) AS quantity, SUM(gross_amount) AS gross_amount
+            FROM sales
+            WHERE organization_id = ?
+            GROUP BY product_id
+        )
+        SELECT p.id AS product_id, p.source_code, p.name, p.brand, p.unit,
+               COALESCE(li.quantity_on_hand, 0) AS stock,
+               COALESCE(li.sale_price, 0) AS sale_price,
+               COALESCE(st.quantity, 0) AS sold_quantity,
+               COALESCE(st.gross_amount, 0) AS gross_amount,
+               COALESCE(s.name, 'Sem fornecedor') AS supplier
+        FROM products p
+        LEFT JOIN latest_inventory li ON li.product_id = p.id
+        LEFT JOIN sales_total st ON st.product_id = p.id
+        LEFT JOIN brand_supplier_rules bsr ON bsr.organization_id = p.organization_id AND bsr.brand = p.brand AND bsr.active = 1
+        LEFT JOIN suppliers s ON s.id = bsr.supplier_id
+        WHERE p.organization_id = ? AND p.active = 1{search_filter}
+        ORDER BY gross_amount DESC, p.name
+        LIMIT ?
+        """,
+        final_params,
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _max_sale_date(conn: sqlite3.Connection, organization_id: str) -> date | None:

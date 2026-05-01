@@ -16,6 +16,7 @@ from nexovarejo.services import (
     customer_rfm,
     executive_summary,
     import_practica_directory,
+    manual_setup_status,
     purchase_suggestions,
     top_products,
 )
@@ -35,6 +36,7 @@ MIME = {
 class WebHandler(BaseHTTPRequestHandler):
     db_path: Path = DEFAULT_DB_PATH
     source_dir: Path = DEFAULT_SOURCE_DIR
+    manual_dir: Path | None = None
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"[web] {self.address_string()} - {fmt % args}")
@@ -58,6 +60,7 @@ class WebHandler(BaseHTTPRequestHandler):
                     database_path=self.db_path,
                     organization_id="org_practica",
                     store_id="loja_1",
+                    manual_dir=self.manual_dir,
                 )
                 self._send_json({
                     "database_path": str(result.database_path),
@@ -79,12 +82,23 @@ class WebHandler(BaseHTTPRequestHandler):
                 payload = executive_summary(conn, organization_id, store_id)
             elif path == "/api/top-products":
                 payload = {"items": top_products(conn, organization_id, store_id=store_id, limit=limit)}
+            elif path == "/api/manual-setup":
+                payload = manual_setup_status(conn, organization_id)
             elif path == "/api/abc":
                 payload = {"items": abc_report(conn, organization_id, store_id=store_id, limit=limit)}
             elif path == "/api/purchase-suggestions":
                 payload = {"items": purchase_suggestions(conn, organization_id, store_id=store_id, limit=limit)}
             elif path == "/api/rfm":
                 payload = {"items": customer_rfm(conn, organization_id, limit=limit)}
+            elif path == "/api/suppliers":
+                from nexovarejo.services import supplier_summary
+                payload = {"items": supplier_summary(conn, organization_id, store_id=store_id, limit=limit)}
+            elif path == "/api/alerts":
+                from nexovarejo.services import stock_alerts
+                payload = {"items": stock_alerts(conn, organization_id, store_id=store_id, limit=limit)}
+            elif path == "/api/products":
+                from nexovarejo.services import product_catalog
+                payload = {"items": product_catalog(conn, organization_id, store_id=store_id, limit=limit, q=_first(query, "q", ""))}
             else:
                 self._send_json({"error": "rota nao encontrada"}, status=404)
                 return
@@ -127,15 +141,18 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8010)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--source-dir", type=Path, default=DEFAULT_SOURCE_DIR)
+    parser.add_argument("--manual-dir", type=Path, default=None, help="Opcional. Mantem vazio para simular implantacao do zero.")
     args = parser.parse_args()
 
     WebHandler.db_path = args.db
     WebHandler.source_dir = args.source_dir
+    WebHandler.manual_dir = args.manual_dir
 
     server = ThreadingHTTPServer((args.host, args.port), WebHandler)
     print(f"NexoVarejo web: http://{args.host}:{args.port}")
     print(f"Banco: {args.db}")
     print(f"Fonte Practica: {args.source_dir}")
+    print(f"Cadastros manuais: {args.manual_dir if args.manual_dir else 'nao importados'}")
     server.serve_forever()
     return 0
 

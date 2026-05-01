@@ -64,6 +64,10 @@ Esse comando cria/atualiza o banco e grava:
 - clientes deduplicados;
 - lote de importacao com issues de qualidade de dados.
 
+Por padrao, a importacao da Practica simula uma implantacao do zero: os
+cadastros manuais antigos nao entram automaticamente. Fornecedores, marcas,
+caixas, bloqueios e outras regras aparecem na tela como tarefas de implantacao.
+
 Dependencias de API como FastAPI/Uvicorn ficam em `requirements.txt`, mas o core
 foi criado para ser testavel mesmo sem servidor instalado.
 
