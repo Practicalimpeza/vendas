@@ -18,7 +18,8 @@ class PracticaConnectorTest(unittest.TestCase):
             )
             (source / "saidaprod__Sheet1.csv").write_text(
                 "CODIGO,DATA,QTD.,VALOR SAÍDA,TIPO,CLIENTE \\ FUNCIONÁRIO \\ FORNECEDOR,\n"
-                "0001,Produto A,45790,2,50,VENDA,Cliente X\n",
+                "0001,Produto A,45790,2,50,VENDA,Cliente X\n"
+                "TOTAL,,81000,999999,0,,\n",
                 encoding="utf-8",
             )
             (source / "servico__Sheet1.csv").write_text(

@@ -11,7 +11,9 @@ from nexovarejo.ingestion.contracts import CanonicalBatch, ImportIssue, normaliz
 
 
 def _decimal(value: str) -> Decimal:
-    text = str(value or "").strip().replace(".", "").replace(",", ".")
+    text = str(value or "").strip()
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
     if not text:
         return Decimal("0")
     try:
@@ -38,6 +40,13 @@ def _date(value: str):
         except ValueError:
             continue
     return ""
+
+
+def _is_plausible_business_date(value: str) -> bool:
+    if not value:
+        return False
+    parsed = date.fromisoformat(value)
+    return 2000 <= parsed.year <= (date.today().year + 2)
 
 
 def _read_csv(path: Path) -> Iterable[dict[str, str]]:
@@ -73,7 +82,10 @@ class PracticaCsvConnector(ERPConnector):
             batch.issues.append(ImportIssue("error", "missing_products", f"Arquivo nao encontrado: {path.name}"))
             return
         for index, row in enumerate(_read_csv(path), start=2):
-            code = _code(row.get("codigo") or "")
+            raw_code = str(row.get("codigo") or "").strip()
+            if not raw_code.isdigit():
+                continue
+            code = _code(raw_code)
             name = str(row.get("produto") or "").strip()
             if not code or not name:
                 batch.issues.append(ImportIssue("warning", "product_missing_key", "Produto sem codigo ou nome", index))
@@ -103,13 +115,16 @@ class PracticaCsvConnector(ERPConnector):
             return
         seen_customers: set[str] = set()
         for index, row in enumerate(_read_csv(path), start=2):
-            code = _code(row.get("codigo") or "")
+            raw_code = str(row.get("codigo") or "").strip()
+            if not raw_code.isdigit():
+                continue
+            code = _code(raw_code)
             sold_at = _date(row.get("data", ""))
             shifted_legacy_export = False
-            if not sold_at:
+            if not sold_at or not _is_plausible_business_date(sold_at):
                 sold_at = _date(row.get("qtd", ""))
-                shifted_legacy_export = bool(sold_at)
-            if not code or not sold_at:
+                shifted_legacy_export = bool(sold_at and _is_plausible_business_date(sold_at))
+            if not code or not sold_at or not _is_plausible_business_date(sold_at):
                 continue
             quantity_source = row.get("valor_saida", "") if shifted_legacy_export else row.get("qtd", "")
             amount_source = row.get("tipo", "") if shifted_legacy_export else row.get("valor_saida", "")
@@ -151,10 +166,12 @@ class PracticaCsvConnector(ERPConnector):
             if len(columns) < 8:
                 continue
             emitted_at = _date(columns[0])
+            if not emitted_at or not _is_plausible_business_date(emitted_at):
+                continue
             order_number = str(columns[1] or "").strip()
             service_name = str(columns[2] or "").strip()
             customer_name = str(columns[3] or "").strip()
-            if not service_name or not emitted_at:
+            if not service_name:
                 continue
             customer_id = f"{batch.organization_id}:cliente:{normalize_header(customer_name)}" if customer_name else None
             if customer_id and customer_id not in seen_customers:

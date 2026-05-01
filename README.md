@@ -49,5 +49,33 @@ Para criar um banco local:
 & "C:\Users\gabri\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scripts\init_db.py
 ```
 
+Para importar a exportacao atual usada pelo MVP da Practica:
+
+```powershell
+& "C:\Users\gabri\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scripts\import_practica.py ..\software_pedido\data_raw --db data\nexovarejo.db --organization-id org_practica --store-id loja_1
+```
+
+Esse comando cria/atualiza o banco e grava:
+
+- produtos canonicos;
+- snapshot de estoque;
+- vendas de produtos;
+- servicos;
+- clientes deduplicados;
+- lote de importacao com issues de qualidade de dados.
+
 Dependencias de API como FastAPI/Uvicorn ficam em `requirements.txt`, mas o core
 foi criado para ser testavel mesmo sem servidor instalado.
+
+## API planejada
+
+Com as dependencias instaladas, `src/nexovarejo/api/main.py` expoe:
+
+- `GET /health`
+- `GET /v1/organizations/{organization_id}/summary`
+- `GET /v1/organizations/{organization_id}/products/top`
+- `GET /v1/organizations/{organization_id}/abc`
+- `GET /v1/organizations/{organization_id}/purchase-suggestions`
+- `GET /v1/organizations/{organization_id}/customers/rfm`
+
+O caminho do banco pode ser configurado por `NEXO_DB_PATH`.
