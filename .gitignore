@@ -1,11 +1,42 @@
+# Python / local runtimes
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
-.tools/
+venv/
+.claude/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+
+# Local databases and generated outputs
 data/
-*.log
-output-*.png
+output/
+outputs/
 *.db
-*.db-shm
-*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Dados sensíveis Practica / CSVs reais na raiz
+/*.csv
+
+# Arquivos legados / referência local que não pertencem ao repo
+combobox
+combobox/
+/LOGO PRACTICA.png
+/guia de token.txt
+
+# Perfis e configurações locais de ferramentas IA
+.openclaude-profile.json
