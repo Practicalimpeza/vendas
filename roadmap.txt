@@ -1,0 +1,41 @@
+# Roadmap da Beta
+
+## Coberto nesta fase
+
+- Dashboard executivo com vendas mensais, estoque, fornecedores e prioridades.
+- Analise de clientes com produtos, servicos e total.
+- Relatorio de compras dos clientes por categoria e subcategoria de produto (mensal) com grafico com intervalos de 15 em 15 dias.
+- Analise de produtos de maior venda.
+- Edição de fornecedor: pedido minimo, prazo medio, valor de pedido alvo para desconto (deve ter algum nome tecnico para isso), contato e observacoes.
+- Edição de produto: 'caixa' (quantas unidades vem por caixa, mas poderia ser quantas vem por saco, fardo, etc), , categoria, subcategoria , marcador, vencimento, preco anterior, peso e observacoes.
+- Marcadores operacionais que identifiquem se o produto foi pedido, ou mesmo se ele deve ser desconsiderado em todos relatorios de compra, marcando sempre para não pedir até que manualmente seja alterado.
+- Pedidos em aberto e registro de chegada.
+
+## Proximos blocos
+
+1. Controle diario
+   - Registrar snapshot diario de estoque, excesso, ideal, vendas, servicos, lucro e margem.
+
+2. Analise ABC e curva de compra
+   - Classificar produtos por representatividade de venda.
+   - Cruzar ABC com falta, excesso, margem e fornecedor.
+   - Usar categoria e subcategoria como eixo principal de leitura comercial.
+
+3. Fluxo de fechamento do pedido
+   - Separar rascunho, pedido aprovado, pedido enviado e pedido recebido.
+   - Criar historico de pedidos por fornecedor.
+
+4. Auditoria completa
+   - Mostrar antes/depois das edicoes.
+   - Filtrar auditoria por produto, fornecedor, marca e data.
+
+5. Cadastros completos
+   - Tela dedicada para marcas.
+   - Tela dedicada para fornecedores.
+   - Tela dedicada para produtos com edicao em lote.
+
+6. Relatorios
+   - Exportacao por fornecedor em PDF.
+   - Relatorio de rupturas e excessos.
+   - Relatorio de clientes e servicos.
+   - Relatorio de cliente por categoria/subcategoria com comparativo mensal entre periodos.

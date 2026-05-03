@@ -1,0 +1,18 @@
+# Arquivos grandes ou binarios que so devem ser abertos quando a tarefa pedir.
+*.csv
+*.xlsx
+*.xls
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.pdf
+*.db
+*.sqlite
+*.sqlite3
+data/
+output/
+outputs/
+node_modules/
+.git/
+
