@@ -1,0 +1,116 @@
+# Mapeamento inicial da exportacao Practica CSV para o modelo canonico.
+# Este arquivo e documental por enquanto; a implementacao do conector deve
+# seguir estas regras e manter testes pequenos para cada caso estranho.
+
+source_system: practica_csv
+encoding: utf-8
+decimal_formats:
+  - dot_decimal
+  - br_decimal_in_footers
+date_formats:
+  - excel_serial_1899_12_30
+
+files:
+  product_price:
+    file_name: produtopreco__Sheet1.csv
+    header_row: 1
+    canonical_targets:
+      - products
+      - product_identifiers
+      - brands
+      - inventory_snapshots
+      - price_snapshots
+    normalized_columns:
+      codigo: products.source_code
+      cod_barras: product_identifiers.identifier_value
+      produto: products.name
+      und: products.unit
+      marca: brands.name
+      estoque: inventory_snapshots.quantity_on_hand
+      preco_de_venda: price_snapshots.sale_price
+
+  product_cost:
+    file_name: produtocusto__Sheet1.csv
+    header_row: 1
+    canonical_targets:
+      - cost_snapshots
+    normalized_columns:
+      codigo: products.source_code
+      referencia: product_identifiers.identifier_value
+      produto: products.name
+      p_compra: cost_snapshots.purchase_cost
+      frete: cost_snapshots.freight_cost
+      icms: cost_snapshots.icms_cost
+      ipi: cost_snapshots.ipi_cost
+      p_custo: cost_snapshots.total_cost
+
+  product_sales:
+    file_name: saidaprod__Sheet1.csv
+    header_row: 1
+    skip_rows_when_first_column:
+      - TOTAL
+      - Page -1 of 1
+    note: "Cabecalho deslocado; usar posicao de coluna, nao apenas nome."
+    canonical_targets:
+      - product_sales
+      - customers
+    columns_by_position:
+      1: products.source_code
+      2: products.name
+      3: product_sales.sold_at
+      4: product_sales.quantity
+      5: product_sales.gross_amount
+      6: product_sales.movement_type
+      7: customers.source_code
+      8: customers.name
+
+  product_profit_summary:
+    file_name: saidaprodlucro__Sheet1.csv
+    header_row: 1
+    canonical_targets:
+      - product_profit_summaries
+    normalized_columns:
+      codigo: products.source_code
+      descricao: products.name
+      quantidade: product_profit_summaries.quantity
+      valor_saida: product_profit_summaries.gross_amount
+      valor_custo: product_profit_summaries.cost_amount
+      vlr_imposto: product_profit_summaries.tax_amount
+      vlr_c_oper: product_profit_summaries.operating_cost_amount
+      lucro_bruto: product_profit_summaries.gross_profit_amount
+      lucro_liquido: product_profit_summaries.net_profit_amount
+
+  service_sales:
+    file_name: servico__Sheet1.csv
+    metadata_rows: 1
+    header_row: 2
+    skip_rows_when_first_column:
+      - TOTAL
+      - VALOR TOTAL DOS SERVICOS
+      - Page -1 of 1
+    note: "Cabecalho contem uma coluna inicial MO; usar posicoes reais."
+    canonical_targets:
+      - service_sales
+      - services
+      - customers
+    columns_by_position:
+      1: service_sales.emitted_at
+      2: service_sales.order_number
+      3: services.name
+      4: customers.name
+      5: service_sales.quantity
+      6: service_sales.gross_amount
+      7: service_sales.tax_amount
+      8: service_sales.net_amount
+
+quality_checks:
+  - code: product_sale_total_reconciliation
+    description: Conferir se soma de quantidade e valor das linhas validas bate com rodape TOTAL.
+  - code: service_total_reconciliation
+    description: Conferir receita, tributos e liquido contra rodape de servicos.
+  - code: missing_supplier
+    description: Produtos e marcas ainda nao tem fornecedor confiavel nesta exportacao.
+  - code: generic_customer
+    description: Cliente CONSUMIDOR deve ser excluido ou separado de analises relacionais.
+  - code: profit_summary_reconciliation
+    description: Receita do resumo de lucro precisa ser reconciliada com vendas transacionais.

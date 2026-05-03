@@ -1,0 +1,22 @@
+{
+  "id": "replenishment_mix",
+  "version": "0.1.0",
+  "name": "Reposicao e Mix",
+  "principles": [
+    "Reposicao automatica precisa considerar demanda, cobertura, fornecedor, minimo, embalagem e confianca.",
+    "Fornecedor facil permite alvo menor; fornecedor dificil pode exigir alvo maior.",
+    "Produto sem confianca de recompra nao deve entrar automaticamente no pedido.",
+    "Quando o estoque esta acabando e a demanda nao justifica compra, o operador decide entre tirar do mix ou forcar mais uma compra."
+  ],
+  "status_policy": {
+    "mix_review": {
+      "label": "Decidir mix",
+      "meaning": "Estoque baixo, mas recompra automatica sem confianca suficiente.",
+      "allowed_decisions": ["drop", "force_buy"]
+    },
+    "out_of_mix": {
+      "label": "Fora do mix",
+      "meaning": "Sem estoque e sem venda recente; ocultado da rotina principal."
+    }
+  }
+}

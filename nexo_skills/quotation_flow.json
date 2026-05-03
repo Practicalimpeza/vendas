@@ -1,0 +1,11 @@
+{
+  "id": "quotation_flow",
+  "version": "0.1.0",
+  "name": "Cotacao e Fornecedor",
+  "principles": [
+    "Pedido de cotacao deve ser agrupado por fornecedor real, nao apenas por marca inferida.",
+    "Codigo interno do produto e do Nexo; referencia do fornecedor deve ser usada quando existir.",
+    "Itens com decisao de mix pendente aparecem junto do fornecedor quando o pedido ja esta sendo montado.",
+    "Cotacao e oportunidade de aprender preco, prazo, disponibilidade e divisor de embalagem."
+  ]
+}

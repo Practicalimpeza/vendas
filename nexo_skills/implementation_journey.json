@@ -1,0 +1,11 @@
+{
+  "id": "implementation_journey",
+  "version": "0.1.0",
+  "name": "Implantacao Progressiva",
+  "principles": [
+    "Nao exigir cadastro grande no inicio.",
+    "Mostrar sempre o que ja e possivel com os dados atuais.",
+    "Pedir o proximo dado apenas quando ele desbloqueia ganho visivel.",
+    "Transformar evolucao de dados em engajamento operacional."
+  ]
+}

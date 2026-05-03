@@ -1,0 +1,113 @@
+{
+  "id": "action_center",
+  "version": "0.1.0",
+  "name": "Central de Acoes",
+  "principles": [
+    "A Central de Acoes deve mostrar poucas acoes de alto impacto.",
+    "Cada acao precisa explicar motivo, impacto e area de execucao.",
+    "Status de acao e dado operacional canonico do Nexo.",
+    "Acoes concluidas alimentam maturidade e memoria da rotina."
+  ],
+  "actions": {
+    "quote_pilot": {
+      "skill_id": "quotation_flow",
+      "title": "Gerar a primeira cotacao piloto",
+      "body": "{supplier_name} tem {item_count} itens sugeridos e {urgent_count} urgentes.",
+      "reason": "O motor de reposicao ja consegue montar um pedido por fornecedor com os dados atuais.",
+      "impact": "Compra assistida desbloqueada",
+      "priority": 1,
+      "view": "quotes",
+      "action_type": "quote_create"
+    },
+    "mix_review": {
+      "skill_id": "replenishment_mix",
+      "title": "Decidir mix antes do pedido",
+      "body": "{product_name} esta acabando, mas nao gerou recompra automatica.",
+      "reason": "Na fase do fornecedor, escolha se o produto sai permanentemente da lista ou se vale forcar mais uma compra.",
+      "impact": "Evita comprar item morto ou perder venda de item estrategico",
+      "priority": 1,
+      "view": "stock",
+      "action_type": "product_mix_decision"
+    },
+    "send_quote": {
+      "skill_id": "quotation_flow",
+      "title": "Enviar cotacao gerada",
+      "body": "A cotacao de {supplier_name} esta pronta com {item_count} itens.",
+      "reason": "Depois de enviada, o Nexo passa a acompanhar resposta e aprendizado de compra.",
+      "impact": "Fecha o primeiro ciclo operacional",
+      "priority": 1,
+      "view": "quotes",
+      "action_type": "quote_send"
+    },
+    "quote_response": {
+      "skill_id": "quotation_flow",
+      "title": "Registrar resposta da cotacao",
+      "body": "A cotacao de {supplier_name} foi enviada e aguarda preco, prazo e embalagem.",
+      "reason": "Fechar a resposta faz o Nexo aprender custo, divisor, disponibilidade e prazo real desse fornecedor.",
+      "impact": "Compra assistida vira memoria operacional",
+      "priority": 1,
+      "view": "quotes",
+      "action_type": "quote_response"
+    },
+    "close_purchase_order": {
+      "skill_id": "quotation_flow",
+      "title": "Fechar pedido de compra",
+      "body": "A cotacao de {supplier_name} foi respondida. Decida itens e quantidade final.",
+      "reason": "Esse passo congela o que sera comprado e preserva a diferenca entre sugerido, cotado e comprado.",
+      "impact": "Pedido canonico do Nexo",
+      "priority": 1,
+      "view": "quotes",
+      "action_type": "quote_close"
+    },
+    "supplier_minimum": {
+      "skill_id": "replenishment_mix",
+      "title": "Cadastrar pedido minimo do fornecedor piloto",
+      "body": "Comece por {supplier_name}, que concentra {product_count} produtos vinculados.",
+      "reason": "Pedido minimo muda o alvo de estoque: fornecedor dificil exige mais cobertura; fornecedor facil permite alvo menor.",
+      "impact": "Reposicao mais realista",
+      "priority": 2,
+      "view": "suppliers",
+      "action_type": "supplier_config"
+    },
+    "confirm_brand_supplier": {
+      "skill_id": "quotation_flow",
+      "title": "Confirmar fornecedor de algumas marcas",
+      "body": "{inferred_rules} regras ainda foram inferidas pela marca. Comece por {brand_name}.",
+      "reason": "Agrupar marcas no fornecedor real evita cotacao quebrada e revela melhor o pedido minimo.",
+      "impact": "Menos ruido no mapa de compra",
+      "priority": 3,
+      "view": "suppliers",
+      "action_type": "supplier_confirm"
+    },
+    "customer_risk": {
+      "skill_id": "commercial_intelligence",
+      "title": "Contatar 1 cliente em risco",
+      "body": "{customer_name} esta {days_since} dias sem compra; score {risk_score}.",
+      "reason": "{reason}",
+      "impact": "Receita recuperavel",
+      "priority": 2,
+      "view": "opportunities",
+      "action_type": "customer_contact"
+    },
+    "customer_due": {
+      "skill_id": "commercial_intelligence",
+      "title": "Fazer 1 contato de recompra provavel",
+      "body": "{customer_name} esta perto da janela esperada de recompra.",
+      "reason": "A acao e pequena e valida a rotina comercial sem montar campanha grande.",
+      "impact": "Venda recorrente",
+      "priority": 3,
+      "view": "opportunities",
+      "action_type": "customer_contact"
+    },
+    "product_drop": {
+      "skill_id": "commercial_intelligence",
+      "title": "Investigar produto em queda de ritmo",
+      "body": "{product_name} caiu {delta_revenue_abs} em receita contra a janela anterior.",
+      "reason": "Pode ser ruptura, preco, substituicao, sazonalidade ou perda real de demanda.",
+      "impact": "Evita perda silenciosa",
+      "priority": 4,
+      "view": "opportunities",
+      "action_type": "product_investigate"
+    }
+  }
+}

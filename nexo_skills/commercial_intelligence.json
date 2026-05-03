@@ -1,0 +1,11 @@
+{
+  "id": "commercial_intelligence",
+  "version": "0.1.0",
+  "name": "Inteligencia Comercial",
+  "principles": [
+    "Historico comercial deve virar acao pequena, nao apenas relatorio.",
+    "Cliente em risco e detectado por desvio da propria cadencia historica.",
+    "Recompra provavel deve ser tratada como contato simples e recorrente.",
+    "Queda de produto ou marca pede investigacao antes de conclusao."
+  ]
+}
