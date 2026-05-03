@@ -1,13 +1,9 @@
 [project]
 name = "nexovarejo"
 version = "0.1.0"
-description = "Camada inteligente de estoque, compras e clientes para varejos conectada a ERPs existentes."
+description = "Mesa de gestao para varejo baseada em importacoes de ERP."
 requires-python = ">=3.11"
-dependencies = []
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.ruff]
+line-length = 140
 
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
