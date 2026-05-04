@@ -2205,6 +2205,398 @@ def quote_message(supplier_name: str, items: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
+    """Lista de fornecedores ativos com metricas para o seletor da mesa de cotacao."""
+    suppliers_data = rows(
+        conn,
+        """
+        SELECT id, name, contact_phone, minimum_order_value, target_order_value, active
+        FROM suppliers
+        WHERE active = 1
+        ORDER BY name
+        """,
+    )
+    full = api_replenishment(conn, limit=0)
+    metrics: dict[str, dict] = {}
+    for row in full["rows"]:
+        sid = row.get("supplier_id") or ""
+        if not sid:
+            continue
+        m = metrics.setdefault(
+            sid,
+            {"active_skus": 0, "buy_now": 0, "urgent": 0, "out_of_mix": 0, "value": 0.0},
+        )
+        m["active_skus"] += 1
+        if row["status"] == "buy_now":
+            m["buy_now"] += 1
+            m["value"] += float(row["estimated_value"] or 0)
+        elif row["status"] == "urgent":
+            m["urgent"] += 1
+            m["value"] += float(row["estimated_value"] or 0)
+        elif row.get("out_of_current_mix"):
+            m["out_of_mix"] += 1
+    out = []
+    for s in suppliers_data:
+        m = metrics.get(
+            s["id"],
+            {"active_skus": 0, "buy_now": 0, "urgent": 0, "out_of_mix": 0, "value": 0.0},
+        )
+        out.append(
+            {
+                "supplier_id": s["id"],
+                "supplier_name": s["name"],
+                "contact_phone": s["contact_phone"] or "",
+                "minimum_order_value": float(s["minimum_order_value"] or 0),
+                "target_order_value": float(s["target_order_value"] or 0),
+                "active_skus": m["active_skus"],
+                "buy_now_count": m["buy_now"],
+                "urgent_count": m["urgent"],
+                "out_of_mix_count": m["out_of_mix"],
+                "estimated_value": round(m["value"], 2),
+            }
+        )
+    out.sort(key=lambda x: (-x["urgent_count"], -x["buy_now_count"], x["supplier_name"]))
+    return out
+
+
+def api_supplier_workbench(conn: sqlite3.Connection, supplier_id: str, window_days: int = 90) -> dict:
+    """Mesa de cotacao por fornecedor: todos os produtos do fornecedor com sinais de compra."""
+    if not supplier_id:
+        raise ValueError("supplier_id e obrigatorio.")
+    if window_days not in (30, 90, 180):
+        window_days = 90
+    supplier = one(conn, "SELECT * FROM suppliers WHERE id = ?", (supplier_id,))
+    if not supplier:
+        raise ValueError("Fornecedor nao encontrado.")
+    full = api_replenishment(conn, limit=0)
+    supplier_rows = [r for r in full["rows"] if (r.get("supplier_id") or "") == supplier_id]
+
+    # Custo s/ imposto: ultimo purchase_cost por produto (latest pelo id, nao pelo MAX(total_cost)).
+    purchase_costs: dict[str, float] = {}
+    for r in rows(
+        conn,
+        """
+        SELECT product_id, purchase_cost
+        FROM cost_snapshots
+        WHERE id IN (SELECT MAX(id) FROM cost_snapshots GROUP BY product_id)
+        """,
+    ):
+        purchase_costs[r["product_id"]] = float(r["purchase_cost"] or 0)
+
+    current_quote = one(
+        conn,
+        """
+        SELECT * FROM quote_requests
+        WHERE supplier_id = ? AND status IN ('draft', 'sent', 'responded')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (supplier_id,),
+    )
+    quote_items_map: dict[str, dict] = {}
+    if current_quote:
+        for qi in rows(
+            conn,
+            """
+            SELECT id, product_id, requested_quantity, suggested_quantity
+            FROM quote_request_items
+            WHERE quote_request_id = ?
+            """,
+            (current_quote["id"],),
+        ):
+            quote_items_map[qi["product_id"]] = qi
+
+    quote_history = rows(
+        conn,
+        """
+        SELECT id, status, created_at, sent_at, responded_at, approved_at,
+               item_count, total_estimated_amount
+        FROM quote_requests
+        WHERE supplier_id = ?
+        ORDER BY created_at DESC
+        LIMIT 12
+        """,
+        (supplier_id,),
+    )
+
+    out_rows = []
+    for r in supplier_rows:
+        pid = r["product_id"]
+        package_size = float(r["package_size"] or 1) or 1.0
+        marker = r.get("marker") or ""
+        if marker == "out_of_mix_permanent":
+            mix_status = "drop"
+        elif marker == "force_one_more_purchase":
+            mix_status = "force_buy"
+        elif r.get("out_of_current_mix"):
+            mix_status = "out_of_mix"
+        else:
+            mix_status = "in_mix"
+
+        if window_days == 30:
+            window_demand = float(r["demand_30"] or 0)
+        elif window_days == 180:
+            window_demand = float(r["demand_180"] or 0)
+        else:
+            window_demand = float(r["demand_90"] or 0)
+        avg_daily_window = window_demand / max(window_days, 1)
+
+        quote_item = quote_items_map.get(pid)
+        cost_no_tax = round(purchase_costs.get(pid, 0.0), 4)
+        cost_with_tax = round(float(r["unit_cost"] or 0), 4)
+
+        alerts: list[str] = []
+        if mix_status == "in_mix":
+            if float(r["suggested_quantity"] or 0) <= 0 and float(r["demand_30"] or 0) > 0:
+                alerts.append("sem_sugestao_com_demanda")
+            if float(r["stock_units"] or 0) <= 0 and float(r["demand_90"] or 0) > 0:
+                alerts.append("estoque_zero_com_demanda")
+        if r.get("intermittent"):
+            alerts.append("vendas_intermitentes")
+        if mix_status == "force_buy":
+            alerts.append("forcar_compra")
+
+        out_rows.append(
+            {
+                "product_id": pid,
+                "organization_id": r["organization_id"],
+                "source_code": r["source_code"],
+                "supplier_reference": r.get("supplier_reference") or "",
+                "name": r["name"],
+                "brand_name": r["brand_name"] or "",
+                "unit": r["unit"] or "UN",
+                "package_size": round(package_size, 2),
+                "stock_units": round(float(r["stock_units"] or 0), 2),
+                "demand_window": round(window_demand, 2),
+                "avg_daily_window": round(avg_daily_window, 4),
+                "demand_30": round(float(r["demand_30"] or 0), 2),
+                "demand_90": round(float(r["demand_90"] or 0), 2),
+                "demand_180": round(float(r["demand_180"] or 0), 2),
+                "suggested_quantity": round(float(r["suggested_quantity"] or 0), 2),
+                "cost_no_tax": cost_no_tax,
+                "cost_with_tax": cost_with_tax,
+                "abc_class": r.get("abc_class") or "C",
+                "status": r["status"],
+                "status_label": r.get("status_label") or "",
+                "mix_status": mix_status,
+                "marker": marker,
+                "in_quote": quote_item is not None,
+                "quote_quantity": float(quote_item["requested_quantity"]) if quote_item else 0.0,
+                "quote_item_id": quote_item["id"] if quote_item else None,
+                "alerts": alerts,
+                "reason": r.get("reason") or "",
+            }
+        )
+
+    def sort_key(row):
+        in_q = 0 if row["in_quote"] else 1
+        priority = 0 if row["alerts"] else 1
+        return (in_q, priority, -row["suggested_quantity"], row["name"])
+
+    out_rows.sort(key=sort_key)
+
+    items_in_quote = sum(1 for r in out_rows if r["in_quote"])
+    estimated_in_quote = round(
+        sum(r["quote_quantity"] * r["cost_with_tax"] for r in out_rows if r["in_quote"]), 2
+    )
+
+    return {
+        "supplier": {
+            "id": supplier_id,
+            "name": supplier["name"],
+            "contact_phone": supplier["contact_phone"] or "",
+            "minimum_order_value": float(supplier["minimum_order_value"] or 0),
+            "target_order_value": float(supplier["target_order_value"] or 0),
+            "lead_time_days": supplier["average_lead_time_days"],
+        },
+        "current_quote": {
+            "id": current_quote["id"],
+            "status": current_quote["status"],
+            "created_at": current_quote["created_at"],
+            "sent_at": current_quote["sent_at"],
+            "responded_at": current_quote["responded_at"],
+            "approved_at": current_quote["approved_at"],
+            "item_count": items_in_quote,
+            "estimated_value": estimated_in_quote,
+        }
+        if current_quote
+        else None,
+        "quote_history": quote_history,
+        "window_days": window_days,
+        "rows": out_rows,
+        "totals": {
+            "items_in_quote": items_in_quote,
+            "estimated_value_in_quote": estimated_in_quote,
+            "total_products": len(out_rows),
+            "alerts_count": sum(1 for r in out_rows if r["alerts"]),
+        },
+    }
+
+
+def upsert_quote_item(conn: sqlite3.Connection, payload: dict) -> dict:
+    """Adiciona, atualiza ou remove um item da cotacao em rascunho do fornecedor."""
+    organization_id = scalar_text(payload.get("organization_id"))
+    supplier_id = scalar_text(payload.get("supplier_id"))
+    product_id = scalar_text(payload.get("product_id"))
+    requested_quantity = parse_decimal(payload.get("requested_quantity"), 0) or 0
+    if not organization_id or not supplier_id or not product_id:
+        raise ValueError("organization_id, supplier_id e product_id sao obrigatorios.")
+    if requested_quantity < 0:
+        raise ValueError("Quantidade nao pode ser negativa.")
+
+    current = one(
+        conn,
+        """
+        SELECT * FROM quote_requests
+        WHERE organization_id = ? AND supplier_id = ? AND status = 'draft'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (organization_id, supplier_id),
+    )
+    if not current and requested_quantity <= 0:
+        return {"ok": True, "current_quote_id": None, "item_count": 0, "estimated_total": 0.0}
+
+    product = one(
+        conn,
+        """
+        SELECT id, source_code, name, unit
+        FROM products
+        WHERE organization_id = ? AND id = ?
+        """,
+        (organization_id, product_id),
+    )
+    if not product:
+        raise ValueError("Produto nao encontrado.")
+
+    cost_row = one(
+        conn,
+        """
+        SELECT total_cost FROM cost_snapshots
+        WHERE product_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (product_id,),
+    )
+    unit_cost = float(cost_row["total_cost"] or 0) if cost_row else 0.0
+
+    sup_ref_row = one(
+        conn,
+        """
+        SELECT identifier_value FROM product_identifiers
+        WHERE product_id = ? AND identifier_type = 'supplier_reference'
+        ORDER BY id DESC LIMIT 1
+        """,
+        (product_id,),
+    )
+    supplier_reference = sup_ref_row["identifier_value"] if sup_ref_row else ""
+    quote_code = supplier_reference or product["source_code"]
+
+    if not current:
+        supplier = one(
+            conn,
+            "SELECT name, contact_phone FROM suppliers WHERE id = ?",
+            (supplier_id,),
+        )
+        if not supplier:
+            raise ValueError("Fornecedor nao encontrado.")
+        quote_id = (
+            f"{organization_id}:quote:{datetime.now().strftime('%Y%m%d%H%M%S')}:{uuid4().hex[:8]}"
+        )
+        conn.execute(
+            """
+            INSERT INTO quote_requests
+                (id, organization_id, supplier_id, supplier_name, contact_phone, status,
+                 total_estimated_amount, item_count, message_text, notes)
+            VALUES (?, ?, ?, ?, ?, 'draft', 0, 0, '', '')
+            """,
+            (quote_id, organization_id, supplier_id, supplier["name"], supplier["contact_phone"] or ""),
+        )
+        current = {"id": quote_id}
+
+    existing = one(
+        conn,
+        "SELECT id FROM quote_request_items WHERE quote_request_id = ? AND product_id = ?",
+        (current["id"], product_id),
+    )
+
+    if requested_quantity <= 0:
+        if existing:
+            conn.execute("DELETE FROM quote_request_items WHERE id = ?", (existing["id"],))
+    else:
+        estimated_total = round(unit_cost * requested_quantity, 2)
+        if existing:
+            conn.execute(
+                """
+                UPDATE quote_request_items
+                SET requested_quantity = ?,
+                    estimated_unit_cost = ?,
+                    estimated_total_amount = ?
+                WHERE id = ?
+                """,
+                (requested_quantity, unit_cost, estimated_total, existing["id"]),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO quote_request_items
+                    (quote_request_id, product_id, source_code, supplier_reference, quote_code,
+                     product_name, unit, suggested_quantity, requested_quantity,
+                     estimated_unit_cost, estimated_total_amount, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    current["id"],
+                    product_id,
+                    product["source_code"],
+                    supplier_reference,
+                    quote_code,
+                    product["name"],
+                    product["unit"] or "UN",
+                    requested_quantity,
+                    requested_quantity,
+                    unit_cost,
+                    estimated_total,
+                    "Item adicionado pela mesa de cotacao.",
+                ),
+            )
+
+    totals = one(
+        conn,
+        """
+        SELECT COUNT(*) AS item_count, COALESCE(SUM(estimated_total_amount), 0) AS total
+        FROM quote_request_items
+        WHERE quote_request_id = ?
+        """,
+        (current["id"],),
+    ) or {"item_count": 0, "total": 0}
+    item_count = int(totals["item_count"] or 0)
+    total_estimated = float(totals["total"] or 0)
+
+    if item_count == 0:
+        conn.execute("DELETE FROM quote_requests WHERE id = ?", (current["id"],))
+        current_quote_id = None
+    else:
+        conn.execute(
+            """
+            UPDATE quote_requests
+            SET item_count = ?, total_estimated_amount = ?
+            WHERE id = ?
+            """,
+            (item_count, total_estimated, current["id"]),
+        )
+        current_quote_id = current["id"]
+
+    conn.commit()
+    return {
+        "ok": True,
+        "current_quote_id": current_quote_id,
+        "item_count": item_count,
+        "estimated_total": round(total_estimated, 2),
+    }
+
+
 def api_quote_drafts(conn: sqlite3.Connection) -> dict:
     replenishment_rows = api_replenishment(conn, limit=0)["rows"]
     candidates = quote_candidate_rows_from_replenishment(replenishment_rows)
@@ -3381,6 +3773,11 @@ class AppHandler(BaseHTTPRequestHandler):
                     self.send_json(api_pricing(conn, period))
                 elif route == "/api/quotes/draft":
                     self.send_json(api_quote_drafts(conn))
+                elif route == "/api/supplier-workbench/suppliers":
+                    self.send_json(api_supplier_workbench_list(conn))
+                elif route == "/api/supplier-workbench":
+                    window_days = parse_int(scalar_text(query.get("window_days")), 90) or 90
+                    self.send_json(api_supplier_workbench(conn, scalar_text(query.get("supplier_id")), window_days))
                 elif route == "/api/quotes":
                     self.send_json(api_quotes(conn, scalar_text(query.get("status"))))
                 elif route == "/api/quote":
@@ -3405,7 +3802,7 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         route = parsed.path
-        if route not in {"/api/suppliers/brand", "/api/suppliers/profile", "/api/products/mix-decision", "/api/products/supplier-reference", "/api/pricing/product", "/api/quotes/create", "/api/quotes/status", "/api/quotes/response", "/api/purchase-orders/close", "/api/actions/status"}:
+        if route not in {"/api/suppliers/brand", "/api/suppliers/profile", "/api/products/mix-decision", "/api/products/supplier-reference", "/api/pricing/product", "/api/quotes/create", "/api/quotes/status", "/api/quotes/response", "/api/quote-item/upsert", "/api/purchase-orders/close", "/api/actions/status"}:
             self.send_error(404)
             return
         conn = connect(self.db_path)
@@ -3424,6 +3821,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     self.send_json(update_product_pricing(conn, payload))
                 elif route == "/api/quotes/create":
                     self.send_json(create_quote_request(conn, payload))
+                elif route == "/api/quote-item/upsert":
+                    self.send_json(upsert_quote_item(conn, payload))
                 elif route == "/api/quotes/status":
                     self.send_json(update_quote_request(conn, payload))
                 elif route == "/api/quotes/response":
