@@ -951,6 +951,128 @@ def api_top_products(conn: sqlite3.Connection, period: dict | None = None) -> li
     )
 
 
+def api_product_detail(conn: sqlite3.Connection, product_id: str) -> dict:
+    if not product_id:
+        raise ValueError("Parametro id e obrigatorio.")
+    product = one(
+        conn,
+        """
+        SELECT
+            p.id,
+            p.organization_id,
+            p.source_code,
+            p.name,
+            p.unit,
+            p.active,
+            b.name AS brand_name
+        FROM products p
+        LEFT JOIN brands b ON b.id = p.brand_id
+        WHERE p.id = ?
+        """,
+        (product_id,),
+    )
+    if not product:
+        raise ValueError("Produto nao encontrado.")
+    identifiers = rows(
+        conn,
+        """
+        SELECT identifier_type, identifier_value, source_system
+        FROM product_identifiers
+        WHERE product_id = ?
+        ORDER BY identifier_type
+        """,
+        (product_id,),
+    )
+    barcode = next((i["identifier_value"] for i in identifiers if i["identifier_type"] == "barcode"), "")
+    supplier_reference = next(
+        (i["identifier_value"] for i in identifiers if i["identifier_type"] == "supplier_reference"),
+        "",
+    )
+    latest = one(
+        conn,
+        """
+        SELECT
+            (SELECT quantity_on_hand FROM inventory_snapshots
+              WHERE product_id = ? ORDER BY snapshot_date DESC LIMIT 1) AS stock,
+            (SELECT sale_price FROM price_snapshots
+              WHERE product_id = ? ORDER BY snapshot_date DESC LIMIT 1) AS sale_price,
+            (SELECT total_cost FROM cost_snapshots
+              WHERE product_id = ? ORDER BY snapshot_date DESC LIMIT 1) AS total_cost
+        """,
+        (product_id, product_id, product_id),
+    ) or {}
+    return {
+        "id": product["id"],
+        "organization_id": product["organization_id"],
+        "source_code": product["source_code"],
+        "name": product["name"],
+        "unit": product["unit"],
+        "active": bool(product["active"]),
+        "brand_name": product["brand_name"] or "",
+        "barcode": barcode,
+        "supplier_reference": supplier_reference,
+        "stock": latest.get("stock"),
+        "sale_price": latest.get("sale_price"),
+        "total_cost": latest.get("total_cost"),
+    }
+
+
+def update_product_supplier_reference(conn: sqlite3.Connection, payload: dict) -> dict:
+    organization_id = scalar_text(payload.get("organization_id"))
+    product_id = scalar_text(payload.get("product_id"))
+    value = scalar_text(payload.get("value"))[:120]
+    if not organization_id or not product_id:
+        raise ValueError("organization_id e product_id sao obrigatorios.")
+    product = one(
+        conn,
+        "SELECT id FROM products WHERE organization_id = ? AND id = ?",
+        (organization_id, product_id),
+    )
+    if not product:
+        raise ValueError("Produto nao encontrado.")
+    before_row = one(
+        conn,
+        """
+        SELECT identifier_value, source_system
+        FROM product_identifiers
+        WHERE organization_id = ? AND product_id = ? AND identifier_type = 'supplier_reference'
+        """,
+        (organization_id, product_id),
+    )
+    before_value = before_row["identifier_value"] if before_row else ""
+    conn.execute(
+        """
+        DELETE FROM product_identifiers
+        WHERE organization_id = ? AND product_id = ? AND identifier_type = 'supplier_reference'
+        """,
+        (organization_id, product_id),
+    )
+    if value:
+        conn.execute(
+            """
+            INSERT INTO product_identifiers
+                (organization_id, product_id, identifier_type, identifier_value, source_system)
+            VALUES (?, ?, 'supplier_reference', ?, 'manual')
+            """,
+            (organization_id, product_id, value),
+        )
+    conn.execute(
+        """
+        INSERT INTO audit_log
+            (organization_id, action, target_type, target_id, before_json, after_json)
+        VALUES (?, 'product_supplier_reference_update', 'product', ?, ?, ?)
+        """,
+        (
+            organization_id,
+            product_id,
+            json.dumps({"supplier_reference": before_value}, ensure_ascii=False),
+            json.dumps({"supplier_reference": value}, ensure_ascii=False),
+        ),
+    )
+    conn.commit()
+    return {"ok": True, "supplier_reference": value}
+
+
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
@@ -3239,6 +3361,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     self.send_json(api_top_products(conn, period))
                 elif route == "/api/products/stock":
                     self.send_json(api_stock(conn))
+                elif route == "/api/product":
+                    self.send_json(api_product_detail(conn, scalar_text(query.get("id"))))
                 elif route == "/api/replenishment":
                     self.send_json(api_replenishment(conn, period=period))
                 elif route == "/api/commercial/intelligence":
@@ -3281,7 +3405,7 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         route = parsed.path
-        if route not in {"/api/suppliers/brand", "/api/suppliers/profile", "/api/products/mix-decision", "/api/pricing/product", "/api/quotes/create", "/api/quotes/status", "/api/quotes/response", "/api/purchase-orders/close", "/api/actions/status"}:
+        if route not in {"/api/suppliers/brand", "/api/suppliers/profile", "/api/products/mix-decision", "/api/products/supplier-reference", "/api/pricing/product", "/api/quotes/create", "/api/quotes/status", "/api/quotes/response", "/api/purchase-orders/close", "/api/actions/status"}:
             self.send_error(404)
             return
         conn = connect(self.db_path)
@@ -3294,6 +3418,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     self.send_json(update_supplier_profile(conn, payload))
                 elif route == "/api/products/mix-decision":
                     self.send_json(update_product_mix_decision(conn, payload))
+                elif route == "/api/products/supplier-reference":
+                    self.send_json(update_product_supplier_reference(conn, payload))
                 elif route == "/api/pricing/product":
                     self.send_json(update_product_pricing(conn, payload))
                 elif route == "/api/quotes/create":

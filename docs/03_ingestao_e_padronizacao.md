@@ -19,8 +19,15 @@ pontual no Nexo.
 
 Dado operacional criado no NexoVarejo pertence ao NexoVarejo. Fornecedor
 preferencial, embalagem de compra, cobertura alvo, bloqueios de compra,
-observacoes internas e demais configuracoes que nao vieram das planilhas devem
-continuar iguais depois de novas importacoes.
+observacoes internas, **referencia do fornecedor** e demais configuracoes que
+nao vieram das planilhas devem continuar iguais depois de novas importacoes.
+
+A coluna `referencia` do CSV `produtocusto` nao e mais importada: os valores
+vinham inconsistentes do ERP. A referencia do fornecedor agora e preenchida
+manualmente na ficha do produto (web), gravada em
+`product_identifiers (identifier_type='supplier_reference', source_system='manual')`.
+Re-importar o lote remove apenas os registros antigos com `source_system='practica_csv'`,
+preservando o que foi preenchido a mao.
 
 Na pratica:
 

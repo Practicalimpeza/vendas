@@ -234,7 +234,7 @@ function productRows(rows) {
   return rows
     .map(
       (row) => `
-      <tr>
+      <tr class="clickable-row product-row" data-product-id="${escapeAttr(row.id)}">
         <td>${row.source_code}</td>
         <td>${row.name}</td>
         <td class="num">${number(row.quantity)}</td>
@@ -1658,6 +1658,77 @@ function marginPreview(price, cost, role) {
   return { label: `Margem ${number(margin)}% - preco ERP dentro do alvo ${min}%`, cls: "good" };
 }
 
+async function openProductModal(productId) {
+  if (!productId) return;
+  let detail;
+  try {
+    detail = await api(`/api/product?id=${encodeURIComponent(productId)}`);
+  } catch (error) {
+    console.error(error);
+    return;
+  }
+  const codes = [
+    ["Codigo interno", detail.source_code, "ERP"],
+    ["Codigo de barras (EAN)", detail.barcode || "-", "ERP"],
+  ];
+  openModal(
+    "Ficha do produto",
+    `
+      <div class="modal-context">
+        <strong>${escapeHtml(detail.name)}</strong>
+        <span>${escapeHtml(detail.brand_name || "Sem marca")} - Unidade ${escapeHtml(detail.unit || "UN")}</span>
+      </div>
+      <div class="product-modal-codes">
+        ${codes
+          .map(
+            ([label, value, source]) => `
+          <div class="product-code-item">
+            <span class="product-code-label">${label}</span>
+            <strong class="product-code-value">${escapeHtml(value || "-")}</strong>
+            <span class="product-code-source">${source}</span>
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+      <label class="modal-field">
+        <span>Referencia do fornecedor (manual, opcional)</span>
+        <input class="inline-input" id="productRefInput" type="text" maxlength="120" value="${inputValue(detail.supplier_reference)}" placeholder="codigo que o fornecedor usa para este produto" />
+      </label>
+      <div class="product-modal-meta">
+        <div><span>Estoque atual</span><strong>${detail.stock == null ? "-" : number(detail.stock)}</strong></div>
+        <div><span>Preco de venda</span><strong>${detail.sale_price == null ? "-" : money(detail.sale_price)}</strong></div>
+        <div><span>Custo total</span><strong>${detail.total_cost == null ? "-" : money(detail.total_cost)}</strong></div>
+      </div>
+      <span class="muted-line">Apenas a referencia do fornecedor e editavel aqui. Os demais campos vem do ERP.</span>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" id="productCancel">Fechar</button>
+        <button class="action-button" type="button" id="productSave">Salvar referencia</button>
+      </div>
+      <span class="save-state" id="productSaveState" aria-live="polite"></span>
+    `,
+    (body) => {
+      const refInput = body.querySelector("#productRefInput");
+      const saveState = body.querySelector("#productSaveState");
+      body.querySelector("#productCancel").addEventListener("click", closeModal);
+      body.querySelector("#productSave").addEventListener("click", async () => {
+        saveState.textContent = "Salvando";
+        try {
+          await apiPost("/api/products/supplier-reference", {
+            organization_id: detail.organization_id,
+            product_id: detail.id,
+            value: refInput.value.trim(),
+          });
+          saveState.textContent = "Salvo";
+          closeModal();
+        } catch (error) {
+          saveState.textContent = error.message;
+        }
+      });
+    },
+  );
+}
+
 function openPricingModal(productId) {
   const row = (state.pricing?.rows || []).find((item) => item.product_id === productId);
   if (!row) return;
@@ -1982,6 +2053,10 @@ async function boot() {
   document.querySelector("#pricingTable").addEventListener("click", (event) => {
     const row = event.target.closest(".pricing-row");
     if (row) openPricingModal(row.dataset.productId);
+  });
+  document.querySelector("#productsTable").addEventListener("click", (event) => {
+    const row = event.target.closest(".product-row");
+    if (row) openProductModal(row.dataset.productId);
   });
   renderNavBadges();
   document.querySelectorAll(".period-btn").forEach((button) => {

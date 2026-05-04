@@ -36,7 +36,7 @@ files:
       - cost_snapshots
     normalized_columns:
       codigo: products.source_code
-      referencia: product_identifiers.identifier_value
+      # referencia: nao importada — preenchida manualmente na ficha do produto
       produto: products.name
       p_compra: cost_snapshots.purchase_cost
       frete: cost_snapshots.freight_cost

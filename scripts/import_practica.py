@@ -348,19 +348,12 @@ def import_costs(conn: sqlite3.Connection, source_dir: Path, org: str, batch_id:
     for line, row in enumerate(rows[1:], start=2):
         if len(row) < 8 or not row[0].isdigit():
             continue
-        code, supplier_reference, name, purchase, freight, icms, ipi, total = row[:8]
+        # A coluna "referencia" do CSV de custo nao e mais importada: era inconsistente
+        # no ERP e agora e preenchida manualmente na ficha do produto (web).
+        code, _ignored_referencia, name, purchase, freight, icms, ipi, total = row[:8]
         pid = product_id(org, code)
         if not conn.execute("SELECT 1 FROM products WHERE id = ?", (pid,)).fetchone():
             pid = upsert_product(conn, org=org, batch_id=batch_id, code=code, name=name, payload={"source_line": line})
-        if supplier_reference:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO product_identifiers
-                    (organization_id, product_id, identifier_type, identifier_value, source_system)
-                VALUES (?, ?, 'supplier_reference', ?, 'practica_csv')
-                """,
-                (org, pid, supplier_reference),
-            )
         conn.execute(
             """
             INSERT INTO cost_snapshots
@@ -497,6 +490,17 @@ def clear_imported_facts(conn: sqlite3.Connection, org: str) -> None:
         "product_profit_summaries",
     ):
         conn.execute(f"DELETE FROM {table} WHERE organization_id = ?", (org,))
+    # Referencias de fornecedor importadas do CSV eram inconsistentes; agora sao manuais.
+    # Limpa apenas as vindas do practica_csv, preservando preenchimentos manuais.
+    conn.execute(
+        """
+        DELETE FROM product_identifiers
+        WHERE organization_id = ?
+          AND identifier_type = 'supplier_reference'
+          AND source_system = 'practica_csv'
+        """,
+        (org,),
+    )
 
 
 def import_all(source_dir: Path, db_path: Path, org: str, store: str) -> None:
