@@ -311,6 +311,15 @@
                     <option value="180">180 dias</option>
                   </select>
                 </div>
+                <div id="quoteSupplierChips" class="quote-supplier-chips">
+                  <button class="chip active" data-chip="all" type="button">Todos</button>
+                  <button class="chip" data-chip="ready" type="button">Prontos</button>
+                  <button class="chip" data-chip="risk" type="button">Risco</button>
+                  <button class="chip" data-chip="below_min" type="button">Abaixo minimo</button>
+                  <button class="chip" data-chip="open" type="button">Em aberto</button>
+                  <button class="chip" data-chip="no_min" type="button">Sem minimo</button>
+                  <button class="chip" data-chip="out_mix" type="button">Fora do mix</button>
+                </div>
                 <div id="quoteSuppliersTable" class="quote-supplier-list"></div>
               </section>
             </aside>
@@ -327,6 +336,15 @@
                 <div class="quote-empty">Revise os itens antes de gerar a cotacao.</div>
               </div>
             </section>
+          </div>
+          <div id="quoteProductDrawer" class="product-drawer-overlay hidden">
+            <div class="product-drawer-panel">
+              <div class="product-drawer-head">
+                <strong id="drawerProductName"></strong>
+                <button class="drawer-close" type="button" aria-label="Fechar">&times;</button>
+              </div>
+              <div class="product-drawer-body" id="drawerProductBody"></div>
+            </div>
           </div>
         </section>
 

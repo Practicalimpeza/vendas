@@ -8,6 +8,7 @@ const state = {
   quoteWindowDays: "90",
   quoteStep: "supplier",
   quoteSaveTimers: new Map(),
+  quoteSupplierChip: "all",
   quotes: [],
   maturity: null,
   replenishment: null,
@@ -1271,12 +1272,14 @@ function supplierWorkbenchStatus(row) {
   const minimum = Number(row.minimum_order_value || 0);
   const urgent = Number(row.urgent_count || 0);
   const buyNow = Number(row.buy_now_count || 0);
-  if (Number(row.open_quote_count || 0) > 0) return { label: "Em aberto", cls: "warn", score: 7000 };
-  if (total <= 0 && urgent + buyNow <= 0) return { label: "Sem compra", cls: "", score: -1000 };
-  if (minimum <= 0) return { label: "Sem minimo", cls: "warn", score: 3000 + urgent * 100 + buyNow * 20 };
-  if (total >= minimum) return { label: "Pronto para cotar", cls: "ok", score: 6000 + urgent * 100 + buyNow * 20 };
-  if (urgent > 0) return { label: "Revisar urgencia", cls: "danger", score: 5000 + urgent * 100 + buyNow * 20 };
-  return { label: "Abaixo do minimo", cls: "warn", score: 2000 + buyNow * 20 };
+  const alerts = Number(row.alert_count || 0);
+  const openQuotes = Number(row.open_quote_count || 0);
+  if (openQuotes > 0) return { label: "Em aberto", cls: "warn", score: 7000, rank: "open" };
+  if (total <= 0 && urgent + buyNow <= 0) return { label: "Sem compra", cls: "", score: -1000, rank: "none" };
+  if (minimum <= 0) return { label: "Sem minimo", cls: "warn", score: 3000 + urgent * 100 + buyNow * 20, rank: "no_min" };
+  if (total >= minimum) return { label: "Pronto para cotar", cls: "ok", score: 6000 + urgent * 100 + buyNow * 20 + alerts * 10, rank: "ready" };
+  if (urgent > 0) return { label: "Revisar alertas", cls: "danger", score: 5000 + urgent * 100 + buyNow * 20, rank: "risk" };
+  return { label: "Abaixo do minimo", cls: "warn", score: 2000 + buyNow * 20 + alerts * 15, rank: "below_min" };
 }
 
 function supplierMinimumProgress(row) {
@@ -1293,27 +1296,42 @@ function supplierMinimumProgress(row) {
 
 function quoteSupplierRows(rows) {
   if (!rows.length) {
-    return `<div class="quote-empty">Nenhum fornecedor encontrado.</div>`;
+    return `<div class="quote-empty">Nenhum fornecedor encontrado com o filtro atual.</div>`;
   }
   return rows
     .map((row) => {
       const active = row.supplier_id === state.selectedQuoteSupplierId ? "active" : "";
       const status = supplierWorkbenchStatus(row);
       const progress = supplierMinimumProgress(row);
+      const minVal = Number(row.minimum_order_value || 0);
+      const estVal = Number(row.estimated_value || 0);
+      const urgentCount = Number(row.urgent_count || 0);
+      const buyCount = Number(row.buy_now_count || 0);
+      const alertCount = Number(row.alert_count || 0);
+      const openQuoteCount = Number(row.open_quote_count || 0);
+      const skus = Number(row.active_skus || 0);
+      const outMix = Number(row.out_of_mix_count || 0);
+      const minFaltante = minVal > 0 && estVal < minVal ? money(minVal - estVal) : "";
       return `
-        <button class="quote-supplier-card ${active} ${quoteStatusClass(row)}" type="button" data-supplier-id="${escapeAttr(row.supplier_id)}">
+        <button class="quote-supplier-card ${active} quote-rank-${status.rank}" type="button" data-supplier-id="${escapeAttr(row.supplier_id)}">
           <span class="quote-supplier-top">
             <span class="quote-supplier-name">${escapeHtml(row.supplier_name)}</span>
             <span class="status-chip ${escapeAttr(status.cls)}">${escapeHtml(status.label)}</span>
           </span>
-          <span class="quote-supplier-meta">${row.contact_phone ? escapeHtml(row.contact_phone) : "sem telefone"}</span>
+          <span class="quote-supplier-meta">${row.contact_phone ? escapeHtml(row.contact_phone) : "sem telefone"}${row.contact_name ? " &middot; " + escapeHtml(row.contact_name) : ""}</span>
           <span class="quote-supplier-stats">
-            <b>${number(row.urgent_count)}</b> urg.
-            <b>${number(row.buy_now_count)}</b> compra
-            <b>${number(row.active_skus)}</b> skus
+            ${urgentCount ? `<b class="urg">${number(urgentCount)} urg.</b>` : ""}
+            <b>${number(buyCount)} compra</b>
+            ${alertCount ? `<b class="alrt">${number(alertCount)} alertas</b>` : ""}
+            <b>${number(skus)} skus</b>
+            ${outMix ? `<b class="mix">${number(outMix)} fora</b>` : ""}
+            ${openQuoteCount ? `<b class="open">${number(openQuoteCount)} aberta</b>` : ""}
           </span>
-          <span class="quote-supplier-value">${money(row.estimated_value)} - ${escapeHtml(progress.label)}</span>
-          <span class="quote-supplier-progress" aria-hidden="true"><span style="width:${Math.min(progress.pct, 100)}%"></span></span>
+          <span class="quote-supplier-value">${money(estVal)}${minFaltante ? ` &middot; faltam ${minFaltante}` : ""}</span>
+          <span class="quote-supplier-progress" aria-hidden="true">
+            <span style="width:${Math.min(progress.pct, 100)}%" class="${progress.pct >= 100 ? 'done' : ''}"></span>
+            ${minVal > 0 ? `<em>min. ${money(minVal)}</em>` : ""}
+          </span>
         </button>
       `;
     })
@@ -1408,82 +1426,129 @@ function renderQuoteFinal() {
   const supplier = state.quoteWorkbench.supplier || {};
   const minimum = Number(supplier.minimum_order_value || 0);
   const missing = Math.max(0, minimum - totals.estimated);
-  const previewRows = totals.items.slice(0, 14).map((row) => `
+  const alertsPending = (state.quoteWorkbench.rows || []).filter((r) => r.in_quote && (r.alerts || []).length).length;
+  const withPackage = totals.items.filter((r) => Number(r.package_size || 0) > 1);
+  const boxes = withPackage.reduce((sum, r) => sum + Math.ceil(Number(r.quote_quantity || 0) / Number(r.package_size || 1)), 0);
+  const costNoTax = totals.items.reduce((sum, r) => sum + Number(r.quote_quantity || 0) * Number(r.cost_no_tax || 0), 0);
+  const rowsHtml = totals.items.map((row) => `
     <div class="quote-final-item">
-      <span>${escapeHtml(row.supplier_reference || row.source_code)}</span>
-      <strong>${escapeHtml(row.name)}</strong>
-      <em>${number(row.quote_quantity)} ${escapeHtml(row.unit || "UN")}</em>
+      <span class="final-ref">${escapeHtml(row.supplier_reference || row.source_code)}</span>
+      <span class="final-name">${escapeHtml(row.name)}</span>
+      <span class="final-qty">${number(row.quote_quantity)} ${escapeHtml(row.unit || "UN")}</span>
+      <span class="final-cost">${money(row.cost_with_tax)}</span>
+      <span class="final-total">${money(Number(row.quote_quantity || 0) * Number(row.cost_with_tax || 0))}</span>
     </div>
   `).join("");
+  const hasQuote = Boolean(state.quoteWorkbench.current_quote);
   target.innerHTML = `
     <div class="quote-final-head">
       <div>
         <strong>${escapeHtml(supplier.name || "Fornecedor")}</strong>
-        <span>${totals.itemCount ? `${number(totals.itemCount)} itens entram na cotacao` : "Nenhum item selecionado"}</span>
+        <span>${totals.itemCount ? `${number(totals.itemCount)} itens &middot; ${number(totals.units)} un. &middot; ${money(totals.estimated)}` : "Nenhum item selecionado"}</span>
       </div>
       <div class="quote-final-actions">
         <button class="secondary-button quote-back-review" type="button">Voltar aos itens</button>
-        <button class="action-button quote-generate" type="button" ${totals.itemCount ? "" : "disabled"}>${state.quoteWorkbench.current_quote ? "Cotacao pronta" : "Gerar cotacao"}</button>
+        <button class="action-button quote-generate" type="button" ${totals.itemCount ? "" : "disabled"}>${hasQuote ? "Cotacao pronta" : "Gerar cotacao"}</button>
       </div>
     </div>
     <div class="quote-metrics quote-final-metrics">
       <div><span>Itens selecionados</span><strong>${number(totals.itemCount)}</strong></div>
       <div><span>Sugeridos fora</span><strong>${number(totals.out)}</strong></div>
-      <div><span>Unidades</span><strong>${number(totals.units)}</strong></div>
-      <div><span>Total estimado</span><strong>${money(totals.estimated)}</strong></div>
+      <div><span>Unidades</span><strong>${number(totals.units)}${boxes ? ` (${number(boxes)} cx)` : ""}</strong></div>
+      <div><span>Total c/ imposto</span><strong>${money(totals.estimated)}</strong></div>
+      <div><span>Total s/ imposto</span><strong>${money(costNoTax)}</strong></div>
       <div><span>Pedido minimo</span><strong>${minimum > 0 ? money(minimum) : "Sem minimo"}</strong></div>
-      <div><span>Status minimo</span><strong>${minimum <= 0 ? "Sem minimo" : missing <= 0 ? "Atingido" : `Faltam ${money(missing)}`}</strong></div>
+      <div><span>Faltante minimo</span><strong>${missing <= 0 ? "Atingido" : money(missing)}</strong></div>
+      <div><span>Alertas pendentes</span><strong class="${alertsPending ? 'danger' : ''}">${number(alertsPending)}</strong></div>
     </div>
-    <div class="quote-final-list">${previewRows || `<div class="quote-empty">Volte aos itens e inclua pelo menos um produto.</div>`}</div>
-    <div class="quote-final-note">${totals.itemCount > 14 ? `Mostrando 14 de ${number(totals.itemCount)} itens.` : ""}</div>
+    <div class="quote-final-list-header">
+      <span>Ref.</span><span>Produto</span><span>Qtd.</span><span>Custo</span><span>Total</span>
+    </div>
+    <div class="quote-final-list">${rowsHtml || `<div class="quote-empty">Volte aos itens e inclua pelo menos um produto.</div>`}</div>
+    <div class="quote-final-secondary">
+      <button class="secondary-button" type="button" ${!hasQuote ? "disabled" : ""} onclick="copyQuoteText()">Copiar mensagem</button>
+      <button class="secondary-button" type="button" disabled title="Em breve">Marcar enviada</button>
+      <button class="secondary-button" type="button" disabled title="Em breve">Registrar resposta</button>
+    </div>
   `;
 }
 
 function quoteProductRows(rows) {
   if (!rows.length) {
-    return `<tr><td colspan="13" class="empty-cell">Nenhum produto vinculado a este fornecedor.</td></tr>`;
+    return `<tr><td colspan="14" class="empty-cell">Nenhum produto vinculado a este fornecedor.</td></tr>`;
   }
   return rows
     .map((row) => {
       const inQuote = Boolean(row.in_quote);
       const quantity = inQuote ? Number(row.quote_quantity || 0) : "";
       const alert = (row.alerts || []).length > 0;
+      const reason = quoteReason(row);
+      const pkg = Number(row.package_size || 0);
+      const hasPackage = pkg > 1;
+      const modified = inQuote && Number(row.quote_quantity || 0) !== Number(row.suggested_quantity || 0) && Number(row.suggested_quantity || 0) > 0;
+      const zeroed = inQuote && Number(row.quote_quantity || 0) === 0;
       const classes = [
         "quote-product-row",
         inQuote ? "included" : "",
         alert ? "alert" : "",
         row.mix_status !== "in_mix" ? "out-of-mix" : "",
+        modified ? "qty-modified" : "",
+        zeroed ? "qty-zero" : "",
       ].filter(Boolean).join(" ");
+      const statusCls = row.status === "active" ? "ok" : row.status === "inactive" ? "danger" : "";
       return `
-        <tr class="${classes}" data-product-id="${escapeAttr(row.product_id)}" data-organization-id="${escapeAttr(row.organization_id)}" data-supplier-id="${escapeAttr(state.selectedQuoteSupplierId)}" data-suggested-quantity="${escapeAttr(row.suggested_quantity)}">
+        <tr class="${classes}" data-product-id="${escapeAttr(row.product_id)}" data-organization-id="${escapeAttr(row.organization_id)}" data-supplier-id="${escapeAttr(state.selectedQuoteSupplierId)}" data-suggested-quantity="${escapeAttr(row.suggested_quantity)}" data-package-size="${Number(row.package_size || 0)}" data-product-row="true">
           <td class="quote-include-cell">
             <button class="quote-toggle ${inQuote ? "on" : ""}" type="button" title="${inQuote ? "Remover da cotacao" : "Incluir na cotacao"}">${inQuote ? "Incluido" : "Incluir"}</button>
           </td>
           <td>
             <strong>${escapeHtml(row.supplier_reference || row.source_code)}</strong>
-            <span class="muted-line">interno ${escapeHtml(row.source_code)}</span>
+            <span class="muted-line">${escapeHtml(row.source_code)}</span>
           </td>
           <td class="quote-product-name">
             ${escapeHtml(row.name)}
             <span class="muted-line">${escapeHtml(row.brand_name || "")}</span>
           </td>
-          <td><span class="status-chip ${escapeAttr(row.status)}">${escapeHtml(row.status_label || row.status)}</span></td>
+          <td><span class="status-chip ${escapeAttr(statusCls)}">${escapeHtml(row.status_label || row.status)}</span></td>
           <td><span class="mix-pill ${escapeAttr(row.mix_status)}">${escapeHtml(mixStatusText(row.mix_status))}</span></td>
-          <td class="num">${number(row.package_size)}</td>
           <td class="num">${number(row.stock_units)}</td>
           <td class="num">${number(row.demand_window)}</td>
           <td class="num">${number(row.avg_daily_window)}</td>
           <td class="num">${number(row.suggested_quantity)}</td>
           <td class="num">${money(row.cost_no_tax)}</td>
           <td class="num">${money(row.cost_with_tax)}</td>
-          <td>
-            <input class="inline-input quote-quantity-input" type="text" inputmode="decimal" value="${inputValue(quantity)}" placeholder="${escapeAttr(number(row.suggested_quantity))}" />
+          <td class="quote-reason-cell"><span class="reason-tag ${escapeAttr(reason.cls)}" title="${escapeAttr(reason.tip)}">${escapeHtml(reason.label)}</span></td>
+          <td class="quote-qty-cell">
+            <div class="quote-qty-actions">
+              <input class="inline-input quote-quantity-input" type="text" inputmode="decimal" value="${inputValue(quantity)}" placeholder="${escapeAttr(number(row.suggested_quantity))}" />
+              <button class="qty-btn qty-sug" type="button" title="Usar quantidade sugerida">Sug.</button>
+              <button class="qty-btn qty-zero" type="button" title="Zerar quantidade">0</button>
+              ${hasPackage ? `<button class="qty-btn qty-box-up" type="button" title="+1 caixa (${number(pkg)}un)">Cx+</button><button class="qty-btn qty-box-down" type="button" title="-1 caixa (${number(pkg)}un)">Cx-</button>` : ""}
+            </div>
             <span class="save-state row-save-state" aria-live="polite"></span>
           </td>
         </tr>
       `;
     })
     .join("");
+}
+
+function quoteReason(row) {
+  const stock = Number(row.stock_units || 0);
+  const demand = Number(row.demand_window || 0);
+  const suggested = Number(row.suggested_quantity || 0);
+  const active = row.status === "active";
+  const inMix = row.mix_status === "in_mix";
+  const buyNow = row.buy_now || row.buy_now_flag;
+  if (!active) return { label: "Inativo", cls: "danger", tip: "Produto inativo no cadastro" };
+  if (buyNow || row.force_buy) return { label: "Forcar compra", cls: "danger", tip: "Compra forcada manualmente" };
+  if (stock <= 0 && demand > 0) return { label: "Estoque zero c/ demanda", cls: "danger", tip: "Sem estoque, com vendas na janela" };
+  if (stock <= 0) return { label: "Estoque zero", cls: "warn", tip: "Sem estoque, sem demanda na janela" };
+  if (suggested > 0 && !inMix) return { label: "Fora do mix c/ demanda", cls: "warn", tip: "Nao esta no mix, mas tem sugestao" };
+  if (!inMix) return { label: "Fora do mix", cls: "", tip: "Produto fora do mix ativo" };
+  if (suggested > 0) return { label: "Abaixo do minimo", cls: "warn", tip: "Estoque abaixo do ponto de reposicao" };
+  if (demand <= 0) return { label: "Giro intermitente", cls: "", tip: "Sem venda na janela, mas no mix" };
+  return { label: "Sem sugestao", cls: "", tip: "Produto no mix, sem necessidade calculada" };
 }
 
 function renderQuoteWorkbenchHead(workbench) {
@@ -1528,6 +1593,10 @@ function renderQuoteDetail(workbench) {
       <div class="quote-toolbar-actions">
         <button class="secondary-button quote-back-suppliers" type="button">Voltar fornecedores</button>
         <button class="secondary-button quote-restore-items" type="button">Incluir sugeridos</button>
+        <button class="secondary-button quote-only-included" type="button">So incluidos</button>
+        <button class="secondary-button quote-only-alerts" type="button">So alertas</button>
+        <button class="secondary-button quote-only-outmix" type="button">So fora do mix</button>
+        <button class="secondary-button quote-clear-filters" type="button">Limpar filtros</button>
         <button class="action-button quote-go-final" type="button" ${workbench.totals.items_in_quote ? "" : "disabled"}>Ir para cotacao</button>
       </div>
       <span id="quoteWorkbenchStatus" class="save-state" aria-live="polite"></span>
@@ -1536,19 +1605,19 @@ function renderQuoteDetail(workbench) {
       <table>
         <thead>
           <tr>
-            <th>Incluir</th>
+            <th></th>
             <th>Ref.</th>
             <th>Produto</th>
             <th>Status</th>
             <th>Mix</th>
-            <th class="num">Div.</th>
             <th class="num">Estoque</th>
             <th class="num">Venda janela</th>
             <th class="num">Media/dia</th>
             <th class="num">Sug.</th>
             <th class="num">Custo s/ imp.</th>
             <th class="num">Custo c/ imp.</th>
-            <th>Qtd. cotacao</th>
+            <th>Motivo</th>
+            <th>Qtd.</th>
           </tr>
         </thead>
         <tbody>${quoteProductRows(workbench.rows || [])}</tbody>
@@ -1561,11 +1630,24 @@ function renderQuoteDetail(workbench) {
 
 function renderQuotes() {
   const search = (document.querySelector("#quoteSupplierSearch")?.value || "").trim().toLowerCase();
-  const suppliers = (state.quoteSuppliers || []).filter((row) => {
+  const chip = state.quoteSupplierChip || "all";
+  let suppliers = (state.quoteSuppliers || []).filter((row) => {
     if (!search) return true;
-    return `${row.supplier_name} ${row.contact_phone}`.toLowerCase().includes(search);
+    return `${row.supplier_name} ${row.contact_phone || ""} ${row.contact_name || ""}`.toLowerCase().includes(search);
+  });
+  if (chip !== "all") {
+    suppliers = suppliers.filter((row) => {
+      const status = supplierWorkbenchStatus(row);
+      return status.rank === chip;
+    });
+  }
+  suppliers.sort((a, b) => {
+    const sa = supplierWorkbenchStatus(a);
+    const sb = supplierWorkbenchStatus(b);
+    return sb.score - sa.score;
   });
   document.querySelector("#quoteSuppliersTable").innerHTML = quoteSupplierRows(suppliers);
+  updateQuoteSupplierChips();
 }
 
 async function loadQuoteSupplierWorkbench(supplierId, options = {}) {
@@ -1702,6 +1784,93 @@ function generateCurrentQuote() {
   refreshAfterSave({ quotes: true, actions: true, maturity: true });
 }
 
+function updateQuoteSupplierChips() {
+  const activeChip = state.quoteSupplierChip || "all";
+  document.querySelectorAll("#quoteSupplierChips .chip").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.chip === activeChip);
+  });
+}
+
+function filterWorkbenchRows(filter) {
+  state.quoteWorkbenchFilter = filter;
+  const rows = state.quoteWorkbench?.rows || [];
+  let visible = rows;
+  if (filter === "included") visible = rows.filter((r) => r.in_quote);
+  else if (filter === "alerts") visible = rows.filter((r) => (r.alerts || []).length > 0);
+  else if (filter === "outmix") visible = rows.filter((r) => r.mix_status !== "in_mix");
+  const tbody = document.querySelector("#quoteDetail table tbody");
+  if (tbody) tbody.innerHTML = quoteProductRows(visible);
+  updateWorkbenchTotalsFromRows();
+}
+
+function applyQuickQuantity(btn) {
+  const row = btn.closest("tr");
+  if (!row) return;
+  const input = row.querySelector(".quote-quantity-input");
+  if (!input) return;
+  const suggested = Number(row.dataset.suggestedQuantity || 0);
+  const pkg = Number(row.querySelector("[data-package-size]")?.dataset.packageSize || row.dataset.packageSize || 0);
+  const current = parseFloat(input.value) || 0;
+  let next = current;
+  if (btn.classList.contains("qty-sug")) next = suggested;
+  else if (btn.classList.contains("qty-zero")) next = 0;
+  else if (btn.classList.contains("qty-box-up")) next = current + (pkg || 1);
+  else if (btn.classList.contains("qty-box-down")) next = Math.max(0, current - (pkg || 1));
+  input.value = next;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  // optimistic toggle
+  const toggle = row.querySelector(".quote-toggle");
+  if (next > 0 && !toggle.classList.contains("on")) {
+    toggle.classList.add("on");
+    toggle.textContent = "Incluido";
+    row.classList.add("included");
+  } else if (next === 0 && toggle.classList.contains("on")) {
+    toggle.classList.remove("on");
+    toggle.textContent = "Incluir";
+    row.classList.remove("included");
+  }
+  scheduleWorkbenchQuantitySave(input);
+  setTimeout(renderQuoteFinal, 300);
+}
+
+function openQuoteProductDrawer(productId) {
+  const workbench = state.quoteWorkbench;
+  if (!workbench) return;
+  const row = (workbench.rows || []).find((r) => r.product_id === productId);
+  if (!row) return;
+  const overlay = document.querySelector("#quoteProductDrawer");
+  if (!overlay) return;
+  document.querySelector("#drawerProductName").textContent = row.name || "Produto";
+  const reason = quoteReason(row);
+  document.querySelector("#drawerProductBody").innerHTML = `
+    <dl class="drawer-dl">
+      <dt>Referencia interna</dt><dd>${escapeHtml(row.source_code || "-")}</dd>
+      <dt>Referencia fornecedor</dt><dd>${escapeHtml(row.supplier_reference || "-")}</dd>
+      <dt>Marca</dt><dd>${escapeHtml(row.brand_name || "-")}</dd>
+      <dt>Estoque</dt><dd>${number(row.stock_units)} ${escapeHtml(row.unit || "UN")}</dd>
+      <dt>Demanda 30/90/180</dt><dd>${number(row.demand_30 || 0)} / ${number(row.demand_90 || 0)} / ${number(row.demand_180 || 0)}</dd>
+      <dt>Media diaria</dt><dd>${number(row.avg_daily_window)}</dd>
+      <dt>Sugestao</dt><dd>${number(row.suggested_quantity)}</dd>
+      <dt>Custo s/ imp.</dt><dd>${money(row.cost_no_tax)}</dd>
+      <dt>Custo c/ imp.</dt><dd>${money(row.cost_with_tax)}</dd>
+      <dt>Divisor/Caixa</dt><dd>${Number(row.package_size || 0) > 1 ? number(row.package_size) + " un." : "Nao informado"}</dd>
+      <dt>Mix</dt><dd><span class="mix-pill ${escapeAttr(row.mix_status)}">${escapeHtml(mixStatusText(row.mix_status))}</span></dd>
+      <dt>Motivo</dt><dd><span class="reason-tag ${escapeAttr(reason.cls)}">${escapeHtml(reason.label)}</span></dd>
+      <dt>Alertas</dt><dd>${(row.alerts || []).length ? (row.alerts || []).map((a) => escapeHtml(a)).join("; ") : "Nenhum"}</dd>
+      <dt>Status</dt><dd><span class="status-chip ${row.status === 'active' ? 'ok' : 'danger'}">${escapeHtml(row.status_label || row.status)}</span></dd>
+    </dl>
+  `;
+  overlay.classList.remove("hidden");
+  overlay.querySelector(".drawer-close").onclick = () => overlay.classList.add("hidden");
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add("hidden"); };
+}
+
+function copyQuoteText() {
+  // placeholder — sera implementado com o fluxo completo
+  const status = document.querySelector("#quoteWorkbenchStatus");
+  if (status) status.textContent = "Mensagem copiada (em breve).";
+}
+
 async function createQuote(button) {
   await loadQuoteSupplierWorkbench(button.dataset.supplierId || state.selectedQuoteSupplierId);
 }
@@ -1721,8 +1890,6 @@ async function markQuoteSent(button) {
 async function saveQuoteResponse() {}
 
 async function closePurchaseOrder() {}
-
-async function copyQuoteText() {}
 
 function renderPricingSummary(summary = {}) {
   const items = [
@@ -2168,6 +2335,13 @@ async function boot() {
     if (row?.dataset.brandId) openSupplierModal(row.dataset.brandId);
   });
   document.querySelector("#quoteSupplierSearch").addEventListener("input", renderQuotes);
+  document.querySelector("#quoteSupplierChips").addEventListener("click", (event) => {
+    const chipBtn = event.target.closest("[data-chip]");
+    if (chipBtn) {
+      state.quoteSupplierChip = chipBtn.dataset.chip;
+      renderQuotes();
+    }
+  });
   document.querySelector("#quoteWindowDays").addEventListener("change", async (event) => {
     state.quoteWindowDays = event.target.value;
     await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId);
@@ -2185,6 +2359,22 @@ async function boot() {
     if (event.target.closest(".quote-back-suppliers")) setQuoteStep("supplier");
     if (event.target.closest(".quote-go-final")) setQuoteStep("quote");
     if (event.target.closest(".quote-restore-items")) restoreSuggestedQuoteItems();
+    if (event.target.closest(".quote-only-included")) filterWorkbenchRows("included");
+    if (event.target.closest(".quote-only-alerts")) filterWorkbenchRows("alerts");
+    if (event.target.closest(".quote-only-outmix")) filterWorkbenchRows("outmix");
+    if (event.target.closest(".quote-clear-filters")) filterWorkbenchRows("all");
+    // Quick quantity buttons
+    const qtyBtn = event.target.closest(".qty-btn");
+    if (qtyBtn) {
+      event.stopPropagation();
+      applyQuickQuantity(qtyBtn);
+      return;
+    }
+    // Open product drawer
+    const productRow = event.target.closest("[data-product-row]");
+    if (productRow && !event.target.closest(".quote-toggle") && !event.target.closest(".quote-quantity-input") && !event.target.closest(".qty-btn")) {
+      openQuoteProductDrawer(productRow.dataset.productId);
+    }
   });
   document.querySelector("#quoteDetail").addEventListener("input", (event) => {
     if (event.target.classList.contains("quote-quantity-input")) scheduleWorkbenchQuantitySave(event.target);
