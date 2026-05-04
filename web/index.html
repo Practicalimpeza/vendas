@@ -277,6 +277,23 @@
         </section>
 
         <section id="quotes" class="view">
+          <div class="quote-purchase-flow" aria-label="Fluxo de compra por fornecedor">
+            <div class="quote-flow-summary">
+              <strong>Pedido por fornecedor</strong>
+              <span id="quoteFlowSummary">Aguardando fornecedor</span>
+            </div>
+            <div class="quote-flow-steps">
+              <button class="quote-flow-step active" type="button" data-quote-step="supplier">
+                <span>1</span><strong>Fornecedor</strong>
+              </button>
+              <button class="quote-flow-step" type="button" data-quote-step="review">
+                <span>2</span><strong>Revisar itens</strong>
+              </button>
+              <button class="quote-flow-step" type="button" data-quote-step="quote">
+                <span>3</span><strong>Cotacao</strong>
+              </button>
+            </div>
+          </div>
           <div class="quote-workbench">
             <aside class="quote-rail">
               <section class="quote-rail-section">
@@ -305,7 +322,10 @@
                   <p class="panel-subtitle">Escolha um fornecedor para montar a cotacao item a item.</p>
                 </div>
               </div>
-              <div id="quoteDetail" class="quote-detail empty-state">Selecione um fornecedor para abrir a mesa.</div>
+              <div id="quoteDetail" class="quote-detail quote-stage active" data-quote-stage="review">Selecione um fornecedor para abrir a mesa.</div>
+              <div id="quoteFinal" class="quote-final quote-stage" data-quote-stage="quote">
+                <div class="quote-empty">Revise os itens antes de gerar a cotacao.</div>
+              </div>
             </section>
           </div>
         </section>

@@ -6,6 +6,7 @@ const state = {
   quoteWorkbench: null,
   selectedQuoteSupplierId: "",
   quoteWindowDays: "90",
+  quoteStep: "supplier",
   quoteSaveTimers: new Map(),
   quotes: [],
   maturity: null,
@@ -1265,6 +1266,31 @@ function quoteStatusClass(row) {
   return "";
 }
 
+function supplierWorkbenchStatus(row) {
+  const total = Number(row.estimated_value || 0);
+  const minimum = Number(row.minimum_order_value || 0);
+  const urgent = Number(row.urgent_count || 0);
+  const buyNow = Number(row.buy_now_count || 0);
+  if (Number(row.open_quote_count || 0) > 0) return { label: "Em aberto", cls: "warn", score: 7000 };
+  if (total <= 0 && urgent + buyNow <= 0) return { label: "Sem compra", cls: "", score: -1000 };
+  if (minimum <= 0) return { label: "Sem minimo", cls: "warn", score: 3000 + urgent * 100 + buyNow * 20 };
+  if (total >= minimum) return { label: "Pronto para cotar", cls: "ok", score: 6000 + urgent * 100 + buyNow * 20 };
+  if (urgent > 0) return { label: "Revisar urgencia", cls: "danger", score: 5000 + urgent * 100 + buyNow * 20 };
+  return { label: "Abaixo do minimo", cls: "warn", score: 2000 + buyNow * 20 };
+}
+
+function supplierMinimumProgress(row) {
+  const total = Number(row.estimated_value || 0);
+  const minimum = Number(row.minimum_order_value || 0);
+  if (minimum <= 0) return { pct: total > 0 ? 100 : 0, label: "Sem minimo cadastrado" };
+  const pct = Math.max(0, (total / minimum) * 100);
+  const missing = Math.max(0, minimum - total);
+  return {
+    pct,
+    label: pct >= 100 ? `${number(pct)}% do minimo` : `faltam ${money(missing)}`,
+  };
+}
+
 function quoteSupplierRows(rows) {
   if (!rows.length) {
     return `<div class="quote-empty">Nenhum fornecedor encontrado.</div>`;
@@ -1272,16 +1298,22 @@ function quoteSupplierRows(rows) {
   return rows
     .map((row) => {
       const active = row.supplier_id === state.selectedQuoteSupplierId ? "active" : "";
+      const status = supplierWorkbenchStatus(row);
+      const progress = supplierMinimumProgress(row);
       return `
         <button class="quote-supplier-card ${active} ${quoteStatusClass(row)}" type="button" data-supplier-id="${escapeAttr(row.supplier_id)}">
-          <span class="quote-supplier-name">${escapeHtml(row.supplier_name)}</span>
+          <span class="quote-supplier-top">
+            <span class="quote-supplier-name">${escapeHtml(row.supplier_name)}</span>
+            <span class="status-chip ${escapeAttr(status.cls)}">${escapeHtml(status.label)}</span>
+          </span>
           <span class="quote-supplier-meta">${row.contact_phone ? escapeHtml(row.contact_phone) : "sem telefone"}</span>
           <span class="quote-supplier-stats">
             <b>${number(row.urgent_count)}</b> urg.
             <b>${number(row.buy_now_count)}</b> compra
             <b>${number(row.active_skus)}</b> skus
           </span>
-          <span class="quote-supplier-value">${money(row.estimated_value)}</span>
+          <span class="quote-supplier-value">${money(row.estimated_value)} - ${escapeHtml(progress.label)}</span>
+          <span class="quote-supplier-progress" aria-hidden="true"><span style="width:${Math.min(progress.pct, 100)}%"></span></span>
         </button>
       `;
     })
@@ -1292,12 +1324,15 @@ function quoteMetricCards(workbench) {
   const totals = workbench?.totals || {};
   const quote = workbench?.current_quote || {};
   const supplier = workbench?.supplier || {};
+  const minimum = Number(supplier.minimum_order_value || 0);
+  const value = Number(totals.estimated_value_in_quote || 0);
+  const minimumLabel = minimum > 0 ? (value >= minimum ? "Minimo atingido" : `Faltam ${money(minimum - value)}`) : "Sem minimo";
   return `
     <div class="quote-metrics">
       <div><span>Itens na cotacao</span><strong>${number(totals.items_in_quote)}</strong></div>
       <div><span>Valor estimado</span><strong>${money(totals.estimated_value_in_quote)}</strong></div>
       <div><span>Pedido minimo</span><strong>${Number(supplier.minimum_order_value || 0) ? money(supplier.minimum_order_value) : "-"}</strong></div>
-      <div><span>Status</span><strong>${quote.status ? escapeHtml(statusText(quote.status)) : "Sem rascunho"}</strong></div>
+      <div><span>Status</span><strong>${quote.status ? escapeHtml(statusText(quote.status)) : escapeHtml(minimumLabel)}</strong></div>
     </div>
   `;
 }
@@ -1308,6 +1343,100 @@ function quoteHistoryRows(history = []) {
     .slice(0, 4)
     .map((item) => `<span>${escapeHtml(statusText(item.status))} - ${escapeHtml(item.created_at || "")} - ${number(item.item_count)} itens</span>`)
     .join("");
+}
+
+function selectedQuoteRows() {
+  return (state.quoteWorkbench?.rows || []).filter((row) => row.in_quote && Number(row.quote_quantity || 0) > 0);
+}
+
+function quoteSelectedTotals() {
+  const items = selectedQuoteRows();
+  return {
+    items,
+    itemCount: items.length,
+    units: items.reduce((sum, row) => sum + Number(row.quote_quantity || 0), 0),
+    estimated: items.reduce((sum, row) => sum + Number(row.quote_quantity || 0) * Number(row.cost_with_tax || 0), 0),
+    out: Math.max(0, (state.quoteWorkbench?.rows || []).filter((row) => Number(row.suggested_quantity || 0) > 0).length - items.length),
+  };
+}
+
+function setQuoteStep(step) {
+  const hasSupplier = Boolean(state.selectedQuoteSupplierId && state.quoteWorkbench);
+  const selected = quoteSelectedTotals();
+  if (step !== "supplier" && !hasSupplier) step = "supplier";
+  if (step === "quote" && selected.itemCount === 0) step = hasSupplier ? "review" : "supplier";
+  state.quoteStep = step;
+  updateQuoteFlow();
+}
+
+function updateQuoteFlow() {
+  const hasSupplier = Boolean(state.selectedQuoteSupplierId && state.quoteWorkbench);
+  const totals = quoteSelectedTotals();
+  if (!hasSupplier) state.quoteStep = "supplier";
+  if (state.quoteStep === "quote" && totals.itemCount === 0) state.quoteStep = "review";
+  document.querySelectorAll("#quotes [data-quote-stage]").forEach((stage) => {
+    const stageName = stage.dataset.quoteStage;
+    const active = state.quoteStep === "quote" ? stageName === "quote" : stageName === "review";
+    stage.classList.toggle("active", active);
+  });
+  document.querySelectorAll("#quotes [data-quote-step]").forEach((button) => {
+    const name = button.dataset.quoteStep;
+    button.classList.remove("active", "done");
+    button.disabled = (name !== "supplier" && !hasSupplier) || (name === "quote" && totals.itemCount === 0);
+    if (name === state.quoteStep) button.classList.add("active");
+    if ((name === "supplier" && hasSupplier && state.quoteStep !== "supplier") || (name === "review" && state.quoteStep === "quote")) {
+      button.classList.add("done");
+    }
+  });
+  const summary = document.querySelector("#quoteFlowSummary");
+  if (summary) {
+    summary.textContent = hasSupplier
+      ? `${state.quoteWorkbench.supplier.name}: ${number(totals.itemCount)} itens incluidos | ${money(totals.estimated)}`
+      : "Aguardando fornecedor";
+  }
+  renderQuoteFinal();
+}
+
+function renderQuoteFinal() {
+  const target = document.querySelector("#quoteFinal");
+  if (!target) return;
+  if (!state.quoteWorkbench) {
+    target.innerHTML = `<div class="quote-empty">Escolha um fornecedor antes de gerar a cotacao.</div>`;
+    return;
+  }
+  const totals = quoteSelectedTotals();
+  const supplier = state.quoteWorkbench.supplier || {};
+  const minimum = Number(supplier.minimum_order_value || 0);
+  const missing = Math.max(0, minimum - totals.estimated);
+  const previewRows = totals.items.slice(0, 14).map((row) => `
+    <div class="quote-final-item">
+      <span>${escapeHtml(row.supplier_reference || row.source_code)}</span>
+      <strong>${escapeHtml(row.name)}</strong>
+      <em>${number(row.quote_quantity)} ${escapeHtml(row.unit || "UN")}</em>
+    </div>
+  `).join("");
+  target.innerHTML = `
+    <div class="quote-final-head">
+      <div>
+        <strong>${escapeHtml(supplier.name || "Fornecedor")}</strong>
+        <span>${totals.itemCount ? `${number(totals.itemCount)} itens entram na cotacao` : "Nenhum item selecionado"}</span>
+      </div>
+      <div class="quote-final-actions">
+        <button class="secondary-button quote-back-review" type="button">Voltar aos itens</button>
+        <button class="action-button quote-generate" type="button" ${totals.itemCount ? "" : "disabled"}>${state.quoteWorkbench.current_quote ? "Cotacao pronta" : "Gerar cotacao"}</button>
+      </div>
+    </div>
+    <div class="quote-metrics quote-final-metrics">
+      <div><span>Itens selecionados</span><strong>${number(totals.itemCount)}</strong></div>
+      <div><span>Sugeridos fora</span><strong>${number(totals.out)}</strong></div>
+      <div><span>Unidades</span><strong>${number(totals.units)}</strong></div>
+      <div><span>Total estimado</span><strong>${money(totals.estimated)}</strong></div>
+      <div><span>Pedido minimo</span><strong>${minimum > 0 ? money(minimum) : "Sem minimo"}</strong></div>
+      <div><span>Status minimo</span><strong>${minimum <= 0 ? "Sem minimo" : missing <= 0 ? "Atingido" : `Faltam ${money(missing)}`}</strong></div>
+    </div>
+    <div class="quote-final-list">${previewRows || `<div class="quote-empty">Volte aos itens e inclua pelo menos um produto.</div>`}</div>
+    <div class="quote-final-note">${totals.itemCount > 14 ? `Mostrando 14 de ${number(totals.itemCount)} itens.` : ""}</div>
+  `;
 }
 
 function quoteProductRows(rows) {
@@ -1384,16 +1513,22 @@ function renderQuoteDetail(workbench) {
   state.quoteWorkbench = workbench || null;
   renderQuoteWorkbenchHead(workbench);
   if (!workbench) {
-    document.querySelector("#quoteDetail").className = "quote-detail empty-state";
+    document.querySelector("#quoteDetail").className = "quote-detail quote-stage empty-state";
     document.querySelector("#quoteDetail").textContent = "Selecione um fornecedor para abrir a mesa.";
+    updateQuoteFlow();
     return;
   }
-  document.querySelector("#quoteDetail").className = "quote-detail";
+  document.querySelector("#quoteDetail").className = "quote-detail quote-stage";
   document.querySelector("#quoteDetail").innerHTML = `
     <div class="quote-toolbar">
       <div>
         <strong>${number(workbench.totals.total_products)} produtos</strong>
         <span>${number(workbench.totals.alerts_count)} alertas - ${number(workbench.totals.items_in_quote)} incluidos</span>
+      </div>
+      <div class="quote-toolbar-actions">
+        <button class="secondary-button quote-back-suppliers" type="button">Voltar fornecedores</button>
+        <button class="secondary-button quote-restore-items" type="button">Incluir sugeridos</button>
+        <button class="action-button quote-go-final" type="button" ${workbench.totals.items_in_quote ? "" : "disabled"}>Ir para cotacao</button>
       </div>
       <span id="quoteWorkbenchStatus" class="save-state" aria-live="polite"></span>
     </div>
@@ -1420,6 +1555,8 @@ function renderQuoteDetail(workbench) {
       </table>
     </div>
   `;
+  if (state.quoteStep === "supplier") state.quoteStep = "review";
+  updateQuoteFlow();
 }
 
 function renderQuotes() {
@@ -1437,6 +1574,7 @@ async function loadQuoteSupplierWorkbench(supplierId, options = {}) {
     return;
   }
   state.selectedQuoteSupplierId = supplierId;
+  if (!options.keepStep && state.quoteStep === "supplier") state.quoteStep = "review";
   renderQuotes();
   const status = document.querySelector("#quoteWorkbenchStatus");
   if (status && !options.silent) status.textContent = "Carregando";
@@ -1469,6 +1607,7 @@ function updateWorkbenchTotalsFromRows() {
     state.quoteWorkbench.current_quote.estimated_value = state.quoteWorkbench.totals.estimated_value_in_quote;
   }
   renderQuoteWorkbenchHead(state.quoteWorkbench);
+  updateQuoteFlow();
 }
 
 function syncQuoteRow(rowEl, row) {
@@ -1514,6 +1653,19 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
   }
 }
 
+function restoreSuggestedQuoteItems() {
+  if (!state.quoteWorkbench) return;
+  const rows = Array.from(document.querySelectorAll("#quoteDetail .quote-product-row"));
+  rows.forEach((rowEl) => {
+    const row = findWorkbenchRow(rowEl.dataset.productId);
+    if (!row || Number(row.suggested_quantity || 0) <= 0 || row.in_quote) return;
+    const input = rowEl.querySelector(".quote-quantity-input");
+    const quantity = Number(row.suggested_quantity || row.package_size || 1);
+    if (input) input.value = String(quantity).replace(".", ",");
+    saveWorkbenchQuantity(rowEl, quantity);
+  });
+}
+
 function scheduleWorkbenchQuantitySave(input) {
   const rowEl = input.closest(".quote-product-row");
   if (!rowEl) return;
@@ -1536,6 +1688,18 @@ function toggleWorkbenchItem(button) {
   const nextQuantity = row.in_quote ? 0 : Number(row.suggested_quantity || row.package_size || 1);
   input.value = nextQuantity > 0 ? String(nextQuantity).replace(".", ",") : "";
   saveWorkbenchQuantity(rowEl, nextQuantity);
+}
+
+function generateCurrentQuote() {
+  const status = document.querySelector("#quoteFinal .quote-final-note") || document.querySelector("#quoteWorkbenchStatus");
+  if (!state.quoteWorkbench) return;
+  const totals = quoteSelectedTotals();
+  if (!totals.itemCount) {
+    if (status) status.textContent = "Inclua pelo menos um item.";
+    return;
+  }
+  if (status) status.textContent = state.quoteWorkbench.current_quote ? "Cotacao em rascunho pronta para envio." : "Inclua itens para criar a cotacao.";
+  refreshAfterSave({ quotes: true, actions: true, maturity: true });
 }
 
 async function createQuote(button) {
@@ -2012,12 +2176,22 @@ async function boot() {
     const button = event.target.closest(".quote-supplier-card");
     if (button?.dataset.supplierId) await loadQuoteSupplierWorkbench(button.dataset.supplierId);
   });
+  document.querySelectorAll("#quotes [data-quote-step]").forEach((button) => {
+    button.addEventListener("click", () => setQuoteStep(button.dataset.quoteStep || "supplier"));
+  });
   document.querySelector("#quoteDetail").addEventListener("click", (event) => {
     const toggle = event.target.closest(".quote-toggle");
     if (toggle) toggleWorkbenchItem(toggle);
+    if (event.target.closest(".quote-back-suppliers")) setQuoteStep("supplier");
+    if (event.target.closest(".quote-go-final")) setQuoteStep("quote");
+    if (event.target.closest(".quote-restore-items")) restoreSuggestedQuoteItems();
   });
   document.querySelector("#quoteDetail").addEventListener("input", (event) => {
     if (event.target.classList.contains("quote-quantity-input")) scheduleWorkbenchQuantitySave(event.target);
+  });
+  document.querySelector("#quoteFinal").addEventListener("click", (event) => {
+    if (event.target.closest(".quote-back-review")) setQuoteStep("review");
+    if (event.target.closest(".quote-generate")) generateCurrentQuote();
   });
   document.querySelector("#pricingTable").addEventListener("click", (event) => {
     const row = event.target.closest(".pricing-row");

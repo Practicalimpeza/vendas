@@ -1027,6 +1027,39 @@ th {
   grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
 }
 
+.quote-purchase-flow {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.75fr) minmax(0, 1.25fr);
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+
+.quote-flow-summary,
+.quote-flow-steps {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.quote-flow-summary {
+  padding: 12px 14px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.quote-flow-summary strong,
+.quote-flow-summary span {
+  display: block;
+}
+
+.quote-flow-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .quote-workbench {
   display: grid;
   grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
@@ -1042,12 +1075,9 @@ th {
 }
 
 .quote-flow-steps {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
   padding: 10px;
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -1061,9 +1091,11 @@ th {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+  background: #ffffff;
+  cursor: pointer;
 }
 
-.quote-flow-step b {
+.quote-flow-step span {
   width: 24px;
   height: 24px;
   border-radius: 999px;
@@ -1072,6 +1104,14 @@ th {
   background: var(--surface-2);
   color: var(--muted);
   font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.quote-flow-step strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quote-flow-step.active {
@@ -1080,8 +1120,8 @@ th {
   color: var(--blue);
 }
 
-.quote-flow-step.active b,
-.quote-flow-step.done b {
+.quote-flow-step.active span,
+.quote-flow-step.done span {
   background: var(--blue);
   color: #ffffff;
 }
@@ -1774,6 +1814,13 @@ th {
   cursor: pointer;
 }
 
+.quote-supplier-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .quote-supplier-card:hover,
 .quote-supplier-card.active {
   background: #f5faf8;
@@ -1821,6 +1868,28 @@ th {
   color: var(--green);
   font-size: 12px;
   font-weight: 850;
+}
+
+.quote-supplier-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: #e8eeeb;
+  overflow: hidden;
+}
+
+.quote-supplier-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.quote-stage {
+  display: none;
+}
+
+.quote-stage.active {
+  display: block;
 }
 
 .quote-workbench-head {
@@ -1887,6 +1956,14 @@ th {
   margin-bottom: 12px;
 }
 
+.quote-toolbar-actions,
+.quote-final-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .quote-toolbar strong,
 .quote-toolbar span {
   display: block;
@@ -1902,6 +1979,75 @@ th {
   border: 1px solid var(--line);
   border-radius: 8px;
   max-height: calc(100vh - 310px);
+}
+
+.quote-final {
+  padding: 16px;
+}
+
+.quote-final-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.quote-final-head strong,
+.quote-final-head span {
+  display: block;
+}
+
+.quote-final-head span {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.quote-final-metrics {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.quote-final-list {
+  display: grid;
+  gap: 7px;
+}
+
+.quote-final-item {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfb;
+  padding: 8px 10px;
+}
+
+.quote-final-item span,
+.quote-final-item em {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.quote-final-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-final-item em {
+  font-style: normal;
+  font-weight: 850;
+  color: var(--ink);
+}
+
+.quote-final-note {
+  min-height: 18px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .quote-workbench-table table {
@@ -2273,6 +2419,7 @@ th {
 
   .kpi-grid,
   .two-col,
+  .quote-purchase-flow,
   .quote-workbench,
   .quote-title-block,
   .maturity-lanes,
@@ -2299,6 +2446,7 @@ th {
 
   .quote-card-metrics,
   .quote-metrics,
+  .quote-final-metrics,
   .quote-response-summary,
   .purchase-close-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2321,7 +2469,9 @@ th {
 
   .quote-card-head,
   .quote-detail-head,
-  .quote-toolbar {
+  .quote-toolbar,
+  .quote-final-head,
+  .quote-final-item {
     display: grid;
   }
 
@@ -2332,6 +2482,7 @@ th {
 
   .quote-card-metrics,
   .quote-metrics,
+  .quote-final-metrics,
   .quote-response-summary,
   .purchase-close-summary {
     grid-template-columns: 1fr;
