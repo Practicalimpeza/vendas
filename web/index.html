@@ -277,43 +277,56 @@
         </section>
 
         <section id="quotes" class="view quote-view">
-          <div class="quote-workbench">
-            <aside class="quote-rail">
-              <header class="quote-rail-top">
-                <div class="quote-rail-title">
-                  <h2>Fornecedores</h2>
-                  <span id="quoteFlowSummary" class="quote-rail-context">Selecione para montar a cotacao</span>
-                </div>
-                <div class="quote-rail-search">
-                  <input id="quoteSupplierSearch" class="search-input" type="search" placeholder="Buscar fornecedor" />
-                  <select id="quoteWindowDays" class="filter-select" title="Janela de demanda usada nos calculos">
-                    <option value="30">30d</option>
-                    <option value="90" selected>90d</option>
-                    <option value="180">180d</option>
-                  </select>
-                </div>
-                <div id="quoteSupplierChips" class="quote-chip-row">
-                  <button class="quote-chip active" data-chip="all" type="button">Todos</button>
-                  <button class="quote-chip" data-chip="ready" type="button">Prontos</button>
-                  <button class="quote-chip" data-chip="risk" type="button">Risco</button>
-                  <button class="quote-chip" data-chip="below_min" type="button">Abaixo do min.</button>
-                  <button class="quote-chip" data-chip="open" type="button">Em aberto</button>
-                </div>
-              </header>
-              <div id="quoteSuppliersTable" class="quote-supplier-list"></div>
-            </aside>
-
-            <section class="quote-main">
-              <div id="quoteWorkbenchHead" class="quote-main-head">
-                <div class="quote-main-empty">
-                  <h2>Mesa de cotacao</h2>
-                  <p class="panel-subtitle">Escolha um fornecedor a esquerda para abrir a mesa.</p>
-                </div>
-              </div>
-              <div id="quoteDetail" class="quote-stage active" data-quote-stage="review"></div>
-              <div id="quoteFinal" class="quote-stage" data-quote-stage="quote"></div>
-            </section>
+          <div class="quote-stepper" aria-label="Etapas da cotacao">
+            <button class="qstep active" type="button" data-quote-step="supplier">
+              <span class="qstep-num">1</span>
+              <span class="qstep-label">Fornecedor</span>
+              <span class="qstep-hint" id="qstepSupplierHint">Selecionar</span>
+            </button>
+            <span class="qstep-sep" aria-hidden="true"></span>
+            <button class="qstep" type="button" data-quote-step="review" disabled>
+              <span class="qstep-num">2</span>
+              <span class="qstep-label">Itens</span>
+              <span class="qstep-hint" id="qstepReviewHint">-</span>
+            </button>
+            <span class="qstep-sep" aria-hidden="true"></span>
+            <button class="qstep" type="button" data-quote-step="quote" disabled>
+              <span class="qstep-num">3</span>
+              <span class="qstep-label">Resumo</span>
+              <span class="qstep-hint" id="qstepQuoteHint">-</span>
+            </button>
+            <span id="quoteFlowSummary" hidden></span>
           </div>
+
+          <section class="quote-stage-panel" id="quoteSupplierStage" data-quote-stage="supplier">
+            <header class="qstage-head">
+              <div>
+                <h2>Selecione o fornecedor</h2>
+                <p class="panel-subtitle">Comece pelo fornecedor com mais urgencia ou que ja tem cotacao em aberto.</p>
+              </div>
+              <div class="qstage-tools">
+                <input id="quoteSupplierSearch" class="search-input compact" type="search" placeholder="Buscar fornecedor" />
+                <select id="quoteWindowDays" class="filter-select compact" title="Janela de demanda usada nos calculos">
+                  <option value="30">Janela 30d</option>
+                  <option value="90" selected>Janela 90d</option>
+                  <option value="180">Janela 180d</option>
+                </select>
+              </div>
+            </header>
+            <div id="quoteSupplierChips" class="quote-chip-row">
+              <button class="quote-chip active" data-chip="all" type="button">Todos</button>
+              <button class="quote-chip" data-chip="ready" type="button">Prontos</button>
+              <button class="quote-chip" data-chip="risk" type="button">Risco</button>
+              <button class="quote-chip" data-chip="below_min" type="button">Abaixo do min.</button>
+              <button class="quote-chip" data-chip="open" type="button">Em aberto</button>
+            </div>
+            <div id="quoteSuppliersTable" class="quote-supplier-grid"></div>
+          </section>
+
+          <section class="quote-stage-panel" id="quoteWorkbenchHead" hidden></section>
+          <section class="quote-stage-panel" id="quoteDetail" data-quote-stage="review" hidden></section>
+          <section class="quote-stage-panel" id="quoteFinal" data-quote-stage="quote" hidden></section>
+
           <div id="quoteProductDrawer" class="product-drawer-overlay hidden">
             <div class="product-drawer-panel">
               <div class="product-drawer-head">

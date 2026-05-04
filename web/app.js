@@ -1416,21 +1416,44 @@ function updateQuoteFlow() {
   const totals = quoteSelectedTotals();
   if (!hasSupplier) state.quoteStep = "supplier";
   if (state.quoteStep === "quote" && totals.itemCount === 0) state.quoteStep = "review";
-  document.querySelectorAll("#quotes [data-quote-stage]").forEach((stage) => {
-    const stageName = stage.dataset.quoteStage;
-    const active = state.quoteStep === "quote" ? stageName === "quote" : stageName === "review";
-    stage.classList.toggle("active", active);
+
+  const stageMap = {
+    supplier: "quoteSupplierStage",
+    review: "quoteDetail",
+    quote: "quoteFinal",
+  };
+  Object.entries(stageMap).forEach(([step, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = step !== state.quoteStep;
   });
-  document.querySelectorAll("#quoteWorkbenchHead [data-quote-step]").forEach((tab) => {
-    const name = tab.dataset.quoteStep;
-    tab.classList.toggle("active", name === state.quoteStep);
-    if (name === "quote") tab.disabled = totals.itemCount === 0;
+  const head = document.getElementById("quoteWorkbenchHead");
+  if (head) head.hidden = state.quoteStep === "supplier";
+
+  document.querySelectorAll("#quotes .qstep").forEach((btn) => {
+    const name = btn.dataset.quoteStep;
+    btn.classList.toggle("active", name === state.quoteStep);
+    btn.classList.toggle("done",
+      (name === "supplier" && hasSupplier && state.quoteStep !== "supplier")
+      || (name === "review" && state.quoteStep === "quote"));
+    btn.disabled = (name === "review" && !hasSupplier)
+      || (name === "quote" && (!hasSupplier || totals.itemCount === 0));
   });
-  const summary = document.querySelector("#quoteFlowSummary");
-  if (summary) {
-    summary.textContent = hasSupplier
-      ? `${state.quoteWorkbench.supplier.name} - ${number(totals.itemCount)} itens, ${money(totals.estimated)}`
-      : "Selecione para montar a cotacao";
+
+  const supplierHint = document.getElementById("qstepSupplierHint");
+  if (supplierHint) {
+    supplierHint.textContent = hasSupplier
+      ? state.quoteWorkbench.supplier.name
+      : `${(state.quoteSuppliers || []).length} para escolher`;
+  }
+  const reviewHint = document.getElementById("qstepReviewHint");
+  if (reviewHint) {
+    reviewHint.textContent = hasSupplier
+      ? `${number(totals.itemCount)} de ${number(state.quoteWorkbench?.totals?.total_products || 0)}`
+      : "-";
+  }
+  const quoteHint = document.getElementById("qstepQuoteHint");
+  if (quoteHint) {
+    quoteHint.textContent = totals.itemCount ? money(totals.estimated) : "-";
   }
   renderQuoteFinal();
 }
@@ -1599,34 +1622,14 @@ function quoteReason(row) {
 function renderQuoteWorkbenchHead(workbench) {
   const supplier = workbench?.supplier;
   const target = document.querySelector("#quoteWorkbenchHead");
-  if (!supplier) {
-    target.innerHTML = `
-      <div class="quote-main-empty">
-        <h2>Mesa de cotacao</h2>
-        <p class="panel-subtitle">Escolha um fornecedor a esquerda para abrir a mesa.</p>
-      </div>
-    `;
-    return;
-  }
-  const totals = workbench?.totals || {};
-  const itemsInQuote = Number(totals.items_in_quote || 0);
-  const tabs = `
-    <div class="quote-tabs" role="tablist">
-      <button class="quote-tab ${state.quoteStep !== "quote" ? "active" : ""}" type="button" data-quote-step="review" role="tab">
-        Itens <em>${number(totals.total_products || 0)}</em>
-      </button>
-      <button class="quote-tab ${state.quoteStep === "quote" ? "active" : ""}" type="button" data-quote-step="quote" role="tab" ${itemsInQuote ? "" : "disabled"}>
-        Resumo <em>${number(itemsInQuote)}</em>
-      </button>
-    </div>
-  `;
+  if (!supplier) { target.innerHTML = ""; return; }
   target.innerHTML = `
     <div class="quote-head-line">
       <div class="quote-head-title">
+        <button class="qback" type="button" data-quote-step="supplier" aria-label="Voltar para fornecedores">&larr; Trocar fornecedor</button>
         <h2>${escapeHtml(supplier.name)}</h2>
         <span class="quote-head-meta">janela ${number(workbench.window_days)}d${supplier.contact_phone ? ` &middot; ${escapeHtml(supplier.contact_phone)}` : ""}${supplier.contact_name ? ` &middot; ${escapeHtml(supplier.contact_name)}` : ""}</span>
       </div>
-      ${tabs}
     </div>
     ${quoteMetricCards(workbench)}
   `;
@@ -1676,7 +1679,6 @@ function renderQuoteDetail(workbench) {
       </table>
     </div>
   `;
-  if (state.quoteStep === "supplier") state.quoteStep = "review";
   updateQuoteFlow();
 }
 
@@ -1708,7 +1710,7 @@ async function loadQuoteSupplierWorkbench(supplierId, options = {}) {
     return;
   }
   state.selectedQuoteSupplierId = supplierId;
-  if (!options.keepStep && state.quoteStep === "supplier") state.quoteStep = "review";
+  if (!options.keepStep && !options.silent && state.quoteStep === "supplier") state.quoteStep = "review";
   renderQuotes();
   const status = document.querySelector("#quoteWorkbenchStatus");
   if (status && !options.silent) status.textContent = "Carregando";
@@ -2407,7 +2409,7 @@ async function boot() {
     const button = event.target.closest(".quote-supplier-card");
     if (button?.dataset.supplierId) await loadQuoteSupplierWorkbench(button.dataset.supplierId);
   });
-  document.querySelector("#quoteWorkbenchHead").addEventListener("click", (event) => {
+  document.querySelector("#quotes").addEventListener("click", (event) => {
     const tab = event.target.closest("[data-quote-step]");
     if (tab && !tab.disabled) setQuoteStep(tab.dataset.quoteStep || "review");
   });
