@@ -277,44 +277,35 @@
         </section>
 
         <section id="quotes" class="view">
-          <div class="kpi-grid" id="quoteSummary"></div>
           <div class="quote-workbench">
             <aside class="quote-rail">
-              <div class="quote-flow-steps">
-                <div class="quote-flow-step active"><b>1</b><span>Escolher fornecedor</span></div>
-                <div class="quote-flow-step"><b>2</b><span>Revisar cotacao</span></div>
-                <div class="quote-flow-step"><b>3</b><span>Resposta e pedido</span></div>
-              </div>
-
               <section class="quote-rail-section">
                 <div class="quote-rail-head">
                   <div>
-                    <h2>Prontos para gerar</h2>
-                    <p class="panel-subtitle">Fornecedores com itens cotaveis agora.</p>
+                    <h2>Fornecedores</h2>
+                    <p class="panel-subtitle">Prioridade de compra e cotacoes abertas.</p>
                   </div>
                 </div>
-                <div id="quoteDraftsTable" class="quote-card-list"></div>
-              </section>
-
-              <section class="quote-rail-section">
-                <div class="quote-rail-head">
-                  <div>
-                    <h2>Cotacoes em andamento</h2>
-                    <p class="panel-subtitle">Rascunhos, enviadas, respondidas e aprovadas.</p>
-                  </div>
+                <div class="quote-rail-tools">
+                  <input id="quoteSupplierSearch" class="search-input" type="search" placeholder="Buscar fornecedor" />
+                  <select id="quoteWindowDays" class="filter-select">
+                    <option value="30">30 dias</option>
+                    <option value="90" selected>90 dias</option>
+                    <option value="180">180 dias</option>
+                  </select>
                 </div>
-                <div id="quotesTable" class="quote-card-list compact"></div>
+                <div id="quoteSuppliersTable" class="quote-supplier-list"></div>
               </section>
             </aside>
 
             <section class="panel quote-main-panel">
-              <div class="panel-head quote-main-head">
-              <div>
-                  <h2>Cotacao aberta</h2>
-                  <p class="panel-subtitle">Revise, copie, registre resposta e feche pedido no mesmo painel.</p>
+              <div id="quoteWorkbenchHead" class="quote-workbench-head">
+                <div>
+                  <h2>Mesa de cotacao</h2>
+                  <p class="panel-subtitle">Escolha um fornecedor para montar a cotacao item a item.</p>
                 </div>
               </div>
-              <div id="quoteDetail" class="quote-detail empty-state">Escolha um fornecedor pronto ou abra uma cotacao em andamento.</div>
+              <div id="quoteDetail" class="quote-detail empty-state">Selecione um fornecedor para abrir a mesa.</div>
             </section>
           </div>
         </section>

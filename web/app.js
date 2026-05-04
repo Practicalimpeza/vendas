@@ -2,7 +2,11 @@ const state = {
   products: [],
   stock: [],
   suppliers: [],
-  quoteDraft: null,
+  quoteSuppliers: [],
+  quoteWorkbench: null,
+  selectedQuoteSupplierId: "",
+  quoteWindowDays: "90",
+  quoteSaveTimers: new Map(),
   quotes: [],
   maturity: null,
   replenishment: null,
@@ -260,27 +264,6 @@ function renderReplenishmentSummary(summary) {
   document.querySelector("#replenishmentSummary").innerHTML = items
     .map(([label, value, color]) => `<div class="kpi ${color}"><span>${label}</span><strong>${value}</strong></div>`)
     .join("");
-}
-
-function renderQuoteSummary(summary = {}) {
-  const items = [
-    ["Fornecedores", number(summary.supplier_count), "blue"],
-    ["Itens", number(summary.item_count), "green"],
-    ["Urgentes", number(summary.urgent_count), "amber"],
-    ["Decidir mix", number(summary.mix_decision_count), "amber"],
-    ["Valor estimado", compactMoney(summary.estimated_value), "blue"],
-  ];
-  document.querySelector("#quoteSummary").innerHTML = items
-    .map(([label, value, color]) => `<div class="kpi ${color}"><span>${label}</span><strong>${value}</strong></div>`)
-    .join("");
-}
-
-function updateQuoteFlow(status = "") {
-  const activeIndex = ["sent", "responded", "approved"].includes(status) ? 2 : status ? 1 : 0;
-  document.querySelectorAll(".quote-flow-step").forEach((step, index) => {
-    step.classList.toggle("active", index === activeIndex);
-    step.classList.toggle("done", index < activeIndex);
-  });
 }
 
 function renderCommercialSummary(summary = {}) {
@@ -917,8 +900,7 @@ async function createQuoteFromAction(action) {
   const supplierId = action.target_id;
   setView("quotes");
   try {
-    const quote = await apiPost("/api/quotes/create", { supplier_id: supplierId });
-    renderQuoteDetail(quote);
+    await loadQuoteSupplierWorkbench(supplierId);
     refreshAfterSave({ quotes: true, actions: true, maturity: true });
   } catch (error) {
     alert(error.message);
@@ -929,7 +911,7 @@ async function openQuoteFromAction(action) {
   setView("quotes");
   try {
     const quote = await api(`/api/quote?id=${encodeURIComponent(action.target_id)}`);
-    renderQuoteDetail(quote);
+    if (quote?.supplier_id) await loadQuoteSupplierWorkbench(quote.supplier_id);
   } catch (error) {
     alert(error.message);
   }
@@ -1218,43 +1200,6 @@ async function updateProductMixDecision(button, decision) {
   }
 }
 
-function quoteDraftRows(groups) {
-  if (!groups.length) {
-    return `<div class="quote-empty">Sem fornecedor pronto para cotacao agora.</div>`;
-  }
-  return groups
-    .map((row) => {
-      const preview = row.items
-        .slice(0, 2)
-        .map((item) => `<span>${escapeHtml(item.quote_code)} - ${escapeHtml(item.name)}</span>`)
-        .join("");
-      const decisions = (row.mix_decision_items || [])
-        .slice(0, 2)
-        .map((item) => `<span>decidir: ${escapeHtml(item.quote_code)} - ${escapeHtml(item.name)}</span>`)
-        .join("");
-      return `
-        <article class="quote-card">
-          <div class="quote-card-head">
-            <div>
-              <strong>${escapeHtml(row.supplier_name)}</strong>
-              <span>${row.contact_phone ? escapeHtml(row.contact_phone) : "sem telefone"}</span>
-            </div>
-            ${Number(row.item_count || 0) ? `<button class="action-button create-quote" type="button" data-supplier-id="${escapeAttr(row.supplier_id)}">Gerar</button>` : `<button class="secondary-button open-mix-review" type="button">Revisar mix</button>`}
-          </div>
-          <div class="quote-card-metrics">
-            <div><span>Itens</span><strong>${number(row.item_count)}</strong></div>
-            <div><span>Urgentes</span><strong>${number(row.urgent_count)}</strong></div>
-            <div class="${Number(row.mix_decision_count || 0) ? "warn" : ""}"><span>Mix</span><strong>${number(row.mix_decision_count)}</strong></div>
-            <div><span>Estimado</span><strong>${money(row.estimated_value)}</strong></div>
-          </div>
-          <p class="quote-preview">${preview || decisions || "<span>Sem itens para visualizar.</span>"}</p>
-            <span class="save-state" aria-live="polite"></span>
-        </article>
-      `;
-    })
-    .join("");
-}
-
 function statusText(status) {
   return {
     draft: "Rascunho",
@@ -1305,290 +1250,315 @@ function decisionText(value) {
   }[value] || value;
 }
 
-function quoteRows(rows) {
+function mixStatusText(value) {
+  return {
+    in_mix: "No mix",
+    out_of_mix: "Fora do mix",
+    force_buy: "Comprar +1",
+    drop: "Removido",
+  }[value] || value || "-";
+}
+
+function quoteStatusClass(row) {
+  if (Number(row.urgent_count || 0) > 0) return "danger";
+  if (Number(row.buy_now_count || 0) > 0) return "warn";
+  return "";
+}
+
+function quoteSupplierRows(rows) {
   if (!rows.length) {
-    return `<div class="quote-empty">Nenhuma cotacao gerada ainda.</div>`;
+    return `<div class="quote-empty">Nenhum fornecedor encontrado.</div>`;
   }
   return rows
-    .map(
-      (row) => `
-        <article class="quote-card quote-card-slim" data-quote-id="${escapeAttr(row.id)}">
-          <div class="quote-card-head">
-            <div>
-              <span class="status-chip ${escapeAttr(row.status)}">${escapeHtml(statusText(row.status))}</span>
-              <strong>${escapeHtml(row.supplier_name)}</strong>
-              <span>${escapeHtml(row.created_at || "")}${row.purchase_order_id ? ` - pedido ${escapeHtml(row.purchase_order_status || "")}` : ""}</span>
-            </div>
-            <button class="secondary-button open-quote" type="button" data-quote-id="${escapeAttr(row.id)}">Abrir</button>
-          </div>
-          <div class="quote-card-metrics two">
-            <div><span>Itens</span><strong>${number(row.item_count)}</strong></div>
-            <div><span>Valor</span><strong>${money(row.total_estimated_amount)}</strong></div>
-          </div>
-        </article>
-      `,
-    )
+    .map((row) => {
+      const active = row.supplier_id === state.selectedQuoteSupplierId ? "active" : "";
+      return `
+        <button class="quote-supplier-card ${active} ${quoteStatusClass(row)}" type="button" data-supplier-id="${escapeAttr(row.supplier_id)}">
+          <span class="quote-supplier-name">${escapeHtml(row.supplier_name)}</span>
+          <span class="quote-supplier-meta">${row.contact_phone ? escapeHtml(row.contact_phone) : "sem telefone"}</span>
+          <span class="quote-supplier-stats">
+            <b>${number(row.urgent_count)}</b> urg.
+            <b>${number(row.buy_now_count)}</b> compra
+            <b>${number(row.active_skus)}</b> skus
+          </span>
+          <span class="quote-supplier-value">${money(row.estimated_value)}</span>
+        </button>
+      `;
+    })
     .join("");
 }
 
-function renderQuoteDetail(quote) {
-  if (!quote) {
-    document.querySelector("#quoteDetail").className = "quote-detail empty-state";
-    document.querySelector("#quoteDetail").textContent = "Gere ou abra uma cotacao para revisar o texto.";
-    updateQuoteFlow("");
+function quoteMetricCards(workbench) {
+  const totals = workbench?.totals || {};
+  const quote = workbench?.current_quote || {};
+  const supplier = workbench?.supplier || {};
+  return `
+    <div class="quote-metrics">
+      <div><span>Itens na cotacao</span><strong>${number(totals.items_in_quote)}</strong></div>
+      <div><span>Valor estimado</span><strong>${money(totals.estimated_value_in_quote)}</strong></div>
+      <div><span>Pedido minimo</span><strong>${Number(supplier.minimum_order_value || 0) ? money(supplier.minimum_order_value) : "-"}</strong></div>
+      <div><span>Status</span><strong>${quote.status ? escapeHtml(statusText(quote.status)) : "Sem rascunho"}</strong></div>
+    </div>
+  `;
+}
+
+function quoteHistoryRows(history = []) {
+  if (!history.length) return `<span>Nenhuma cotacao anterior.</span>`;
+  return history
+    .slice(0, 4)
+    .map((item) => `<span>${escapeHtml(statusText(item.status))} - ${escapeHtml(item.created_at || "")} - ${number(item.item_count)} itens</span>`)
+    .join("");
+}
+
+function quoteProductRows(rows) {
+  if (!rows.length) {
+    return `<tr><td colspan="13" class="empty-cell">Nenhum produto vinculado a este fornecedor.</td></tr>`;
+  }
+  return rows
+    .map((row) => {
+      const inQuote = Boolean(row.in_quote);
+      const quantity = inQuote ? Number(row.quote_quantity || 0) : "";
+      const alert = (row.alerts || []).length > 0;
+      const classes = [
+        "quote-product-row",
+        inQuote ? "included" : "",
+        alert ? "alert" : "",
+        row.mix_status !== "in_mix" ? "out-of-mix" : "",
+      ].filter(Boolean).join(" ");
+      return `
+        <tr class="${classes}" data-product-id="${escapeAttr(row.product_id)}" data-organization-id="${escapeAttr(row.organization_id)}" data-supplier-id="${escapeAttr(state.selectedQuoteSupplierId)}" data-suggested-quantity="${escapeAttr(row.suggested_quantity)}">
+          <td class="quote-include-cell">
+            <button class="quote-toggle ${inQuote ? "on" : ""}" type="button" title="${inQuote ? "Remover da cotacao" : "Incluir na cotacao"}">${inQuote ? "Incluido" : "Incluir"}</button>
+          </td>
+          <td>
+            <strong>${escapeHtml(row.supplier_reference || row.source_code)}</strong>
+            <span class="muted-line">interno ${escapeHtml(row.source_code)}</span>
+          </td>
+          <td class="quote-product-name">
+            ${escapeHtml(row.name)}
+            <span class="muted-line">${escapeHtml(row.brand_name || "")}</span>
+          </td>
+          <td><span class="status-chip ${escapeAttr(row.status)}">${escapeHtml(row.status_label || row.status)}</span></td>
+          <td><span class="mix-pill ${escapeAttr(row.mix_status)}">${escapeHtml(mixStatusText(row.mix_status))}</span></td>
+          <td class="num">${number(row.package_size)}</td>
+          <td class="num">${number(row.stock_units)}</td>
+          <td class="num">${number(row.demand_window)}</td>
+          <td class="num">${number(row.avg_daily_window)}</td>
+          <td class="num">${number(row.suggested_quantity)}</td>
+          <td class="num">${money(row.cost_no_tax)}</td>
+          <td class="num">${money(row.cost_with_tax)}</td>
+          <td>
+            <input class="inline-input quote-quantity-input" type="text" inputmode="decimal" value="${inputValue(quantity)}" placeholder="${escapeAttr(number(row.suggested_quantity))}" />
+            <span class="save-state row-save-state" aria-live="polite"></span>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderQuoteWorkbenchHead(workbench) {
+  const supplier = workbench?.supplier;
+  if (!supplier) {
+    document.querySelector("#quoteWorkbenchHead").innerHTML = `
+      <div>
+        <h2>Mesa de cotacao</h2>
+        <p class="panel-subtitle">Escolha um fornecedor para montar a cotacao item a item.</p>
+      </div>
+    `;
     return;
   }
-  updateQuoteFlow(quote.status);
-  const items = quote.items || [];
-  const response = quote.response_summary || {};
-  const purchaseOrder = quote.purchase_order || null;
-  const supplierTerms = quote.supplier_terms || {};
-  const minimumOrderValue = Number(supplierTerms.minimum_order_value || 0);
-  const plannedTotal = purchaseOrder
-    ? Number(purchaseOrder.total_amount || 0)
-    : items.reduce((sum, item) => {
-        if (defaultPurchaseDecision(item) !== "buy") return sum;
-        const packageSize = Number(item.quoted_package_size || 1);
-        const quantity = roundToPackage(Number(item.requested_quantity || 0), packageSize);
-        return sum + quantity * Number(item.quoted_unit_price || 0);
-      }, 0);
-  const minimumStatus = minimumOrderValue <= 0 ? "Pedido minimo nao cadastrado" : plannedTotal >= minimumOrderValue ? "Pedido minimo atingido" : `Faltam ${money(minimumOrderValue - plannedTotal)}`;
-  document.querySelector("#quoteDetail").className = "quote-detail";
-  document.querySelector("#quoteDetail").dataset.quoteId = quote.id;
-  document.querySelector("#quoteDetail").innerHTML = `
-    <div class="quote-detail-head">
+  document.querySelector("#quoteWorkbenchHead").innerHTML = `
+    <div class="quote-title-block">
       <div>
-        <strong>${escapeHtml(quote.supplier_name)}</strong>
-        <span>${escapeHtml(statusText(quote.status))} - ${number(items.length)} itens - estimado ${money(quote.total_estimated_amount)}</span>
+        <h2>${escapeHtml(supplier.name)}</h2>
+        <p class="panel-subtitle">${supplier.contact_phone ? escapeHtml(supplier.contact_phone) : "Sem telefone"} - janela de ${number(workbench.window_days)} dias</p>
       </div>
-      <div class="quote-actions">
-        <button class="secondary-button copy-quote" type="button">Copiar texto</button>
-        <button class="secondary-button mark-sent" type="button" data-quote-id="${escapeAttr(quote.id)}" ${quote.status !== "draft" ? "disabled" : ""}>Marcar enviada</button>
-        <button class="action-button save-quote-response" type="button">Salvar resposta</button>
-        <button class="action-button close-purchase-order" type="button" ${quote.status !== "responded" || purchaseOrder ? "disabled" : ""}>Fechar pedido</button>
+      <div class="quote-history">${quoteHistoryRows(workbench.quote_history || [])}</div>
+    </div>
+    ${quoteMetricCards(workbench)}
+  `;
+}
+
+function renderQuoteDetail(workbench) {
+  state.quoteWorkbench = workbench || null;
+  renderQuoteWorkbenchHead(workbench);
+  if (!workbench) {
+    document.querySelector("#quoteDetail").className = "quote-detail empty-state";
+    document.querySelector("#quoteDetail").textContent = "Selecione um fornecedor para abrir a mesa.";
+    return;
+  }
+  document.querySelector("#quoteDetail").className = "quote-detail";
+  document.querySelector("#quoteDetail").innerHTML = `
+    <div class="quote-toolbar">
+      <div>
+        <strong>${number(workbench.totals.total_products)} produtos</strong>
+        <span>${number(workbench.totals.alerts_count)} alertas - ${number(workbench.totals.items_in_quote)} incluidos</span>
       </div>
+      <span id="quoteWorkbenchStatus" class="save-state" aria-live="polite"></span>
     </div>
-    <div class="quote-response-summary">
-      <div><span>Respondidos</span><strong>${number(response.responded_count)}/${number(items.length)}</strong></div>
-      <div><span>Total cotado</span><strong>${money(response.quoted_total_amount)}</strong></div>
-      <div><span>Embalagens aprendidas</span><strong>${number(response.learned_packages)}</strong></div>
-      <div><span>Prazo medio</span><strong>${response.average_lead_time_days === null || response.average_lead_time_days === undefined ? "-" : `${number(response.average_lead_time_days)}d`}</strong></div>
-    </div>
-    <div class="purchase-close-summary ${minimumOrderValue && plannedTotal < minimumOrderValue ? "warn" : ""}">
-      <div><span>${purchaseOrder ? "Pedido fechado" : "Pedido previsto"}</span><strong>${money(plannedTotal)}</strong></div>
-      <div><span>Pedido minimo</span><strong>${minimumOrderValue > 0 ? money(minimumOrderValue) : "-"}</strong></div>
-      <div><span>Status</span><strong>${purchaseOrder ? "Aprovado" : minimumStatus}</strong></div>
-      <div><span>Itens compra</span><strong>${purchaseOrder ? number(purchaseOrder.approved_item_count) : number(items.filter((item) => defaultPurchaseDecision(item) === "buy").length)}</strong></div>
-    </div>
-    <textarea class="quote-message" readonly>${escapeHtml(quote.message_text || "")}</textarea>
-    <div class="table-wrap quote-items">
+    <div class="table-wrap quote-items quote-workbench-table">
       <table>
         <thead>
           <tr>
-            <th>Ref. cotacao</th>
+            <th>Incluir</th>
+            <th>Ref.</th>
             <th>Produto</th>
-            <th class="num">Qtd.</th>
-            <th>Preco cotado</th>
-            <th>Emb.</th>
-            <th>Prazo</th>
-            <th>Disponib.</th>
-            <th>Decisao</th>
-            <th>Qtd. final</th>
-            <th class="num">Total final</th>
-            <th>Obs.</th>
+            <th>Status</th>
+            <th>Mix</th>
+            <th class="num">Div.</th>
+            <th class="num">Estoque</th>
+            <th class="num">Venda janela</th>
+            <th class="num">Media/dia</th>
+            <th class="num">Sug.</th>
+            <th class="num">Custo s/ imp.</th>
+            <th class="num">Custo c/ imp.</th>
+            <th>Qtd. cotacao</th>
           </tr>
         </thead>
-        <tbody>
-          ${items
-            .map((item) => {
-              const orderItem = purchaseOrder?.items?.find((row) => Number(row.quote_request_item_id) === Number(item.id));
-              const decision = orderItem?.decision || defaultPurchaseDecision(item);
-              const packageSize = Number(orderItem?.package_size || item.quoted_package_size || 1);
-              const unitPrice = Number(orderItem?.unit_price || item.quoted_unit_price || 0);
-              const finalQuantity = orderItem ? Number(orderItem.final_quantity || 0) : (decision === "buy" ? roundToPackage(Number(item.requested_quantity || 0), packageSize) : 0);
-              const finalTotal = orderItem ? Number(orderItem.total_amount || 0) : finalQuantity * unitPrice;
-              return `
-                <tr class="quote-response-row" data-item-id="${escapeAttr(item.id)}">
-                  <td>
-                    <strong>${escapeHtml(item.quote_code)}</strong>
-                    <span class="muted-line">interno ${escapeHtml(item.source_code)}</span>
-                  </td>
-                  <td>
-                    ${escapeHtml(item.product_name)}
-                    <span class="muted-line">${escapeHtml(item.reason || "")}</span>
-                    ${item.quoted_total_amount !== null && item.quoted_total_amount !== undefined ? `<span class="muted-line">total cotado ${money(item.quoted_total_amount)}</span>` : ""}
-                  </td>
-                  <td class="num">${number(item.requested_quantity)} ${escapeHtml(item.unit || "")}</td>
-                  <td><input class="inline-input quote-price-input" type="text" inputmode="decimal" value="${inputValue(item.quoted_unit_price)}" placeholder="R$" /></td>
-                  <td><input class="inline-input compact-input quote-package-input" type="text" inputmode="decimal" value="${inputValue(item.quoted_package_size)}" placeholder="cx" /></td>
-                  <td><input class="inline-input compact-input quote-lead-input" type="text" inputmode="numeric" value="${inputValue(item.quoted_lead_time_days)}" placeholder="dias" /></td>
-                  <td>
-                    <select class="inline-input quote-availability-input">
-                      ${["", "available", "partial", "unavailable", "no_quote"].map((value) => `<option value="${escapeAttr(value)}" ${value === (item.availability || "") ? "selected" : ""}>${escapeHtml(availabilityText(value))}</option>`).join("")}
-                    </select>
-                  </td>
-                  <td>
-                    <select class="inline-input purchase-decision-input" ${purchaseOrder ? "disabled" : ""}>
-                      ${["buy", "skip", "review"].map((value) => `<option value="${escapeAttr(value)}" ${value === decision ? "selected" : ""}>${escapeHtml(decisionText(value))}</option>`).join("")}
-                    </select>
-                  </td>
-                  <td><input class="inline-input compact-input purchase-quantity-input" type="text" inputmode="decimal" value="${inputValue(finalQuantity)}" ${purchaseOrder ? "disabled" : ""} /></td>
-                  <td class="num">${money(finalTotal)}</td>
-                  <td><input class="inline-input quote-notes-input" type="text" value="${inputValue(item.notes)}" placeholder="validade, condicao..." /></td>
-                </tr>
-              `;
-            })
-            .join("")}
-        </tbody>
+        <tbody>${quoteProductRows(workbench.rows || [])}</tbody>
       </table>
     </div>
-    <span class="save-state quote-save-state" aria-live="polite"></span>
   `;
 }
 
 function renderQuotes() {
-  renderQuoteSummary(state.quoteDraft?.summary || {});
-  document.querySelector("#quoteDraftsTable").innerHTML = quoteDraftRows(state.quoteDraft?.suppliers || []);
-  document.querySelector("#quotesTable").innerHTML = quoteRows(state.quotes);
+  const search = (document.querySelector("#quoteSupplierSearch")?.value || "").trim().toLowerCase();
+  const suppliers = (state.quoteSuppliers || []).filter((row) => {
+    if (!search) return true;
+    return `${row.supplier_name} ${row.contact_phone}`.toLowerCase().includes(search);
+  });
+  document.querySelector("#quoteSuppliersTable").innerHTML = quoteSupplierRows(suppliers);
+}
+
+async function loadQuoteSupplierWorkbench(supplierId, options = {}) {
+  if (!supplierId) {
+    renderQuoteDetail(null);
+    return;
+  }
+  state.selectedQuoteSupplierId = supplierId;
+  renderQuotes();
+  const status = document.querySelector("#quoteWorkbenchStatus");
+  if (status && !options.silent) status.textContent = "Carregando";
+  const query = new URLSearchParams({ supplier_id: supplierId, window_days: state.quoteWindowDays || "90" });
+  const workbench = await api(`/api/supplier-workbench?${query.toString()}`);
+  renderQuoteDetail(workbench);
 }
 
 async function refreshQuotes() {
-  const [quoteDraft, quotes] = await Promise.all([api("/api/quotes/draft"), api("/api/quotes")]);
-  state.quoteDraft = quoteDraft;
-  state.quotes = quotes;
+  state.quoteSuppliers = await api("/api/supplier-workbench/suppliers");
+  if (!state.selectedQuoteSupplierId || !state.quoteSuppliers.some((row) => row.supplier_id === state.selectedQuoteSupplierId)) {
+    state.selectedQuoteSupplierId = state.quoteSuppliers[0]?.supplier_id || "";
+  }
   renderQuotes();
+  await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId, { silent: true });
 }
 
-async function createQuote(button) {
-  const status = button.closest(".quote-card")?.querySelector(".save-state") || button.parentElement.querySelector(".save-state");
-  button.disabled = true;
-  status.textContent = "Gerando";
-  try {
-    const quote = await apiPost("/api/quotes/create", { supplier_id: button.dataset.supplierId });
-    renderQuoteDetail(quote);
-    status.textContent = "Gerada";
-    refreshAfterSave({ quotes: true, actions: true, maturity: true });
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    button.disabled = false;
+function findWorkbenchRow(productId) {
+  return (state.quoteWorkbench?.rows || []).find((row) => row.product_id === productId);
+}
+
+function updateWorkbenchTotalsFromRows() {
+  if (!state.quoteWorkbench) return;
+  const rows = state.quoteWorkbench.rows || [];
+  const items = rows.filter((row) => row.in_quote);
+  state.quoteWorkbench.totals.items_in_quote = items.length;
+  state.quoteWorkbench.totals.estimated_value_in_quote = items.reduce((sum, row) => sum + Number(row.quote_quantity || 0) * Number(row.cost_with_tax || 0), 0);
+  if (state.quoteWorkbench.current_quote) {
+    state.quoteWorkbench.current_quote.item_count = state.quoteWorkbench.totals.items_in_quote;
+    state.quoteWorkbench.current_quote.estimated_value = state.quoteWorkbench.totals.estimated_value_in_quote;
+  }
+  renderQuoteWorkbenchHead(state.quoteWorkbench);
+}
+
+function syncQuoteRow(rowEl, row) {
+  rowEl.classList.toggle("included", Boolean(row.in_quote));
+  const toggle = rowEl.querySelector(".quote-toggle");
+  if (toggle) {
+    toggle.classList.toggle("on", Boolean(row.in_quote));
+    toggle.textContent = row.in_quote ? "Incluido" : "Incluir";
+    toggle.title = row.in_quote ? "Remover da cotacao" : "Incluir na cotacao";
   }
 }
 
+async function saveWorkbenchQuantity(rowEl, quantity) {
+  const row = findWorkbenchRow(rowEl.dataset.productId);
+  const status = rowEl.querySelector(".row-save-state");
+  if (!row) return;
+  if (quantity < 0) {
+    status.textContent = "Qtd. invalida";
+    return;
+  }
+  status.textContent = "Salvando";
+  try {
+    const result = await apiPost("/api/quote-item/upsert", {
+      organization_id: rowEl.dataset.organizationId,
+      supplier_id: rowEl.dataset.supplierId,
+      product_id: rowEl.dataset.productId,
+      requested_quantity: quantity,
+    });
+    row.in_quote = quantity > 0;
+    row.quote_quantity = quantity;
+    if (!state.quoteWorkbench.current_quote && result.current_quote_id) {
+      state.quoteWorkbench.current_quote = { id: result.current_quote_id, status: "draft" };
+    }
+    if (state.quoteWorkbench.current_quote && !result.current_quote_id && result.item_count === 0) {
+      state.quoteWorkbench.current_quote = null;
+    }
+    syncQuoteRow(rowEl, row);
+    updateWorkbenchTotalsFromRows();
+    status.textContent = "Salvo";
+    refreshAfterSave({ actions: true, maturity: true });
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+function scheduleWorkbenchQuantitySave(input) {
+  const rowEl = input.closest(".quote-product-row");
+  if (!rowEl) return;
+  const existing = state.quoteSaveTimers.get(rowEl.dataset.productId);
+  if (existing) clearTimeout(existing);
+  rowEl.querySelector(".row-save-state").textContent = "Editando";
+  const timer = setTimeout(() => {
+    const quantity = parseInputNumber(input.value);
+    saveWorkbenchQuantity(rowEl, quantity);
+    state.quoteSaveTimers.delete(rowEl.dataset.productId);
+  }, 400);
+  state.quoteSaveTimers.set(rowEl.dataset.productId, timer);
+}
+
+function toggleWorkbenchItem(button) {
+  const rowEl = button.closest(".quote-product-row");
+  const input = rowEl?.querySelector(".quote-quantity-input");
+  const row = rowEl ? findWorkbenchRow(rowEl.dataset.productId) : null;
+  if (!rowEl || !input || !row) return;
+  const nextQuantity = row.in_quote ? 0 : Number(row.suggested_quantity || row.package_size || 1);
+  input.value = nextQuantity > 0 ? String(nextQuantity).replace(".", ",") : "";
+  saveWorkbenchQuantity(rowEl, nextQuantity);
+}
+
+async function createQuote(button) {
+  await loadQuoteSupplierWorkbench(button.dataset.supplierId || state.selectedQuoteSupplierId);
+}
+
 async function openQuote(button) {
-  const quote = await api(`/api/quote?id=${encodeURIComponent(button.dataset.quoteId)}`);
-  renderQuoteDetail(quote);
+  const quoteId = button.dataset.quoteId;
+  const quote = (state.quotes || []).find((row) => row.id === quoteId);
+  if (quote?.supplier_id) await loadQuoteSupplierWorkbench(quote.supplier_id);
 }
 
 async function markQuoteSent(button) {
   button.disabled = true;
-  const quote = await apiPost("/api/quotes/status", { id: button.dataset.quoteId, status: "sent" });
+  await apiPost("/api/quotes/status", { id: button.dataset.quoteId, status: "sent" });
   await refreshQuotes();
-  renderQuoteDetail(quote);
 }
 
-async function saveQuoteResponse(button) {
-  const detail = button.closest("#quoteDetail");
-  const status = detail.querySelector(".quote-save-state");
-  const rows = Array.from(detail.querySelectorAll(".quote-response-row"));
-  button.disabled = true;
-  status.textContent = "Salvando resposta";
-  try {
-    const items = rows.map((row) => ({
-      item_id: row.dataset.itemId,
-      quoted_unit_price: row.querySelector(".quote-price-input").value.trim(),
-      quoted_package_size: row.querySelector(".quote-package-input").value.trim(),
-      quoted_lead_time_days: row.querySelector(".quote-lead-input").value.trim(),
-      availability: row.querySelector(".quote-availability-input").value,
-      notes: row.querySelector(".quote-notes-input").value.trim(),
-    }));
-    const quote = await apiPost("/api/quotes/response", { id: detail.dataset.quoteId, items, mark_responded: true });
-    renderQuoteDetail(quote);
-    status.textContent = "Salvo";
-    refreshAfterSave({ quotes: true, replenishment: true, actions: true, maturity: true });
-  } catch (error) {
-    status.textContent = error.message;
-    button.disabled = false;
-  }
-}
+async function saveQuoteResponse() {}
 
-async function closePurchaseOrder(button) {
-  const detail = button.closest("#quoteDetail");
-  const status = detail.querySelector(".quote-save-state");
-  const rows = Array.from(detail.querySelectorAll(".quote-response-row"));
-  button.disabled = true;
-  status.textContent = "Fechando pedido";
-  try {
-    const items = rows.map((row) => ({
-      item_id: row.dataset.itemId,
-      decision: row.querySelector(".purchase-decision-input").value,
-      final_quantity: row.querySelector(".purchase-quantity-input").value.trim(),
-      unit_price: row.querySelector(".quote-price-input").value.trim(),
-      package_size: row.querySelector(".quote-package-input").value.trim(),
-      notes: row.querySelector(".quote-notes-input").value.trim(),
-    }));
-    const quote = await apiPost("/api/purchase-orders/close", { id: detail.dataset.quoteId, items });
-    renderQuoteDetail(quote);
-    status.textContent = "Pedido fechado";
-    refreshAfterSave({ quotes: true, actions: true, maturity: true });
-  } catch (error) {
-    status.textContent = error.message;
-    button.disabled = false;
-  }
-}
+async function closePurchaseOrder() {}
 
-async function copyQuoteText() {
-  const textarea = document.querySelector(".quote-message");
-  if (!textarea) return;
-  await navigator.clipboard.writeText(textarea.value);
-}
-
-async function saveSupplier(button) {
-  const tr = button.closest("tr");
-  const status = tr.querySelector(".save-state");
-  const supplierInput = tr.querySelector(".supplier-input");
-  const phoneInput = tr.querySelector(".phone-input");
-  const minimumInput = tr.querySelector(".minimum-input");
-  button.disabled = true;
-  status.textContent = "Salvando";
-  try {
-    const result = await apiPost("/api/suppliers/brand", {
-      organization_id: tr.dataset.organizationId,
-      brand_id: tr.dataset.brandId,
-      supplier_name: supplierInput.value.trim(),
-      contact_phone: phoneInput.value.trim(),
-      minimum_order_value: minimumInput.value.trim(),
-    });
-    status.textContent = "Salvo";
-    state.suppliers = state.suppliers.map((row) => row.brand_id === result.brand_id
-      ? {
-          ...row,
-          supplier_id: result.supplier_id,
-          supplier_name: result.supplier_name,
-          contact_phone: result.contact_phone,
-          minimum_order_value: result.minimum_order_value,
-          supplier_rule_origin: "manual",
-          supplier_rule_label: "Confirmado no Nexo",
-        }
-      : row);
-    renderSuppliers();
-    renderNavBadges();
-    refreshAfterSave({ suppliers: true, replenishment: true, quotes: true, actions: true });
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
-}
-
-function roleText(role) {
-  return {
-    ancora: "Ancora",
-    commodity: "Commodity",
-    normal: "Normal",
-    marca_propria: "Marca propria",
-  }[role] || "Normal";
-}
+async function copyQuoteText() {}
 
 function renderPricingSummary(summary = {}) {
   const items = [
@@ -1951,7 +1921,7 @@ async function boot() {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
 
-  const [summary, maturity, actions, skills, products, replenishment, suppliers, quoteDraft, quotes, commercial, customers, services, pricing, imports] = await Promise.all([
+  const [summary, maturity, actions, skills, products, replenishment, suppliers, quoteSuppliers, commercial, customers, services, pricing, imports] = await Promise.all([
     api(`/api/summary${periodQuery()}`),
     api("/api/intelligence/maturity"),
     api("/api/actions/today"),
@@ -1959,8 +1929,7 @@ async function boot() {
     api(`/api/products/top${periodQuery()}`),
     api(`/api/replenishment${periodQuery()}`),
     api("/api/suppliers/brands"),
-    api("/api/quotes/draft"),
-    api("/api/quotes"),
+    api("/api/supplier-workbench/suppliers"),
     api(`/api/commercial/intelligence${periodQuery()}`),
     api(`/api/customers/top${periodQuery()}`),
     api(`/api/services/top${periodQuery()}`),
@@ -1975,8 +1944,8 @@ async function boot() {
   state.replenishment = replenishment;
   state.stock = replenishment.rows;
   state.suppliers = suppliers;
-  state.quoteDraft = quoteDraft;
-  state.quotes = quotes;
+  state.quoteSuppliers = quoteSuppliers;
+  state.selectedQuoteSupplierId = quoteSuppliers[0]?.supplier_id || "";
   state.commercial = commercial;
   state.pricing = pricing;
 
@@ -1992,6 +1961,7 @@ async function boot() {
   document.querySelector("#stockTable").innerHTML = stockRows(replenishment.rows);
   renderSuppliers(suppliers);
   renderQuotes();
+  await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId, { silent: true });
   renderCommercial(commercial);
   renderPricing(pricing);
   document.querySelector("#periodLabel").textContent = summary.period?.label || "Ultimos 6 meses";
@@ -2033,22 +2003,21 @@ async function boot() {
     }
     if (row?.dataset.brandId) openSupplierModal(row.dataset.brandId);
   });
-  document.querySelector("#quoteDraftsTable").addEventListener("click", (event) => {
-    if (event.target.classList.contains("create-quote")) createQuote(event.target);
-    if (event.target.classList.contains("open-mix-review")) {
-      setView("stock");
-      document.querySelector("#stockStatus").value = "mix_review";
-      applyStockFilters();
-    }
+  document.querySelector("#quoteSupplierSearch").addEventListener("input", renderQuotes);
+  document.querySelector("#quoteWindowDays").addEventListener("change", async (event) => {
+    state.quoteWindowDays = event.target.value;
+    await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId);
   });
-  document.querySelector("#quotesTable").addEventListener("click", (event) => {
-    if (event.target.classList.contains("open-quote")) openQuote(event.target);
+  document.querySelector("#quoteSuppliersTable").addEventListener("click", async (event) => {
+    const button = event.target.closest(".quote-supplier-card");
+    if (button?.dataset.supplierId) await loadQuoteSupplierWorkbench(button.dataset.supplierId);
   });
   document.querySelector("#quoteDetail").addEventListener("click", (event) => {
-    if (event.target.classList.contains("copy-quote")) copyQuoteText();
-    if (event.target.classList.contains("mark-sent")) markQuoteSent(event.target);
-    if (event.target.classList.contains("save-quote-response")) saveQuoteResponse(event.target);
-    if (event.target.classList.contains("close-purchase-order")) closePurchaseOrder(event.target);
+    const toggle = event.target.closest(".quote-toggle");
+    if (toggle) toggleWorkbenchItem(toggle);
+  });
+  document.querySelector("#quoteDetail").addEventListener("input", (event) => {
+    if (event.target.classList.contains("quote-quantity-input")) scheduleWorkbenchQuantitySave(event.target);
   });
   document.querySelector("#pricingTable").addEventListener("click", (event) => {
     const row = event.target.closest(".pricing-row");
