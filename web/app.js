@@ -93,6 +93,12 @@ function setView(view) {
   document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === view));
   document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === view));
   document.querySelector("#viewTitle").textContent = viewLabel(view);
+  const navItem = document.querySelector(`.nav-item[data-view="${view}"]`);
+  const usesPeriod = navItem?.dataset.usesPeriod === "true";
+  const selector = document.querySelector(".period-selector");
+  const pill = document.querySelector(".status-pill");
+  if (selector) selector.style.display = usesPeriod ? "" : "none";
+  if (pill) pill.style.display = usesPeriod ? "" : "none";
 }
 
 function renderKpis(kpis) {
@@ -1296,42 +1302,42 @@ function supplierMinimumProgress(row) {
 
 function quoteSupplierRows(rows) {
   if (!rows.length) {
-    return `<div class="quote-empty">Nenhum fornecedor encontrado com o filtro atual.</div>`;
+    return `<div class="quote-empty">Nenhum fornecedor com o filtro atual.</div>`;
   }
   return rows
     .map((row) => {
       const active = row.supplier_id === state.selectedQuoteSupplierId ? "active" : "";
       const status = supplierWorkbenchStatus(row);
-      const progress = supplierMinimumProgress(row);
       const minVal = Number(row.minimum_order_value || 0);
       const estVal = Number(row.estimated_value || 0);
+      const pct = minVal > 0 ? Math.min(100, (estVal / minVal) * 100) : (estVal > 0 ? 100 : 0);
       const urgentCount = Number(row.urgent_count || 0);
-      const buyCount = Number(row.buy_now_count || 0);
       const alertCount = Number(row.alert_count || 0);
       const openQuoteCount = Number(row.open_quote_count || 0);
-      const skus = Number(row.active_skus || 0);
       const outMix = Number(row.out_of_mix_count || 0);
-      const minFaltante = minVal > 0 && estVal < minVal ? money(minVal - estVal) : "";
+      const skus = Number(row.active_skus || 0);
+      const subline = minVal > 0
+        ? (estVal >= minVal ? `Minimo atingido (${money(minVal)})` : `Faltam ${money(minVal - estVal)} para o min.`)
+        : (estVal > 0 ? "Sem minimo cadastrado" : "Sem itens sugeridos");
+      const badges = [
+        urgentCount ? `<span class="qb qb-urg" title="Itens urgentes">${number(urgentCount)} urg</span>` : "",
+        alertCount ? `<span class="qb qb-alrt" title="Itens com alerta">${number(alertCount)} al</span>` : "",
+        outMix ? `<span class="qb qb-mix" title="Fora do mix">${number(outMix)} mix</span>` : "",
+        openQuoteCount ? `<span class="qb qb-open" title="Cotacoes em aberto">${number(openQuoteCount)} aberta</span>` : "",
+      ].filter(Boolean).join("");
+      const skuLine = skus ? `${number(skus)} SKUs` : "Sem SKUs ativos";
       return `
-        <button class="quote-supplier-card ${active} quote-rank-${status.rank}" type="button" data-supplier-id="${escapeAttr(row.supplier_id)}">
-          <span class="quote-supplier-top">
-            <span class="quote-supplier-name">${escapeHtml(row.supplier_name)}</span>
-            <span class="status-chip ${escapeAttr(status.cls)}">${escapeHtml(status.label)}</span>
+        <button class="quote-supplier-card ${active} qrank-${status.rank}" type="button" data-supplier-id="${escapeAttr(row.supplier_id)}">
+          <span class="qsc-line1">
+            <span class="qsc-name">${escapeHtml(row.supplier_name)}</span>
+            <span class="qsc-value">${money(estVal)}</span>
           </span>
-          <span class="quote-supplier-meta">${row.contact_phone ? escapeHtml(row.contact_phone) : "sem telefone"}${row.contact_name ? " &middot; " + escapeHtml(row.contact_name) : ""}</span>
-          <span class="quote-supplier-stats">
-            ${urgentCount ? `<b class="urg">${number(urgentCount)} urg.</b>` : ""}
-            <b>${number(buyCount)} compra</b>
-            ${alertCount ? `<b class="alrt">${number(alertCount)} alertas</b>` : ""}
-            <b>${number(skus)} skus</b>
-            ${outMix ? `<b class="mix">${number(outMix)} fora</b>` : ""}
-            ${openQuoteCount ? `<b class="open">${number(openQuoteCount)} aberta</b>` : ""}
+          <span class="qsc-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
+          <span class="qsc-line2">
+            <span class="qsc-sub">${escapeHtml(subline)}</span>
+            <span class="qsc-skus">${escapeHtml(skuLine)}</span>
           </span>
-          <span class="quote-supplier-value">${money(estVal)}${minFaltante ? ` &middot; faltam ${minFaltante}` : ""}</span>
-          <span class="quote-supplier-progress" aria-hidden="true">
-            <span style="width:${Math.min(progress.pct, 100)}%" class="${progress.pct >= 100 ? 'done' : ''}"></span>
-            ${minVal > 0 ? `<em>min. ${money(minVal)}</em>` : ""}
-          </span>
+          ${badges ? `<span class="qsc-badges">${badges}</span>` : ""}
         </button>
       `;
     })
@@ -1340,17 +1346,35 @@ function quoteSupplierRows(rows) {
 
 function quoteMetricCards(workbench) {
   const totals = workbench?.totals || {};
-  const quote = workbench?.current_quote || {};
   const supplier = workbench?.supplier || {};
   const minimum = Number(supplier.minimum_order_value || 0);
   const value = Number(totals.estimated_value_in_quote || 0);
-  const minimumLabel = minimum > 0 ? (value >= minimum ? "Minimo atingido" : `Faltam ${money(minimum - value)}`) : "Sem minimo";
+  const items = Number(totals.items_in_quote || 0);
+  const alerts = Number(totals.alerts_count || 0);
+  const pct = minimum > 0 ? Math.min(100, (value / minimum) * 100) : (value > 0 ? 100 : 0);
+  const minState = minimum <= 0
+    ? `<small>sem minimo</small>`
+    : value >= minimum
+      ? `<small class="ok">minimo atingido</small>`
+      : `<small class="warn">faltam ${money(minimum - value)}</small>`;
   return `
-    <div class="quote-metrics">
-      <div><span>Itens na cotacao</span><strong>${number(totals.items_in_quote)}</strong></div>
-      <div><span>Valor estimado</span><strong>${money(totals.estimated_value_in_quote)}</strong></div>
-      <div><span>Pedido minimo</span><strong>${Number(supplier.minimum_order_value || 0) ? money(supplier.minimum_order_value) : "-"}</strong></div>
-      <div><span>Status</span><strong>${quote.status ? escapeHtml(statusText(quote.status)) : escapeHtml(minimumLabel)}</strong></div>
+    <div class="quote-kpis">
+      <div class="qk">
+        <span>Itens incluidos</span>
+        <strong>${number(items)}</strong>
+        <small>${alerts ? `${number(alerts)} alertas` : "sem alertas"}</small>
+      </div>
+      <div class="qk qk-wide">
+        <span>Valor estimado</span>
+        <strong>${money(value)}</strong>
+        <span class="qk-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
+        ${minState}
+      </div>
+      <div class="qk">
+        <span>Pedido minimo</span>
+        <strong>${minimum > 0 ? money(minimum) : "-"}</strong>
+        <small>${supplier.contact_phone ? escapeHtml(supplier.contact_phone) : "sem telefone"}</small>
+      </div>
     </div>
   `;
 }
@@ -1397,20 +1421,16 @@ function updateQuoteFlow() {
     const active = state.quoteStep === "quote" ? stageName === "quote" : stageName === "review";
     stage.classList.toggle("active", active);
   });
-  document.querySelectorAll("#quotes [data-quote-step]").forEach((button) => {
-    const name = button.dataset.quoteStep;
-    button.classList.remove("active", "done");
-    button.disabled = (name !== "supplier" && !hasSupplier) || (name === "quote" && totals.itemCount === 0);
-    if (name === state.quoteStep) button.classList.add("active");
-    if ((name === "supplier" && hasSupplier && state.quoteStep !== "supplier") || (name === "review" && state.quoteStep === "quote")) {
-      button.classList.add("done");
-    }
+  document.querySelectorAll("#quoteWorkbenchHead [data-quote-step]").forEach((tab) => {
+    const name = tab.dataset.quoteStep;
+    tab.classList.toggle("active", name === state.quoteStep);
+    if (name === "quote") tab.disabled = totals.itemCount === 0;
   });
   const summary = document.querySelector("#quoteFlowSummary");
   if (summary) {
     summary.textContent = hasSupplier
-      ? `${state.quoteWorkbench.supplier.name}: ${number(totals.itemCount)} itens incluidos | ${money(totals.estimated)}`
-      : "Aguardando fornecedor";
+      ? `${state.quoteWorkbench.supplier.name} - ${number(totals.itemCount)} itens, ${money(totals.estimated)}`
+      : "Selecione para montar a cotacao";
   }
   renderQuoteFinal();
 }
@@ -1419,7 +1439,7 @@ function renderQuoteFinal() {
   const target = document.querySelector("#quoteFinal");
   if (!target) return;
   if (!state.quoteWorkbench) {
-    target.innerHTML = `<div class="quote-empty">Escolha um fornecedor antes de gerar a cotacao.</div>`;
+    target.innerHTML = "";
     return;
   }
   const totals = quoteSelectedTotals();
@@ -1429,53 +1449,62 @@ function renderQuoteFinal() {
   const alertsPending = (state.quoteWorkbench.rows || []).filter((r) => r.in_quote && (r.alerts || []).length).length;
   const withPackage = totals.items.filter((r) => Number(r.package_size || 0) > 1);
   const boxes = withPackage.reduce((sum, r) => sum + Math.ceil(Number(r.quote_quantity || 0) / Number(r.package_size || 1)), 0);
-  const costNoTax = totals.items.reduce((sum, r) => sum + Number(r.quote_quantity || 0) * Number(r.cost_no_tax || 0), 0);
-  const rowsHtml = totals.items.map((row) => `
-    <div class="quote-final-item">
-      <span class="final-ref">${escapeHtml(row.supplier_reference || row.source_code)}</span>
-      <span class="final-name">${escapeHtml(row.name)}</span>
-      <span class="final-qty">${number(row.quote_quantity)} ${escapeHtml(row.unit || "UN")}</span>
-      <span class="final-cost">${money(row.cost_with_tax)}</span>
-      <span class="final-total">${money(Number(row.quote_quantity || 0) * Number(row.cost_with_tax || 0))}</span>
-    </div>
-  `).join("");
+  const minPct = minimum > 0 ? Math.min(100, (totals.estimated / minimum) * 100) : (totals.estimated > 0 ? 100 : 0);
+  const minState = minimum <= 0
+    ? "Sem minimo cadastrado"
+    : missing <= 0
+      ? `Minimo de ${money(minimum)} atingido`
+      : `Faltam ${money(missing)} para o minimo (${money(minimum)})`;
+  const rowsHtml = totals.items.map((row) => {
+    const ref = row.supplier_reference || row.source_code || "";
+    const lineTotal = Number(row.quote_quantity || 0) * Number(row.cost_with_tax || 0);
+    return `
+      <div class="qfinal-row" data-product-id="${escapeAttr(row.product_id)}">
+        <div class="qfinal-name">
+          <strong>${escapeHtml(row.name)}</strong>
+          <span>${escapeHtml(ref)}${row.brand_name ? ` &middot; ${escapeHtml(row.brand_name)}` : ""}</span>
+        </div>
+        <span class="qfinal-qty">${number(row.quote_quantity)} ${escapeHtml(row.unit || "UN")}</span>
+        <span class="qfinal-cost">${money(row.cost_with_tax)}</span>
+        <span class="qfinal-total">${money(lineTotal)}</span>
+      </div>
+    `;
+  }).join("");
   const hasQuote = Boolean(state.quoteWorkbench.current_quote);
   target.innerHTML = `
-    <div class="quote-final-head">
+    <div class="qfinal-banner ${missing > 0 ? "warn" : "ok"}">
       <div>
         <strong>${escapeHtml(supplier.name || "Fornecedor")}</strong>
-        <span>${totals.itemCount ? `${number(totals.itemCount)} itens &middot; ${number(totals.units)} un. &middot; ${money(totals.estimated)}` : "Nenhum item selecionado"}</span>
+        <span>${minState}</span>
       </div>
-      <div class="quote-final-actions">
-        <button class="secondary-button quote-back-review" type="button">Voltar aos itens</button>
+      <div class="qfinal-banner-bar" aria-hidden="true"><span style="width:${minPct}%"></span></div>
+    </div>
+    <div class="qfinal-kpis">
+      <div><span>Itens</span><strong>${number(totals.itemCount)}</strong></div>
+      <div><span>Unidades</span><strong>${number(totals.units)}${boxes ? `<small>${number(boxes)} cx</small>` : ""}</strong></div>
+      <div><span>Total c/ imp.</span><strong>${money(totals.estimated)}</strong></div>
+      <div><span>Sugeridos fora</span><strong class="${totals.out ? "warn" : ""}">${number(totals.out)}</strong></div>
+      <div><span>Alertas</span><strong class="${alertsPending ? "danger" : ""}">${number(alertsPending)}</strong></div>
+    </div>
+    <div class="qfinal-list">
+      <div class="qfinal-list-head">
+        <span>Produto</span><span>Qtd.</span><span>Custo un.</span><span>Total</span>
+      </div>
+      ${rowsHtml || `<div class="quote-empty">Inclua pelo menos um item na aba Itens.</div>`}
+    </div>
+    <div class="qfinal-actions">
+      <button class="text-button quote-back-review" type="button">&larr; Voltar aos itens</button>
+      <div class="qfinal-actions-right">
+        <button class="secondary-button" type="button" ${!hasQuote ? "disabled" : ""} onclick="copyQuoteText()">Copiar mensagem</button>
         <button class="action-button quote-generate" type="button" ${totals.itemCount ? "" : "disabled"}>${hasQuote ? "Cotacao pronta" : "Gerar cotacao"}</button>
       </div>
-    </div>
-    <div class="quote-metrics quote-final-metrics">
-      <div><span>Itens selecionados</span><strong>${number(totals.itemCount)}</strong></div>
-      <div><span>Sugeridos fora</span><strong>${number(totals.out)}</strong></div>
-      <div><span>Unidades</span><strong>${number(totals.units)}${boxes ? ` (${number(boxes)} cx)` : ""}</strong></div>
-      <div><span>Total c/ imposto</span><strong>${money(totals.estimated)}</strong></div>
-      <div><span>Total s/ imposto</span><strong>${money(costNoTax)}</strong></div>
-      <div><span>Pedido minimo</span><strong>${minimum > 0 ? money(minimum) : "Sem minimo"}</strong></div>
-      <div><span>Faltante minimo</span><strong>${missing <= 0 ? "Atingido" : money(missing)}</strong></div>
-      <div><span>Alertas pendentes</span><strong class="${alertsPending ? 'danger' : ''}">${number(alertsPending)}</strong></div>
-    </div>
-    <div class="quote-final-list-header">
-      <span>Ref.</span><span>Produto</span><span>Qtd.</span><span>Custo</span><span>Total</span>
-    </div>
-    <div class="quote-final-list">${rowsHtml || `<div class="quote-empty">Volte aos itens e inclua pelo menos um produto.</div>`}</div>
-    <div class="quote-final-secondary">
-      <button class="secondary-button" type="button" ${!hasQuote ? "disabled" : ""} onclick="copyQuoteText()">Copiar mensagem</button>
-      <button class="secondary-button" type="button" disabled title="Em breve">Marcar enviada</button>
-      <button class="secondary-button" type="button" disabled title="Em breve">Registrar resposta</button>
     </div>
   `;
 }
 
 function quoteProductRows(rows) {
   if (!rows.length) {
-    return `<tr><td colspan="14" class="empty-cell">Nenhum produto vinculado a este fornecedor.</td></tr>`;
+    return `<tr><td colspan="8" class="empty-cell">Nenhum produto vinculado a este fornecedor.</td></tr>`;
   }
   return rows
     .map((row) => {
@@ -1485,48 +1514,64 @@ function quoteProductRows(rows) {
       const reason = quoteReason(row);
       const pkg = Number(row.package_size || 0);
       const hasPackage = pkg > 1;
-      const modified = inQuote && Number(row.quote_quantity || 0) !== Number(row.suggested_quantity || 0) && Number(row.suggested_quantity || 0) > 0;
+      const stock = Number(row.stock_units || 0);
+      const demand = Number(row.demand_window || 0);
+      const dailyAvg = Number(row.avg_daily_window || 0);
+      const coverage = dailyAvg > 0 ? Math.floor(stock / dailyAvg) : null;
+      const suggested = Number(row.suggested_quantity || 0);
+      const costWith = Number(row.cost_with_tax || 0);
+      const lineTotal = inQuote ? Number(row.quote_quantity || 0) * costWith : 0;
+      const modified = inQuote && Number(row.quote_quantity || 0) !== suggested && suggested > 0;
       const zeroed = inQuote && Number(row.quote_quantity || 0) === 0;
+      const urgency = !row.status || row.status !== "active" ? "inactive"
+        : reason.cls === "danger" ? "danger"
+        : reason.cls === "warn" ? "warn"
+        : "";
       const classes = [
-        "quote-product-row",
+        "qrow",
         inQuote ? "included" : "",
         alert ? "alert" : "",
         row.mix_status !== "in_mix" ? "out-of-mix" : "",
         modified ? "qty-modified" : "",
         zeroed ? "qty-zero" : "",
+        urgency ? `urg-${urgency}` : "",
       ].filter(Boolean).join(" ");
-      const statusCls = row.status === "active" ? "ok" : row.status === "inactive" ? "danger" : "";
+      const ref = row.supplier_reference || row.source_code || "";
+      const stockLabel = coverage === null ? `${number(stock)} un` : `${number(stock)} un &middot; ${number(coverage)}d`;
+      const stockCls = stock <= 0 ? "danger" : (coverage !== null && coverage < 7 ? "warn" : "");
+      const sugCell = suggested > 0
+        ? `<button class="link-sug" type="button" title="Aplicar quantidade sugerida">${number(suggested)}</button>`
+        : `<span class="muted">-</span>`;
+      const reasonChip = reason.cls
+        ? `<span class="qrow-reason ${escapeAttr(reason.cls)}" title="${escapeAttr(reason.tip)}">${escapeHtml(reason.label)}</span>`
+        : "";
+      const mixChip = row.mix_status !== "in_mix"
+        ? `<span class="qrow-mix" title="${escapeAttr(mixStatusText(row.mix_status))}">${escapeHtml(mixStatusText(row.mix_status))}</span>`
+        : "";
       return `
         <tr class="${classes}" data-product-id="${escapeAttr(row.product_id)}" data-organization-id="${escapeAttr(row.organization_id)}" data-supplier-id="${escapeAttr(state.selectedQuoteSupplierId)}" data-suggested-quantity="${escapeAttr(row.suggested_quantity)}" data-package-size="${Number(row.package_size || 0)}" data-product-row="true">
-          <td class="quote-include-cell">
-            <button class="quote-toggle ${inQuote ? "on" : ""}" type="button" title="${inQuote ? "Remover da cotacao" : "Incluir na cotacao"}">${inQuote ? "Incluido" : "Incluir"}</button>
+          <td class="col-inc"><input type="checkbox" class="qrow-check" ${inQuote ? "checked" : ""} aria-label="Incluir na cotacao" /></td>
+          <td class="col-prod">
+            <div class="qrow-name">${escapeHtml(row.name)}</div>
+            <div class="qrow-sub">
+              <span class="qrow-ref">${escapeHtml(ref)}</span>
+              ${row.brand_name ? `<span class="qrow-brand">${escapeHtml(row.brand_name)}</span>` : ""}
+              ${reasonChip}
+              ${mixChip}
+            </div>
           </td>
-          <td>
-            <strong>${escapeHtml(row.supplier_reference || row.source_code)}</strong>
-            <span class="muted-line">${escapeHtml(row.source_code)}</span>
-          </td>
-          <td class="quote-product-name">
-            ${escapeHtml(row.name)}
-            <span class="muted-line">${escapeHtml(row.brand_name || "")}</span>
-          </td>
-          <td><span class="status-chip ${escapeAttr(statusCls)}">${escapeHtml(row.status_label || row.status)}</span></td>
-          <td><span class="mix-pill ${escapeAttr(row.mix_status)}">${escapeHtml(mixStatusText(row.mix_status))}</span></td>
-          <td class="num">${number(row.stock_units)}</td>
-          <td class="num">${number(row.demand_window)}</td>
-          <td class="num">${number(row.avg_daily_window)}</td>
-          <td class="num">${number(row.suggested_quantity)}</td>
-          <td class="num">${money(row.cost_no_tax)}</td>
-          <td class="num">${money(row.cost_with_tax)}</td>
-          <td class="quote-reason-cell"><span class="reason-tag ${escapeAttr(reason.cls)}" title="${escapeAttr(reason.tip)}">${escapeHtml(reason.label)}</span></td>
-          <td class="quote-qty-cell">
-            <div class="quote-qty-actions">
-              <input class="inline-input quote-quantity-input" type="text" inputmode="decimal" value="${inputValue(quantity)}" placeholder="${escapeAttr(number(row.suggested_quantity))}" />
-              <button class="qty-btn qty-sug" type="button" title="Usar quantidade sugerida">Sug.</button>
-              <button class="qty-btn qty-zero" type="button" title="Zerar quantidade">0</button>
-              ${hasPackage ? `<button class="qty-btn qty-box-up" type="button" title="+1 caixa (${number(pkg)}un)">Cx+</button><button class="qty-btn qty-box-down" type="button" title="-1 caixa (${number(pkg)}un)">Cx-</button>` : ""}
+          <td class="col-stk num"><span class="${stockCls}">${stockLabel}</span></td>
+          <td class="col-dem num">${number(demand)}<span class="muted-line">${number(dailyAvg)}/dia</span></td>
+          <td class="col-sug num">${sugCell}</td>
+          <td class="col-cost num">${money(costWith)}${hasPackage ? `<span class="muted-line">cx ${number(pkg)}</span>` : ""}</td>
+          <td class="col-qty">
+            <div class="qrow-qty">
+              <input class="inline-input quote-quantity-input" type="text" inputmode="decimal" value="${inputValue(quantity)}" placeholder="${escapeAttr(number(suggested))}" aria-label="Quantidade" />
+              ${hasPackage ? `<button class="qrow-step" type="button" data-step="-${pkg}" title="-1 caixa (${number(pkg)} un)">-</button><button class="qrow-step" type="button" data-step="${pkg}" title="+1 caixa (${number(pkg)} un)">+</button>` : ""}
             </div>
             <span class="save-state row-save-state" aria-live="polite"></span>
           </td>
+          <td class="col-tot num">${inQuote && lineTotal > 0 ? money(lineTotal) : `<span class="muted">-</span>`}</td>
         </tr>
       `;
     })
@@ -1553,22 +1598,35 @@ function quoteReason(row) {
 
 function renderQuoteWorkbenchHead(workbench) {
   const supplier = workbench?.supplier;
+  const target = document.querySelector("#quoteWorkbenchHead");
   if (!supplier) {
-    document.querySelector("#quoteWorkbenchHead").innerHTML = `
-      <div>
+    target.innerHTML = `
+      <div class="quote-main-empty">
         <h2>Mesa de cotacao</h2>
-        <p class="panel-subtitle">Escolha um fornecedor para montar a cotacao item a item.</p>
+        <p class="panel-subtitle">Escolha um fornecedor a esquerda para abrir a mesa.</p>
       </div>
     `;
     return;
   }
-  document.querySelector("#quoteWorkbenchHead").innerHTML = `
-    <div class="quote-title-block">
-      <div>
+  const totals = workbench?.totals || {};
+  const itemsInQuote = Number(totals.items_in_quote || 0);
+  const tabs = `
+    <div class="quote-tabs" role="tablist">
+      <button class="quote-tab ${state.quoteStep !== "quote" ? "active" : ""}" type="button" data-quote-step="review" role="tab">
+        Itens <em>${number(totals.total_products || 0)}</em>
+      </button>
+      <button class="quote-tab ${state.quoteStep === "quote" ? "active" : ""}" type="button" data-quote-step="quote" role="tab" ${itemsInQuote ? "" : "disabled"}>
+        Resumo <em>${number(itemsInQuote)}</em>
+      </button>
+    </div>
+  `;
+  target.innerHTML = `
+    <div class="quote-head-line">
+      <div class="quote-head-title">
         <h2>${escapeHtml(supplier.name)}</h2>
-        <p class="panel-subtitle">${supplier.contact_phone ? escapeHtml(supplier.contact_phone) : "Sem telefone"} - janela de ${number(workbench.window_days)} dias</p>
+        <span class="quote-head-meta">janela ${number(workbench.window_days)}d${supplier.contact_phone ? ` &middot; ${escapeHtml(supplier.contact_phone)}` : ""}${supplier.contact_name ? ` &middot; ${escapeHtml(supplier.contact_name)}` : ""}</span>
       </div>
-      <div class="quote-history">${quoteHistoryRows(workbench.quote_history || [])}</div>
+      ${tabs}
     </div>
     ${quoteMetricCards(workbench)}
   `;
@@ -1578,46 +1636,40 @@ function renderQuoteDetail(workbench) {
   state.quoteWorkbench = workbench || null;
   renderQuoteWorkbenchHead(workbench);
   if (!workbench) {
-    document.querySelector("#quoteDetail").className = "quote-detail quote-stage empty-state";
-    document.querySelector("#quoteDetail").textContent = "Selecione um fornecedor para abrir a mesa.";
+    document.querySelector("#quoteDetail").className = "quote-stage";
+    document.querySelector("#quoteDetail").innerHTML = "";
     updateQuoteFlow();
     return;
   }
-  document.querySelector("#quoteDetail").className = "quote-detail quote-stage";
+  document.querySelector("#quoteDetail").className = "quote-stage";
+  const filter = state.quoteWorkbenchFilter || "all";
   document.querySelector("#quoteDetail").innerHTML = `
     <div class="quote-toolbar">
-      <div>
-        <strong>${number(workbench.totals.total_products)} produtos</strong>
-        <span>${number(workbench.totals.alerts_count)} alertas - ${number(workbench.totals.items_in_quote)} incluidos</span>
+      <div class="quote-filter-pills" role="tablist">
+        <button class="qf-pill ${filter === "all" ? "active" : ""}" type="button" data-filter="all">Todos <em>${number(workbench.totals.total_products || 0)}</em></button>
+        <button class="qf-pill ${filter === "included" ? "active" : ""}" type="button" data-filter="included">Incluidos <em>${number(workbench.totals.items_in_quote || 0)}</em></button>
+        <button class="qf-pill ${filter === "suggested" ? "active" : ""}" type="button" data-filter="suggested">Sugeridos</button>
+        <button class="qf-pill ${filter === "alerts" ? "active" : ""}" type="button" data-filter="alerts">Alertas <em>${number(workbench.totals.alerts_count || 0)}</em></button>
+        <button class="qf-pill ${filter === "outmix" ? "active" : ""}" type="button" data-filter="outmix">Fora do mix</button>
       </div>
-      <div class="quote-toolbar-actions">
-        <button class="secondary-button quote-back-suppliers" type="button">Voltar fornecedores</button>
-        <button class="secondary-button quote-restore-items" type="button">Incluir sugeridos</button>
-        <button class="secondary-button quote-only-included" type="button">So incluidos</button>
-        <button class="secondary-button quote-only-alerts" type="button">So alertas</button>
-        <button class="secondary-button quote-only-outmix" type="button">So fora do mix</button>
-        <button class="secondary-button quote-clear-filters" type="button">Limpar filtros</button>
-        <button class="action-button quote-go-final" type="button" ${workbench.totals.items_in_quote ? "" : "disabled"}>Ir para cotacao</button>
+      <div class="quote-toolbar-right">
+        <input id="quoteItemSearch" class="search-input compact" type="search" placeholder="Buscar produto / ref" />
+        <button class="text-button quote-restore-items" type="button" title="Incluir todos os sugeridos com a quantidade calculada">+ Incluir sugeridos</button>
+        <span id="quoteWorkbenchStatus" class="save-state" aria-live="polite"></span>
       </div>
-      <span id="quoteWorkbenchStatus" class="save-state" aria-live="polite"></span>
     </div>
-    <div class="table-wrap quote-items quote-workbench-table">
-      <table>
+    <div class="quote-items-wrap">
+      <table class="quote-items-table">
         <thead>
           <tr>
-            <th></th>
-            <th>Ref.</th>
-            <th>Produto</th>
-            <th>Status</th>
-            <th>Mix</th>
-            <th class="num">Estoque</th>
-            <th class="num">Venda janela</th>
-            <th class="num">Media/dia</th>
-            <th class="num">Sug.</th>
-            <th class="num">Custo s/ imp.</th>
-            <th class="num">Custo c/ imp.</th>
-            <th>Motivo</th>
-            <th>Qtd.</th>
+            <th class="col-inc"></th>
+            <th class="col-prod">Produto</th>
+            <th class="col-stk num">Estoque</th>
+            <th class="col-dem num">Demanda</th>
+            <th class="col-sug num">Sug.</th>
+            <th class="col-cost num">Custo c/ imp.</th>
+            <th class="col-qty">Quantidade</th>
+            <th class="col-tot num">Total</th>
           </tr>
         </thead>
         <tbody>${quoteProductRows(workbench.rows || [])}</tbody>
@@ -1694,11 +1746,12 @@ function updateWorkbenchTotalsFromRows() {
 
 function syncQuoteRow(rowEl, row) {
   rowEl.classList.toggle("included", Boolean(row.in_quote));
-  const toggle = rowEl.querySelector(".quote-toggle");
-  if (toggle) {
-    toggle.classList.toggle("on", Boolean(row.in_quote));
-    toggle.textContent = row.in_quote ? "Incluido" : "Incluir";
-    toggle.title = row.in_quote ? "Remover da cotacao" : "Incluir na cotacao";
+  const check = rowEl.querySelector(".qrow-check");
+  if (check) check.checked = Boolean(row.in_quote);
+  const totalCell = rowEl.querySelector(".col-tot");
+  if (totalCell) {
+    const total = Number(row.quote_quantity || 0) * Number(row.cost_with_tax || 0);
+    totalCell.innerHTML = row.in_quote && total > 0 ? money(total) : `<span class="muted">-</span>`;
   }
 }
 
@@ -1737,7 +1790,7 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
 
 function restoreSuggestedQuoteItems() {
   if (!state.quoteWorkbench) return;
-  const rows = Array.from(document.querySelectorAll("#quoteDetail .quote-product-row"));
+  const rows = Array.from(document.querySelectorAll("#quoteDetail .qrow"));
   rows.forEach((rowEl) => {
     const row = findWorkbenchRow(rowEl.dataset.productId);
     if (!row || Number(row.suggested_quantity || 0) <= 0 || row.in_quote) return;
@@ -1749,7 +1802,7 @@ function restoreSuggestedQuoteItems() {
 }
 
 function scheduleWorkbenchQuantitySave(input) {
-  const rowEl = input.closest(".quote-product-row");
+  const rowEl = input.closest(".qrow");
   if (!rowEl) return;
   const existing = state.quoteSaveTimers.get(rowEl.dataset.productId);
   if (existing) clearTimeout(existing);
@@ -1762,12 +1815,12 @@ function scheduleWorkbenchQuantitySave(input) {
   state.quoteSaveTimers.set(rowEl.dataset.productId, timer);
 }
 
-function toggleWorkbenchItem(button) {
-  const rowEl = button.closest(".quote-product-row");
+function toggleWorkbenchItem(checkbox) {
+  const rowEl = checkbox.closest(".qrow");
   const input = rowEl?.querySelector(".quote-quantity-input");
   const row = rowEl ? findWorkbenchRow(rowEl.dataset.productId) : null;
   if (!rowEl || !input || !row) return;
-  const nextQuantity = row.in_quote ? 0 : Number(row.suggested_quantity || row.package_size || 1);
+  const nextQuantity = checkbox.checked ? Number(row.suggested_quantity || row.package_size || 1) : 0;
   input.value = nextQuantity > 0 ? String(nextQuantity).replace(".", ",") : "";
   saveWorkbenchQuantity(rowEl, nextQuantity);
 }
@@ -1786,21 +1839,33 @@ function generateCurrentQuote() {
 
 function updateQuoteSupplierChips() {
   const activeChip = state.quoteSupplierChip || "all";
-  document.querySelectorAll("#quoteSupplierChips .chip").forEach((btn) => {
+  document.querySelectorAll("#quoteSupplierChips .quote-chip").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.chip === activeChip);
   });
 }
 
 function filterWorkbenchRows(filter) {
   state.quoteWorkbenchFilter = filter;
+  applyWorkbenchView();
+}
+
+function applyWorkbenchView() {
   const rows = state.quoteWorkbench?.rows || [];
+  const filter = state.quoteWorkbenchFilter || "all";
+  const term = (state.quoteItemSearch || "").toLowerCase();
   let visible = rows;
-  if (filter === "included") visible = rows.filter((r) => r.in_quote);
-  else if (filter === "alerts") visible = rows.filter((r) => (r.alerts || []).length > 0);
-  else if (filter === "outmix") visible = rows.filter((r) => r.mix_status !== "in_mix");
-  const tbody = document.querySelector("#quoteDetail table tbody");
+  if (filter === "included") visible = visible.filter((r) => r.in_quote);
+  else if (filter === "suggested") visible = visible.filter((r) => Number(r.suggested_quantity || 0) > 0);
+  else if (filter === "alerts") visible = visible.filter((r) => (r.alerts || []).length > 0);
+  else if (filter === "outmix") visible = visible.filter((r) => r.mix_status !== "in_mix");
+  if (term) {
+    visible = visible.filter((r) => `${r.name || ""} ${r.supplier_reference || ""} ${r.source_code || ""} ${r.brand_name || ""}`.toLowerCase().includes(term));
+  }
+  const tbody = document.querySelector("#quoteDetail tbody");
   if (tbody) tbody.innerHTML = quoteProductRows(visible);
-  updateWorkbenchTotalsFromRows();
+  document.querySelectorAll("#quoteDetail .qf-pill").forEach((pill) => {
+    pill.classList.toggle("active", pill.dataset.filter === filter);
+  });
 }
 
 function applyQuickQuantity(btn) {
@@ -1809,26 +1874,18 @@ function applyQuickQuantity(btn) {
   const input = row.querySelector(".quote-quantity-input");
   if (!input) return;
   const suggested = Number(row.dataset.suggestedQuantity || 0);
-  const pkg = Number(row.querySelector("[data-package-size]")?.dataset.packageSize || row.dataset.packageSize || 0);
-  const current = parseFloat(input.value) || 0;
+  const pkg = Number(row.dataset.packageSize || 0);
+  const current = parseFloat(String(input.value).replace(",", ".")) || 0;
   let next = current;
-  if (btn.classList.contains("qty-sug")) next = suggested;
-  else if (btn.classList.contains("qty-zero")) next = 0;
-  else if (btn.classList.contains("qty-box-up")) next = current + (pkg || 1);
-  else if (btn.classList.contains("qty-box-down")) next = Math.max(0, current - (pkg || 1));
-  input.value = next;
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  // optimistic toggle
-  const toggle = row.querySelector(".quote-toggle");
-  if (next > 0 && !toggle.classList.contains("on")) {
-    toggle.classList.add("on");
-    toggle.textContent = "Incluido";
-    row.classList.add("included");
-  } else if (next === 0 && toggle.classList.contains("on")) {
-    toggle.classList.remove("on");
-    toggle.textContent = "Incluir";
-    row.classList.remove("included");
+  if (btn.classList.contains("link-sug")) next = suggested;
+  else if (btn.classList.contains("qrow-step")) {
+    const step = Number(btn.dataset.step || 0);
+    next = Math.max(0, current + step);
   }
+  input.value = next > 0 ? String(next).replace(".", ",") : "";
+  const check = row.querySelector(".qrow-check");
+  if (check) check.checked = next > 0;
+  row.classList.toggle("included", next > 0);
   scheduleWorkbenchQuantitySave(input);
   setTimeout(renderQuoteFinal, 300);
 }
@@ -2350,34 +2407,29 @@ async function boot() {
     const button = event.target.closest(".quote-supplier-card");
     if (button?.dataset.supplierId) await loadQuoteSupplierWorkbench(button.dataset.supplierId);
   });
-  document.querySelectorAll("#quotes [data-quote-step]").forEach((button) => {
-    button.addEventListener("click", () => setQuoteStep(button.dataset.quoteStep || "supplier"));
+  document.querySelector("#quoteWorkbenchHead").addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-quote-step]");
+    if (tab && !tab.disabled) setQuoteStep(tab.dataset.quoteStep || "review");
   });
   document.querySelector("#quoteDetail").addEventListener("click", (event) => {
-    const toggle = event.target.closest(".quote-toggle");
-    if (toggle) toggleWorkbenchItem(toggle);
-    if (event.target.closest(".quote-back-suppliers")) setQuoteStep("supplier");
-    if (event.target.closest(".quote-go-final")) setQuoteStep("quote");
-    if (event.target.closest(".quote-restore-items")) restoreSuggestedQuoteItems();
-    if (event.target.closest(".quote-only-included")) filterWorkbenchRows("included");
-    if (event.target.closest(".quote-only-alerts")) filterWorkbenchRows("alerts");
-    if (event.target.closest(".quote-only-outmix")) filterWorkbenchRows("outmix");
-    if (event.target.closest(".quote-clear-filters")) filterWorkbenchRows("all");
-    // Quick quantity buttons
-    const qtyBtn = event.target.closest(".qty-btn");
-    if (qtyBtn) {
-      event.stopPropagation();
-      applyQuickQuantity(qtyBtn);
-      return;
-    }
-    // Open product drawer
+    const check = event.target.closest(".qrow-check");
+    if (check) { event.stopPropagation(); toggleWorkbenchItem(check); return; }
+    if (event.target.closest(".quote-restore-items")) { restoreSuggestedQuoteItems(); return; }
+    const filterPill = event.target.closest(".qf-pill");
+    if (filterPill) { filterWorkbenchRows(filterPill.dataset.filter); return; }
+    const quickBtn = event.target.closest(".link-sug, .qrow-step");
+    if (quickBtn) { event.stopPropagation(); applyQuickQuantity(quickBtn); return; }
     const productRow = event.target.closest("[data-product-row]");
-    if (productRow && !event.target.closest(".quote-toggle") && !event.target.closest(".quote-quantity-input") && !event.target.closest(".qty-btn")) {
+    if (productRow && !event.target.closest(".quote-quantity-input") && !event.target.closest("input")) {
       openQuoteProductDrawer(productRow.dataset.productId);
     }
   });
   document.querySelector("#quoteDetail").addEventListener("input", (event) => {
     if (event.target.classList.contains("quote-quantity-input")) scheduleWorkbenchQuantitySave(event.target);
+    if (event.target.id === "quoteItemSearch") {
+      state.quoteItemSearch = event.target.value;
+      applyWorkbenchView();
+    }
   });
   document.querySelector("#quoteFinal").addEventListener("click", (event) => {
     if (event.target.closest(".quote-back-review")) setQuoteStep("review");

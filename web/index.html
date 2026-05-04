@@ -18,17 +18,17 @@
         </div>
 
         <nav class="nav" aria-label="Principal">
-          <button class="nav-item active" data-view="dashboard">Painel</button>
+          <button class="nav-item active" data-view="dashboard" data-uses-period="true">Painel</button>
           <button class="nav-item" data-view="actions">Hoje</button>
           <button class="nav-item" data-view="engine">Motor</button>
-          <button class="nav-item" data-view="products">Produtos</button>
-          <button class="nav-item" data-view="stock">Reposicao</button>
+          <button class="nav-item" data-view="products" data-uses-period="true">Produtos</button>
+          <button class="nav-item" data-view="stock" data-uses-period="true">Reposicao</button>
           <button class="nav-item" data-view="suppliers">Fornecedores</button>
           <button class="nav-item" data-view="quotes">Cotacoes</button>
-          <button class="nav-item" data-view="pricing">Precos</button>
-          <button class="nav-item" data-view="opportunities">Oportunidades</button>
-          <button class="nav-item" data-view="customers">Clientes</button>
-          <button class="nav-item" data-view="services">Servicos</button>
+          <button class="nav-item" data-view="pricing" data-uses-period="true">Precos</button>
+          <button class="nav-item" data-view="opportunities" data-uses-period="true">Oportunidades</button>
+          <button class="nav-item" data-view="customers" data-uses-period="true">Clientes</button>
+          <button class="nav-item" data-view="services" data-uses-period="true">Servicos</button>
           <button class="nav-item" data-view="imports">Importacao</button>
         </nav>
       </aside>
@@ -276,65 +276,42 @@
           </section>
         </section>
 
-        <section id="quotes" class="view">
-          <div class="quote-purchase-flow" aria-label="Fluxo de compra por fornecedor">
-            <div class="quote-flow-summary">
-              <strong>Pedido por fornecedor</strong>
-              <span id="quoteFlowSummary">Aguardando fornecedor</span>
-            </div>
-            <div class="quote-flow-steps">
-              <button class="quote-flow-step active" type="button" data-quote-step="supplier">
-                <span>1</span><strong>Fornecedor</strong>
-              </button>
-              <button class="quote-flow-step" type="button" data-quote-step="review">
-                <span>2</span><strong>Revisar itens</strong>
-              </button>
-              <button class="quote-flow-step" type="button" data-quote-step="quote">
-                <span>3</span><strong>Cotacao</strong>
-              </button>
-            </div>
-          </div>
+        <section id="quotes" class="view quote-view">
           <div class="quote-workbench">
             <aside class="quote-rail">
-              <section class="quote-rail-section">
-                <div class="quote-rail-head">
-                  <div>
-                    <h2>Fornecedores</h2>
-                    <p class="panel-subtitle">Prioridade de compra e cotacoes abertas.</p>
-                  </div>
+              <header class="quote-rail-top">
+                <div class="quote-rail-title">
+                  <h2>Fornecedores</h2>
+                  <span id="quoteFlowSummary" class="quote-rail-context">Selecione para montar a cotacao</span>
                 </div>
-                <div class="quote-rail-tools">
+                <div class="quote-rail-search">
                   <input id="quoteSupplierSearch" class="search-input" type="search" placeholder="Buscar fornecedor" />
-                  <select id="quoteWindowDays" class="filter-select">
-                    <option value="30">30 dias</option>
-                    <option value="90" selected>90 dias</option>
-                    <option value="180">180 dias</option>
+                  <select id="quoteWindowDays" class="filter-select" title="Janela de demanda usada nos calculos">
+                    <option value="30">30d</option>
+                    <option value="90" selected>90d</option>
+                    <option value="180">180d</option>
                   </select>
                 </div>
-                <div id="quoteSupplierChips" class="quote-supplier-chips">
-                  <button class="chip active" data-chip="all" type="button">Todos</button>
-                  <button class="chip" data-chip="ready" type="button">Prontos</button>
-                  <button class="chip" data-chip="risk" type="button">Risco</button>
-                  <button class="chip" data-chip="below_min" type="button">Abaixo minimo</button>
-                  <button class="chip" data-chip="open" type="button">Em aberto</button>
-                  <button class="chip" data-chip="no_min" type="button">Sem minimo</button>
-                  <button class="chip" data-chip="out_mix" type="button">Fora do mix</button>
+                <div id="quoteSupplierChips" class="quote-chip-row">
+                  <button class="quote-chip active" data-chip="all" type="button">Todos</button>
+                  <button class="quote-chip" data-chip="ready" type="button">Prontos</button>
+                  <button class="quote-chip" data-chip="risk" type="button">Risco</button>
+                  <button class="quote-chip" data-chip="below_min" type="button">Abaixo do min.</button>
+                  <button class="quote-chip" data-chip="open" type="button">Em aberto</button>
                 </div>
-                <div id="quoteSuppliersTable" class="quote-supplier-list"></div>
-              </section>
+              </header>
+              <div id="quoteSuppliersTable" class="quote-supplier-list"></div>
             </aside>
 
-            <section class="panel quote-main-panel">
-              <div id="quoteWorkbenchHead" class="quote-workbench-head">
-                <div>
+            <section class="quote-main">
+              <div id="quoteWorkbenchHead" class="quote-main-head">
+                <div class="quote-main-empty">
                   <h2>Mesa de cotacao</h2>
-                  <p class="panel-subtitle">Escolha um fornecedor para montar a cotacao item a item.</p>
+                  <p class="panel-subtitle">Escolha um fornecedor a esquerda para abrir a mesa.</p>
                 </div>
               </div>
-              <div id="quoteDetail" class="quote-detail quote-stage active" data-quote-stage="review">Selecione um fornecedor para abrir a mesa.</div>
-              <div id="quoteFinal" class="quote-final quote-stage" data-quote-stage="quote">
-                <div class="quote-empty">Revise os itens antes de gerar a cotacao.</div>
-              </div>
+              <div id="quoteDetail" class="quote-stage active" data-quote-stage="review"></div>
+              <div id="quoteFinal" class="quote-stage" data-quote-stage="quote"></div>
             </section>
           </div>
           <div id="quoteProductDrawer" class="product-drawer-overlay hidden">
