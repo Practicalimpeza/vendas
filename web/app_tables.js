@@ -1,5 +1,5 @@
 function tableCellText(row, index) {
-  return (row.cells[index]?.innerText || "").replace(/\s+/g, " ").trim();
+  return (row.cells[index]?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
 function tableSortValue(text) {
@@ -31,6 +31,30 @@ function tableToolbar(table) {
   return toolbar?.classList?.contains("data-table-toolbar") ? toolbar : null;
 }
 
+let deferredTableEnhancementQueued = false;
+let dataTableObserverStarted = false;
+
+function scheduleIdleTask(callback) {
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(callback, { timeout: 1200 });
+    return;
+  }
+  window.setTimeout(callback, 80);
+}
+
+function tableEnhancementRoot() {
+  return document.querySelector(".view.active") || document;
+}
+
+function scheduleTableFilter(table) {
+  if (!table || table.dataset.filterQueued === "true") return;
+  table.dataset.filterQueued = "true";
+  requestAnimationFrame(() => {
+    table.dataset.filterQueued = "";
+    applyTableFilter(table);
+  });
+}
+
 function applyTableFilter(table) {
   const toolbar = tableToolbar(table);
   const input = toolbar?.querySelector("[data-table-search]");
@@ -41,7 +65,7 @@ function applyTableFilter(table) {
   const rows = tableDataRows(table);
   let visible = 0;
   rows.forEach((row) => {
-    const haystack = columnIndex >= 0 ? tableCellText(row, columnIndex) : row.innerText;
+    const haystack = columnIndex >= 0 ? tableCellText(row, columnIndex) : row.textContent || "";
     const matches = !term || haystack.toLocaleLowerCase("pt-BR").includes(term);
     row.hidden = !matches;
     if (matches) visible += 1;
@@ -91,7 +115,7 @@ function enhanceDataTables(root = document) {
     table.dataset.enhancedTable = "true";
     wrap.classList.add("table-shell");
     const options = Array.from(headerRow.cells)
-      .map((cell, index) => `<option value="${index}">${escapeHtml(cell.innerText.trim() || `Coluna ${index + 1}`)}</option>`)
+      .map((cell, index) => `<option value="${index}">${escapeHtml(cell.textContent.trim() || `Coluna ${index + 1}`)}</option>`)
       .join("");
     if (!skipToolbar) {
       const toolbar = document.createElement("div");
@@ -118,8 +142,8 @@ function enhanceDataTables(root = document) {
         <span class="data-table-count" data-table-count></span>
       `;
       wrap.before(toolbar);
-      toolbar.querySelector("[data-table-search]").addEventListener("input", () => applyTableFilter(table));
-      toolbar.querySelector("[data-table-column]").addEventListener("change", () => applyTableFilter(table));
+      toolbar.querySelector("[data-table-search]").addEventListener("input", () => scheduleTableFilter(table));
+      toolbar.querySelector("[data-table-column]").addEventListener("change", () => scheduleTableFilter(table));
       toolbar.querySelector("[data-table-sort]").addEventListener("change", (event) => {
         if (event.target.value === "") return;
         const dir = toolbar.querySelector("[data-table-sort-dir]").value || "asc";
@@ -143,20 +167,45 @@ function enhanceDataTables(root = document) {
         }
       });
     });
-    new MutationObserver(() => applyTableFilter(table)).observe(tbody, { childList: true });
+    new MutationObserver(() => scheduleTableFilter(table)).observe(tbody, { childList: true });
     applyTableFilter(table);
   });
 }
 
+function enhanceActiveDataTables() {
+  enhanceDataTables(tableEnhancementRoot());
+}
+
+function scheduleDeferredDataTables() {
+  if (deferredTableEnhancementQueued) return;
+  deferredTableEnhancementQueued = true;
+  scheduleIdleTask(() => {
+    deferredTableEnhancementQueued = false;
+    const nextTable = document.querySelector('.view:not(.active) .table-wrap table:not([data-enhanced-table="true"])');
+    const nextRoot = nextTable?.closest(".view");
+    if (!nextRoot) return;
+    enhanceDataTables(nextRoot);
+    scheduleDeferredDataTables();
+  });
+}
+
 function observeDataTables() {
-  enhanceDataTables();
+  if (dataTableObserverStarted) return;
+  dataTableObserverStarted = true;
+  enhanceActiveDataTables();
+  scheduleDeferredDataTables();
   let queued = false;
   new MutationObserver(() => {
     if (queued) return;
     queued = true;
     requestAnimationFrame(() => {
       queued = false;
-      enhanceDataTables();
+      enhanceActiveDataTables();
+      scheduleDeferredDataTables();
     });
   }).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener("nexo:viewchange", () => {
+    enhanceActiveDataTables();
+    scheduleDeferredDataTables();
+  });
 }

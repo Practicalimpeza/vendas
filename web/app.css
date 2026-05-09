@@ -477,6 +477,11 @@ h2 {
   gap: 20px;
 }
 
+.view.active > :is(.panel, .two-col, .product-mode-panel, .quote-workbench, .stack, .kpi-grid, .dashboard-bi) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 520px;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(150px, 1fr));
@@ -1426,6 +1431,7 @@ h2 {
   box-shadow: var(--shadow);
   min-width: 0;
   overflow: hidden;
+  contain: layout paint style;
 }
 
 .panel-head {
@@ -2703,6 +2709,9 @@ select.search {
 
 .table-wrap {
   overflow: auto;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 460px;
+  contain: layout paint style;
 }
 
 .table-shell {

@@ -60,6 +60,7 @@ function setView(view, options = {}) {
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== nextPath) window.history.pushState({ view }, "", nextPath);
   }
+  document.dispatchEvent(new CustomEvent("nexo:viewchange", { detail: { view } }));
 }
 
 function renderKpis(kpis) {

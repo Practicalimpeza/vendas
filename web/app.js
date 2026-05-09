@@ -7611,6 +7611,8 @@ async function boot() {
   state.imports = imports;
   state.companyProfile = companyProfile;
 
+  const initialView = viewFromLocation();
+  setView(initialView, { updateHistory: false });
   renderKpis(summary.kpis);
   renderGeneralMap({ summary, products, replenishment, quoteSuppliers, customers, pricing, imports, services });
   renderMonthly(summary.monthly);
@@ -7993,8 +7995,6 @@ async function boot() {
     });
     if (typeof state.monthlyChart?.resize === "function") state.monthlyChart.resize();
   });
-  const initialView = viewFromLocation();
-  setView(initialView, { updateHistory: false });
   if (initialView === "pricing") {
     const pricingParams = new URLSearchParams(window.location.search);
     setPricingMode(pricingParams.get("pricing_mode") || state.pricingMode);
