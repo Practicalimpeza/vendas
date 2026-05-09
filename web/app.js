@@ -774,6 +774,15 @@ function renderMonthly(rows, granularity) {
     .join("");
 }
 
+function refreshChartsAfterVendorLoad() {
+  if (!state.summary) return;
+  renderMonthly(state.summary.monthly || [], state.summary.monthly_granularity);
+  renderGeneralMap();
+}
+
+window.nexoChartsReady = refreshChartsAfterVendorLoad;
+if (window.echarts && window.nexoEchartsLoaded) refreshChartsAfterVendorLoad();
+
 function renderTasks(tasks) {
   document.querySelector("#tasks").innerHTML = tasks
     .map((task) => `<div class="task"><strong>${task.title}</strong><span>${task.status} - prioridade ${task.priority}</span></div>`)

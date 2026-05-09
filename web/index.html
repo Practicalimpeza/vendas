@@ -965,8 +965,8 @@
         <div class="modal-body" id="modalBody"></div>
       </div>
     </div>
-    <script src="/vendor/echarts.min.js?v=5.5.1"></script>
-    <script src="/vendor/lucide.min.js?v=0.468.0"></script>
+    <script src="/vendor/echarts.min.js?v=5.5.1" async onload="window.nexoEchartsLoaded = true; window.nexoChartsReady?.()"></script>
+    <script src="/vendor/lucide.min.js?v=0.468.0" async onload="window.lucide?.createIcons({ attrs: { 'stroke-width': 2.1 } })"></script>
     <script src="/app_core.js?v=20260509a"></script>
     <script src="/app_charts.js?v=20260509a"></script>
     <script src="/app.js?v=20260505m"></script>
