@@ -93,6 +93,7 @@ nexovarejo/
     app_core.js                     — API, contratos e formatadores compartilhados
     app_charts.js                   — helpers de ECharts e linhas de dashboard
     app_tables.js                   — filtros, ordenacao e observacao de tabelas
+    app_ui.js                       — navegacao, KPIs, cards e modal base
     app.js                          — lógica de frontend vanilla
     app.css                         — estilos completos
     vendor/                         — ECharts e Lucide vendorizados
@@ -136,7 +137,8 @@ nexovarejo/
 | `web/app_core.js` | ~7 KB | API, validação de contratos e formatadores do frontend | Carregado antes de `app.js`, sem module/bundler |
 | `web/app_charts.js` | ~9 KB | Helpers de ECharts, score e linhas de dashboard | Carregado antes de `app.js`, sem module/bundler |
 | `web/app_tables.js` | ~6 KB | Filtros, ordenação e observador de tabelas HTML | Carregado antes de `app.js`, sem module/bundler |
-| `web/app.js` | ~388 KB | Frontend principal, estado e rotinas de tela | Nunca ler inteiro; buscar função/handler específico |
+| `web/app_ui.js` | ~6 KB | Navegação, topbar, KPIs, cards de insight e modal base | Carregado antes de `app.js`, sem module/bundler |
+| `web/app.js` | ~383 KB | Frontend principal, estado e rotinas de tela | Nunca ler inteiro; buscar função/handler específico |
 | `web/app.css` | ~176 KB | Estilos completos | Nunca ler inteiro; buscar seletor/seção específica |
 | `web/index.html` | ~20 KB | Estrutura declarativa das views | Navegação por `data-view` e sections |
 | `mappings/practica_csv.yml` | 4 KB | Mapeamento declarativo das colunas CSV para o modelo canônico | Base para futuros conectores de ERP |

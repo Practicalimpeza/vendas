@@ -83,6 +83,8 @@ continuar sem reabrir tudo.
 - Terceira camada extraida no frontend: `web/app_tables.js` concentra filtros,
   ordenacao e observacao das tabelas HTML, reduzindo risco de patches em
   `web/app.js`.
+- Quarta camada extraida no frontend: `web/app_ui.js` concentra navegacao,
+  topbar, KPIs, cards de insight e modal base.
 - Criado `docs/22_roadmap_produto_final.md` com quatro fases: Confiabilidade,
   Organizacao Interna, UX de Trabalho e Produto Operavel.
 - Criado `docs/23_contratos_api.md` e adicionados `contract`/`period` aos

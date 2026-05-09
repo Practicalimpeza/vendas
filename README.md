@@ -49,6 +49,8 @@ nexovarejo/
     helpers de graficos e linhas visuais do frontend
   web/app_tables.js
     filtros, ordenacao e observacao de tabelas do frontend
+  web/app_ui.js
+    navegacao, KPIs, cards e modal base do frontend
   *.csv
     exportacoes de exemplo da empresa teste
 ```
