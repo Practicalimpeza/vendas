@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NexoVarejo</title>
-    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/app.css?v=20260507h" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <img src="/logo.png" alt="Practica" />
+          <img src="/logo-practica-transparent.png" alt="Practica" />
           <div>
             <strong>NexoVarejo</strong>
             <span>Mesa do gestor</span>
@@ -18,18 +18,18 @@
         </div>
 
         <nav class="nav" aria-label="Principal">
-          <button class="nav-item active" data-view="dashboard" data-uses-period="true">Painel</button>
-          <button class="nav-item" data-view="actions">Hoje</button>
-          <button class="nav-item" data-view="engine">Motor</button>
+          <button class="nav-item active" data-view="dashboard" data-uses-period="true">Mapa Geral</button>
+          <button class="nav-item" data-view="quotes">Compras</button>
+          <button class="nav-item" data-view="stock" data-uses-period="true">Estoque</button>
           <button class="nav-item" data-view="products" data-uses-period="true">Produtos</button>
-          <button class="nav-item" data-view="stock" data-uses-period="true">Reposicao</button>
-          <button class="nav-item" data-view="suppliers">Fornecedores</button>
-          <button class="nav-item" data-view="quotes">Cotacoes</button>
-          <button class="nav-item" data-view="pricing" data-uses-period="true">Precos</button>
-          <button class="nav-item" data-view="opportunities" data-uses-period="true">Oportunidades</button>
           <button class="nav-item" data-view="customers" data-uses-period="true">Clientes</button>
-          <button class="nav-item" data-view="services" data-uses-period="true">Servicos</button>
-          <button class="nav-item" data-view="imports">Importacao</button>
+          <button class="nav-item" data-view="opportunities" data-uses-period="true">Vendas</button>
+          <button class="nav-item" data-view="suppliers">Fornecedores</button>
+          <button class="nav-item" data-view="pricing" data-uses-period="true">Margem</button>
+          <button class="nav-item" data-view="actions">Alertas/Tarefas</button>
+          <button class="nav-item" data-view="imports">Importacoes</button>
+          <span class="nav-section-label">Sistema</span>
+          <button class="nav-item" data-view="engine">Motor</button>
         </nav>
       </aside>
 
@@ -37,9 +37,14 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Empresa teste</p>
-            <h1 id="viewTitle">Painel</h1>
+            <h1 id="viewTitle">Mapa Geral</h1>
+            <p class="view-subtitle" id="viewSubtitle">Visao ampla da operacao para entender faturamento, produtos, clientes, estoque e dados importados.</p>
           </div>
           <div class="topbar-actions">
+            <div class="topbar-context">
+              <span id="viewQuestion">Como a empresa esta se comportando?</span>
+              <strong id="viewNextAction">Explore os indicadores e abra o modulo certo.</strong>
+            </div>
             <div class="period-selector" aria-label="Periodo das analises">
               <button class="period-btn" type="button" data-period-days="30">30d</button>
               <button class="period-btn" type="button" data-period-days="90">90d</button>
@@ -47,20 +52,110 @@
               <button class="period-btn" type="button" data-period-days="365">12m</button>
               <button class="period-btn" type="button" data-period-days="all">Tudo</button>
             </div>
-            <div class="status-pill">
-              <span class="dot"></span>
-              <span id="periodLabel">Ultimos 6 meses</span>
-            </div>
+            <span class="period-label" id="periodLabel">Ultimos 6 meses</span>
           </div>
         </header>
 
-        <section id="dashboard" class="view active">
-          <div class="kpi-grid" id="kpis"></div>
+        <div class="app-error-banner" id="appErrorBanner" hidden role="status" aria-live="polite">
+          <div>
+            <strong id="appErrorTitle">Algo saiu do contrato</strong>
+            <span id="appErrorDetail">Atualize a tela ou rode o smoke para diagnosticar.</span>
+          </div>
+          <button type="button" data-app-error-dismiss aria-label="Fechar aviso">Fechar</button>
+        </div>
+
+        <section id="dashboard" class="view active dashboard-bi">
+          <section class="bi-hero" id="generalMapHero"></section>
+          <div class="bi-kpi-strip" id="kpis"></div>
+          <section class="bi-signal-grid" id="generalMapCards"></section>
+          <section class="bi-grid">
+            <article class="bi-panel bi-panel-large">
+              <header>
+                <span>Receita</span>
+                <strong>Faturamento por periodo</strong>
+              </header>
+              <div id="monthlyChart" class="bi-chart"></div>
+            </article>
+            <article class="bi-panel">
+              <header>
+                <span>Composicao</span>
+                <strong>Mix da receita</strong>
+              </header>
+              <div id="generalRevenueMix" class="bi-chart compact"></div>
+            </article>
+            <article class="bi-panel bi-panel-wide">
+              <header>
+                <span>Abastecimento</span>
+                <strong>Compras por fornecedor</strong>
+              </header>
+              <div id="generalPurchaseChart" class="bi-bars"></div>
+            </article>
+            <article class="bi-panel bi-panel-wide">
+              <header>
+                <span>Estoque</span>
+                <strong>Risco e excesso</strong>
+              </header>
+              <div id="generalStockChart" class="bi-chart compact"></div>
+            </article>
+            <article class="bi-panel bi-panel-wide">
+              <header>
+                <span>Ranking</span>
+                <strong>Top produtos por receita</strong>
+              </header>
+              <div id="generalTopProducts" class="bi-bars"></div>
+            </article>
+            <article class="bi-panel">
+              <header>
+                <span>Clientes</span>
+                <strong>Top clientes</strong>
+              </header>
+              <div id="generalTopCustomers" class="bi-bars"></div>
+            </article>
+            <article class="bi-panel">
+              <header>
+                <span>Marcas</span>
+                <strong>Concentracao por marca</strong>
+              </header>
+              <div id="generalTopBrands" class="bi-bars"></div>
+            </article>
+            <article class="bi-panel">
+              <header>
+                <span>Saude</span>
+                <strong>Margem e precificacao</strong>
+              </header>
+              <div id="generalMarginChart" class="bi-bars"></div>
+            </article>
+            <article class="bi-panel">
+              <header>
+                <span>Dados</span>
+                <strong>Confiabilidade importada</strong>
+              </header>
+              <div id="generalDataQuality" class="bi-score"></div>
+            </article>
+            <article class="bi-panel">
+              <header>
+                <span>Servicos</span>
+                <strong>Top servicos</strong>
+              </header>
+              <div id="generalTopServices" class="bi-bars"></div>
+            </article>
+            <article class="bi-panel">
+              <header>
+                <span>Comercial</span>
+                <strong>Carteira de clientes</strong>
+              </header>
+              <div id="generalCustomerProfile" class="bi-chart compact"></div>
+            </article>
+          </section>
+          <div id="dashboardViewPresets" class="dashboard-floating-nav" aria-label="Atalhos principais"></div>
+          <button class="dashboard-customize-fab" id="dashboardCustomizeButton" type="button" title="Organizar painel">
+            <i data-lucide="sliders-horizontal"></i>
+          </button>
           <section class="panel maturity-panel">
             <div class="panel-head">
               <div>
-                <h2>Evolucao da inteligencia</h2>
-                <p class="panel-subtitle">O que o Nexo ja aprendeu, desbloqueou e recomenda melhorar.</p>
+                <h2>Evolucao do Nexo</h2>
+                <p class="panel-subtitle">O que a mesa ja consegue ler a partir dos dados importados.</p>
               </div>
               <button class="secondary-button" id="maturityNextButton" type="button">Proximo passo</button>
             </div>
@@ -75,39 +170,37 @@
             </div>
             <div id="missions"></div>
           </section>
-          <div class="two-col">
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Receita mensal</h2>
-              </div>
-              <div id="monthlyChart" class="bar-chart"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Pendencias de implantacao</h2>
-              </div>
-              <div id="tasks" class="task-list"></div>
-            </section>
-          </div>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Pendencias de implantacao</h2>
+            </div>
+            <div id="tasks" class="task-list"></div>
+          </section>
         </section>
 
         <section id="actions" class="view">
+          <section class="today-hero" id="actionsHero"></section>
+          <section class="today-pulse" id="todayPulse" aria-live="polite"></section>
+          <section class="intelligence-radar" id="actionsIntelligence" aria-live="polite"></section>
           <div class="kpi-grid compact" id="actionsSummary"></div>
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>Mesa de acoes do gestor</h2>
-                <p class="panel-subtitle">Poucas acoes escolhidas pelo impacto e pelo que os dados atuais permitem fazer.</p>
+                <h2>Fila de decisao</h2>
+                <p class="panel-subtitle">O trabalho do dia, ordenado por urgencia, impacto e confianca dos dados.</p>
               </div>
               <button class="secondary-button" id="refreshActionsButton" type="button">Atualizar</button>
             </div>
-            <div id="actionsBoard" class="actions-board"></div>
+            <div class="actions-workbench">
+              <div id="actionsBoard" class="actions-board"></div>
+              <aside id="actionDetail" class="action-detail" aria-live="polite"></aside>
+            </div>
           </section>
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>Historico operacional</h2>
-                <p class="panel-subtitle">O que foi concluido ou ignorado no Nexo vira memoria da rotina.</p>
+                <h2>Linha do tempo operacional</h2>
+                <p class="panel-subtitle">Importacoes, cotacoes, pedidos, chegadas e decisoes em uma historia unica da rotina.</p>
               </div>
             </div>
             <div id="actionsHistory" class="action-history"></div>
@@ -158,26 +251,79 @@
         </section>
 
         <section id="products" class="view">
-          <section class="panel">
-            <div class="panel-head">
-              <h2>Produtos por receita</h2>
-              <input id="productSearch" class="search" placeholder="Filtrar produto" />
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Codigo</th>
-                    <th>Produto</th>
-                    <th class="num">Qtd.</th>
-                    <th class="num">Receita</th>
-                    <th class="num">Part.</th>
-                  </tr>
-                </thead>
-                <tbody id="productsTable"></tbody>
-              </table>
-            </div>
-          </section>
+          <div class="quote-tabs module-tabs" role="tablist" aria-label="Mix">
+            <button class="quote-tab active" type="button" data-product-mode="operational">Mesa</button>
+            <button class="quote-tab" type="button" data-product-mode="dashboard">Analise</button>
+          </div>
+          <div id="productOperational" class="product-mode-panel active">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Mesa de decisao do mix</h2>
+                  <p class="panel-subtitle">O que proteger, comprar, decidir ou investigar antes de mexer no ERP.</p>
+                </div>
+              </div>
+              <div id="mixDecisionBoard" class="mix-decision-board"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Base do mix</h2>
+                  <p class="panel-subtitle">Ranking de receita usado para revisar prioridade, fornecedor e papel operacional dos itens.</p>
+                </div>
+                <div class="filters">
+                  <select id="productSupplierFilter" class="search">
+                    <option value="">Todos os fornecedores</option>
+                  </select>
+                  <select id="productBrandFilter" class="search">
+                    <option value="">Todas as marcas</option>
+                  </select>
+                  <input id="productSearch" class="search" placeholder="Filtrar produto" />
+                </div>
+              </div>
+              <div class="bulk-bar" id="productBulkBar">
+                <span id="productBulkCount">0 produtos no filtro atual</span>
+                <button class="secondary-button" type="button" id="productBulkMix">Editar mix em massa</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Codigo</th>
+                      <th>Produto</th>
+                      <th>Fornecedor</th>
+                      <th>Marca</th>
+                      <th class="num">Qtd.</th>
+                      <th class="num">Receita</th>
+                      <th class="num">Part.</th>
+                    </tr>
+                  </thead>
+                  <tbody id="productsTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+          <div id="productDashboard" class="product-mode-panel">
+            <div class="kpi-grid compact" id="productsSummary"></div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Dashboard de produtos</h2>
+                  <p class="panel-subtitle">Concentracao de receita, cauda longa, fornecedores, marcas e leitura do mix.</p>
+                </div>
+              </div>
+              <div id="productDashboardCharts" class="product-dashboard-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Leitura do mix</h2>
+                  <p class="panel-subtitle">Produtos que mais merecem revisao operacional agora.</p>
+                </div>
+              </div>
+              <div id="productInsights" class="stack"></div>
+            </section>
+          </div>
         </section>
 
         <section id="stock" class="view">
@@ -185,12 +331,12 @@
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>Motor de reposicao</h2>
-                <p class="panel-subtitle">Sugestao calculada por demanda, variabilidade, ABC, cobertura e prazo.</p>
+                <h2>Estoque e cobertura</h2>
+                <p class="panel-subtitle">Onde pode faltar, onde tem dinheiro parado e quais itens precisam alimentar a proxima compra.</p>
               </div>
               <div class="filters">
                 <select id="stockStatus" class="search">
-                  <option value="">Todos os status</option>
+                  <option value="">Todos os cenarios</option>
                   <option value="urgent">Ruptura iminente</option>
                   <option value="buy_now">Comprar agora</option>
                   <option value="mix_review">Decidir mix</option>
@@ -198,11 +344,13 @@
                   <option value="excess">Excesso</option>
                   <option value="ok">Estoque ok</option>
                   <option value="no_demand">Sem demanda</option>
-                  <option value="out_of_mix">Fora do mix</option>
+                  <option value="out_of_mix">Descontinuado</option>
                 </select>
-                <input id="stockSearch" class="search" placeholder="Filtrar produto" />
+                <input id="stockSearch" class="search" placeholder="Buscar produto, codigo ou fornecedor" />
               </div>
             </div>
+            <div class="decision-strip" id="stockDecisionStrip" aria-label="Leituras rapidas de estoque"></div>
+            <div id="stockDecisionQueue" class="stock-decision-queue" aria-live="polite"></div>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -229,31 +377,52 @@
         </section>
 
         <section id="suppliers" class="view">
-          <div class="kpi-grid" id="supplierSummary"></div>
+          <div class="quote-tabs module-tabs" role="tablist" aria-label="Fornecedores">
+            <button class="quote-tab active" type="button" data-supplier-mode="operational">Operacional</button>
+            <button class="quote-tab" type="button" data-supplier-mode="dashboard">Dashboard</button>
+          </div>
+          <div id="supplierOperational" class="supplier-mode-panel active">
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>Fornecedores</h2>
-                <p class="panel-subtitle">Configure pedido minimo, telefone e confiabilidade para formar pedidos por fornecedor.</p>
+                <h2>Diretorio de fornecedores</h2>
+                <p class="panel-subtitle">Compare cobertura, qualidade do cadastro, volume atendido e pendencias antes de cotar ou comprar.</p>
               </div>
               <div class="filters">
                 <input id="supplierSearch" class="search" placeholder="Filtrar fornecedor ou marca" />
                 <select id="supplierStatus" class="search">
                   <option value="">Todos</option>
                   <option value="missing_minimum">Sem pedido minimo</option>
-                  <option value="missing_phone">Sem telefone</option>
+                  <option value="missing_phone">Sem contato</option>
                   <option value="inferred">Com inferencias</option>
                   <option value="missing_supplier">Marcas sem fornecedor</option>
                 </select>
               </div>
             </div>
-            <div id="suppliersTable" class="supplier-directory"></div>
+            <div class="table-wrap supplier-directory">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fornecedor</th>
+                    <th>Situacao</th>
+                    <th>Contato</th>
+                    <th class="num">Minimo</th>
+                    <th class="num">Marcas</th>
+                    <th class="num">Produtos</th>
+                    <th class="num">Receita</th>
+                    <th class="num">Estoque</th>
+                    <th>Proxima acao</th>
+                  </tr>
+                </thead>
+                <tbody id="suppliersTable"></tbody>
+              </table>
+            </div>
           </section>
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>Mapa de marcas</h2>
-                <p class="panel-subtitle">Use quando precisar corrigir qual fornecedor atende uma marca especifica.</p>
+                <h2>Marcas e regras de atendimento</h2>
+                <p class="panel-subtitle">Ajuste rapidamente fornecedor por marca quando a inferencia estiver incompleta ou errada.</p>
               </div>
             </div>
             <div class="table-wrap supplier-table">
@@ -274,9 +443,37 @@
               </table>
             </div>
           </section>
+          </div>
+          <div id="supplierDashboard" class="supplier-mode-panel">
+            <div class="kpi-grid compact" id="supplierSummary"></div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Dashboard de fornecedores</h2>
+                  <p class="panel-subtitle">Qualidade do cadastro, dependencia comercial, pendencias e oportunidades de melhoria.</p>
+                </div>
+              </div>
+              <div id="supplierDashboardCharts" class="supplier-dashboard-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Fila de atencao</h2>
+                  <p class="panel-subtitle">Fornecedores e marcas que mais atrapalham compra, cotacao ou reposicao hoje.</p>
+                </div>
+              </div>
+              <div id="supplierFocus" class="supplier-focus"></div>
+            </section>
+          </div>
         </section>
 
         <section id="quotes" class="view quote-view">
+          <div class="quote-tabs module-tabs" role="tablist" aria-label="Compras">
+            <button class="quote-tab active" type="button" data-quote-mode="operational">Operacional</button>
+            <button class="quote-tab" type="button" data-quote-mode="dashboard">Dashboard</button>
+          </div>
+          <div id="quoteOperational" class="quote-mode-panel active">
+          <div id="quoteJourney" class="quote-journey" aria-live="polite"></div>
           <div class="quote-stepper" aria-label="Etapas da cotacao">
             <button class="qstep active" type="button" data-quote-step="supplier">
               <span class="qstep-num">1</span>
@@ -301,8 +498,8 @@
           <section class="quote-stage-panel" id="quoteSupplierStage" data-quote-stage="supplier">
             <header class="qstage-head">
               <div>
-                <h2>Selecione o fornecedor</h2>
-                <p class="panel-subtitle">Comece pelo fornecedor com mais urgencia ou que ja tem cotacao em aberto.</p>
+                <h2>Fornecedores formando pedido</h2>
+                <p class="panel-subtitle">Comece por quem esta mais perto do minimo ou tem maior demanda de reposicao.</p>
               </div>
               <div class="qstage-tools">
                 <input id="quoteSupplierSearch" class="search-input compact" type="search" placeholder="Buscar fornecedor" />
@@ -320,12 +517,25 @@
               <button class="quote-chip" data-chip="below_min" type="button">Abaixo do min.</button>
               <button class="quote-chip" data-chip="open" type="button">Em aberto</button>
             </div>
-            <div id="quoteSuppliersTable" class="quote-supplier-grid"></div>
+            <div class="quote-supplier-workbench">
+              <div id="quoteSuppliersTable" class="quote-supplier-grid"></div>
+              <aside id="quoteSupplierInspector" class="quote-supplier-inspector" aria-live="polite"></aside>
+            </div>
           </section>
 
           <section class="quote-stage-panel" id="quoteWorkbenchHead" hidden></section>
           <section class="quote-stage-panel" id="quoteDetail" data-quote-stage="review" hidden></section>
           <section class="quote-stage-panel" id="quoteFinal" data-quote-stage="quote" hidden></section>
+
+          <section class="panel purchase-orders-panel">
+            <div class="panel-head">
+              <div>
+                <h2>Pedidos em aberto</h2>
+                <p class="panel-subtitle">Acompanhe pedidos fechados no Nexo. A chegada registra memoria operacional; o estoque continua vindo do ERP.</p>
+              </div>
+            </div>
+            <div id="purchaseOrdersBoard" class="purchase-orders-board"></div>
+          </section>
 
           <div id="quoteProductDrawer" class="product-drawer-overlay hidden">
             <div class="product-drawer-panel">
@@ -336,97 +546,182 @@
               <div class="product-drawer-body" id="drawerProductBody"></div>
             </div>
           </div>
+          </div>
+          <div id="quoteDashboard" class="quote-mode-panel">
+            <div class="kpi-grid compact" id="quoteDashboardSummary"></div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                <h2>Leitura de compras</h2>
+                <p class="panel-subtitle">Fornecedores proximos de pedido, itens com demanda e cotacoes que precisam continuar.</p>
+                </div>
+              </div>
+              <div id="quoteDashboardCharts" class="quote-dashboard-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Proximos pedidos provaveis</h2>
+                  <p class="panel-subtitle">Onde a demanda ja esta se acumulando para virar pedido de compra.</p>
+                </div>
+              </div>
+              <div id="quoteDashboardFocus" class="quote-dashboard-focus"></div>
+            </section>
+          </div>
         </section>
 
         <section id="pricing" class="view">
-          <div class="kpi-grid compact" id="pricingSummary"></div>
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>Precificacao acionavel</h2>
-                <p class="panel-subtitle">O preco vem do ERP e e somente leitura. O Nexo sugere revisoes para executar la.</p>
-              </div>
-            </div>
-            <div class="table-wrap pricing-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sinal</th>
-                    <th>Produto</th>
-                    <th>Papel</th>
-                    <th class="num">Receita</th>
-                    <th class="num">Preco ERP</th>
-                    <th class="num">Custo</th>
-                    <th class="num">Margem</th>
-                    <th class="num">Alvo Nexo</th>
-                    <th>Motivo</th>
-                  </tr>
-                </thead>
-                <tbody id="pricingTable"></tbody>
-              </table>
-            </div>
-          </section>
-        </section>
-
-        <section id="opportunities" class="view">
-          <div class="kpi-grid compact" id="commercialSummary"></div>
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>Foco comercial agora</h2>
-                <p class="panel-subtitle">Acoes pequenas que o historico ja permite fazer sem cadastro extra.</p>
-              </div>
-            </div>
-            <div id="commercialFocus" class="commercial-focus"></div>
-          </section>
-          <div class="two-col opportunities-layout">
+          <div class="quote-tabs module-tabs" role="tablist" aria-label="Precos">
+            <a class="quote-tab active" href="/precos?pricing_mode=operational" data-pricing-mode="operational">Operacional</a>
+            <a class="quote-tab" href="/precos?pricing_mode=dashboard" data-pricing-mode="dashboard">Dashboard</a>
+          </div>
+          <div id="pricingOperational" class="pricing-mode-panel active">
             <section class="panel">
               <div class="panel-head">
                 <div>
-                  <h2>Clientes em risco</h2>
-                  <p class="panel-subtitle">Clientes relevantes que sairam da cadencia normal de recompra.</p>
+                  <h2>Margem em revisao</h2>
+                  <p class="panel-subtitle">Produtos que vendem, mas podem estar entregando pouco resultado.</p>
                 </div>
               </div>
-              <div class="table-wrap opportunity-table">
+              <div class="pricing-workbench">
+                <div id="pricingQueue" class="pricing-queue" aria-label="Fila de precificacao"></div>
+                <aside id="pricingInspector" class="pricing-inspector" aria-live="polite"></aside>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Base de precos</h2>
+                  <p class="panel-subtitle">Tabela completa para conferencia, busca visual e auditoria do calculo.</p>
+                </div>
+              </div>
+              <div class="table-wrap pricing-table">
                 <table>
                   <thead>
                     <tr>
-                      <th>Cliente</th>
-                      <th>Status</th>
-                      <th class="num">Score</th>
+                      <th>Sinal</th>
+                      <th>Produto</th>
+                      <th>Papel</th>
                       <th class="num">Receita</th>
-                      <th class="num">Dias sem compra</th>
+                      <th class="num">Preco ERP</th>
+                      <th class="num">Custo</th>
+                      <th class="num">Margem</th>
+                      <th class="num">Alvo Nexo</th>
                       <th>Motivo</th>
                     </tr>
                   </thead>
-                  <tbody id="riskCustomersTable"></tbody>
-                </table>
-              </div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <h2>Recompra provavel</h2>
-                  <p class="panel-subtitle">Contatos que estao perto da janela esperada de nova compra.</p>
-                </div>
-              </div>
-              <div class="table-wrap opportunity-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Janela</th>
-                      <th class="num">Receita</th>
-                      <th class="num">Ticket medio</th>
-                    </tr>
-                  </thead>
-                  <tbody id="repurchaseTable"></tbody>
+                  <tbody id="pricingTable"></tbody>
                 </table>
               </div>
             </section>
           </div>
-          <div class="two-col opportunities-layout">
+          <div id="pricingDashboard" class="pricing-mode-panel">
+            <div class="kpi-grid compact" id="pricingSummary"></div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Leitura de margem</h2>
+                  <p class="panel-subtitle">Margem, custo, preco importado e oportunidades de revisao com maior impacto financeiro.</p>
+                </div>
+              </div>
+              <div id="pricingDashboardCharts" class="pricing-dashboard-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Fila de revisao</h2>
+                  <p class="panel-subtitle">Produtos que combinam risco de margem, receita relevante e sugestao acionavel do Nexo.</p>
+                </div>
+              </div>
+              <div id="pricingFocus" class="pricing-dashboard-focus"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="opportunities" class="view">
+          <div class="quote-tabs module-tabs" role="tablist" aria-label="Oportunidades">
+            <a class="quote-tab active" href="/oportunidades?commercial_mode=operational" data-commercial-mode="operational">Operacional</a>
+            <a class="quote-tab" href="/oportunidades?commercial_mode=dashboard" data-commercial-mode="dashboard">Dashboard</a>
+          </div>
+          <div id="commercialOperational" class="commercial-mode-panel active">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Foco comercial agora</h2>
+                  <p class="panel-subtitle">Acoes pequenas que o historico ja permite fazer sem cadastro extra.</p>
+                </div>
+              </div>
+              <div id="commercialFocus" class="commercial-focus"></div>
+            </section>
+            <div class="two-col opportunities-layout">
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>Clientes em risco</h2>
+                    <p class="panel-subtitle">Clientes relevantes que sairam da cadencia normal de recompra.</p>
+                  </div>
+                </div>
+                <div class="table-wrap opportunity-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Status</th>
+                        <th class="num">Score</th>
+                        <th class="num">Receita</th>
+                        <th class="num">Dias sem compra</th>
+                        <th>Motivo</th>
+                      </tr>
+                    </thead>
+                    <tbody id="riskCustomersTable"></tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>Recompra provavel</h2>
+                    <p class="panel-subtitle">Contatos que estao perto da janela esperada de nova compra.</p>
+                  </div>
+                </div>
+                <div class="table-wrap opportunity-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Janela</th>
+                        <th class="num">Receita</th>
+                        <th class="num">Ticket medio</th>
+                      </tr>
+                    </thead>
+                    <tbody id="repurchaseTable"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+          <div id="commercialDashboard" class="commercial-mode-panel">
+            <div class="kpi-grid compact" id="commercialSummary"></div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Dashboard de oportunidades</h2>
+                  <p class="panel-subtitle">Clientes em risco, recompra provavel, momentum de produtos e marcas em uma leitura executiva.</p>
+                </div>
+              </div>
+              <div id="commercialDashboardCharts" class="commercial-dashboard-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Insights comerciais</h2>
+                  <p class="panel-subtitle">Sinais que ajudam a escolher entre recuperar cliente, puxar recompra ou investigar mix.</p>
+                </div>
+              </div>
+              <div id="commercialDashboardInsights" class="stack"></div>
+            </section>
+            <div class="two-col opportunities-layout">
             <section class="panel">
               <div class="panel-head">
                 <div>
@@ -470,33 +765,95 @@
               </div>
             </section>
           </div>
+          </div>
         </section>
 
         <section id="customers" class="view">
-          <section class="panel">
-            <div class="panel-head">
-              <h2>Clientes por receita</h2>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Cliente</th>
-                    <th class="num">Compras</th>
-                    <th>Ultima compra</th>
-                    <th class="num">Receita</th>
-                  </tr>
-                </thead>
-                <tbody id="customersTable"></tbody>
-              </table>
-            </div>
-          </section>
+          <div class="quote-tabs module-tabs" role="tablist" aria-label="Clientes">
+            <a class="quote-tab active" href="/clientes?customer_mode=operational" data-customer-mode="operational">Operacional</a>
+            <a class="quote-tab" href="/clientes?customer_mode=dashboard" data-customer-mode="dashboard">Dashboard</a>
+          </div>
+          <div id="customerOperational" class="customer-mode-panel active">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Fila de relacionamento</h2>
+                  <p class="panel-subtitle">Clientes priorizados por receita, frequencia e tempo desde a ultima compra.</p>
+                </div>
+              </div>
+              <div id="customerRelationshipQueue" class="customer-relationship-queue"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Carteira de clientes</h2>
+                  <p class="panel-subtitle">Resumo do peso dos clientes no periodo e proxima leitura comercial.</p>
+                </div>
+              </div>
+              <div id="customerInsights" class="stack"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Clientes por receita</h2>
+                  <p class="panel-subtitle">Clientes que mais compraram no recorte atual.</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th class="num">Compras</th>
+                      <th>Ultima compra</th>
+                      <th class="num">Receita</th>
+                    </tr>
+                  </thead>
+                  <tbody id="customersTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+          <div id="customerDashboard" class="customer-mode-panel">
+            <div class="kpi-grid compact" id="customersSummary"></div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Dashboard de clientes</h2>
+                  <p class="panel-subtitle">Concentracao da carteira, clientes lideres, recorrencia e sinais para proteger receita.</p>
+                </div>
+              </div>
+              <div id="customerDashboardCharts" class="customer-dashboard-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Leitura da carteira</h2>
+                  <p class="panel-subtitle">Resumo dos pontos que merecem decisao comercial ou acompanhamento.</p>
+                </div>
+              </div>
+              <div id="customerDashboardInsights" class="stack"></div>
+            </section>
+          </div>
         </section>
 
         <section id="services" class="view">
+          <div class="kpi-grid compact" id="servicesSummary"></div>
           <section class="panel">
             <div class="panel-head">
-              <h2>Servicos por receita</h2>
+              <div>
+                <h2>Leitura de servicos</h2>
+                <p class="panel-subtitle">Volume, receita e peso liquido dos servicos importados.</p>
+              </div>
+            </div>
+            <div id="serviceInsights" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Servicos por receita</h2>
+                <p class="panel-subtitle">Servicos ordenados por receita no periodo selecionado.</p>
+              </div>
             </div>
             <div class="table-wrap">
               <table>
@@ -515,18 +872,85 @@
         </section>
 
         <section id="imports" class="view">
-          <div class="two-col">
-            <section class="panel">
+          <div class="quote-tabs module-tabs" role="tablist" aria-label="Importacao">
+            <button class="quote-tab active" type="button" data-import-mode="operational">Operacional</button>
+            <button class="quote-tab" type="button" data-import-mode="dashboard">Dashboard</button>
+          </div>
+          <div id="importOperational" class="import-mode-panel active">
+            <section class="panel" id="refreshTargetsPanel" hidden>
               <div class="panel-head">
-                <h2>Lotes</h2>
+                <div>
+                  <h2>Atualizar fonte conhecida</h2>
+                  <p class="panel-subtitle">Um envio rapido para planilhas com estrutura ja conhecida. O Nexo reaproveita o mapeamento salvo e avisa se precisar revisar algo.</p>
+                </div>
               </div>
-              <div id="batches" class="stack"></div>
+              <div id="refreshTargets" class="stack"></div>
+              <input type="file" id="refreshTargetFile" accept=".csv,.txt,.tsv,.xlsx,.xlsm,.xls" hidden />
+              <div id="refreshTargetStatus" class="muted-line"></div>
+              <div id="refreshTargetPreview" class="stack"></div>
             </section>
             <section class="panel">
               <div class="panel-head">
-                <h2>Issues e mudancas</h2>
+                <div>
+                  <h2>Importar dados</h2>
+                  <p class="panel-subtitle">Envie uma planilha, confira o que o Nexo reconheceu e ajuste apenas o que precisar antes de gravar.</p>
+                </div>
               </div>
-              <div id="issues" class="stack"></div>
+              <div class="erp-import-box">
+                <div class="erp-upload-row">
+                  <input class="inline-input" id="erpImportFile" type="file" accept=".csv,.txt,.tsv,.xlsx,.xlsm,.xls" />
+                  <button class="action-button" id="erpImportAnalyze" type="button">Analisar</button>
+                </div>
+                <div class="erp-import-actions">
+                  <button class="secondary-button" id="erpImportConfirm" type="button" disabled>Confirmar e gravar lote</button>
+                </div>
+                <div id="erpImportStatus" class="muted-line">Nenhum arquivo selecionado.</div>
+                <div id="erpImportPreview" class="stack"></div>
+              </div>
+            </section>
+            <div class="two-col">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>Lotes</h2>
+                </div>
+                <div id="batches" class="stack"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>Issues e mudancas</h2>
+                </div>
+                <div id="issues" class="stack"></div>
+              </section>
+            </div>
+          </div>
+          <div id="importDashboard" class="import-mode-panel">
+            <div class="kpi-grid compact" id="importsSummary"></div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Dashboard de importacao</h2>
+                  <p class="panel-subtitle">Saude da base, cobertura dos dados desejados, riscos e proximos dados a pedir do ERP.</p>
+                </div>
+              </div>
+              <div id="importDashboardCharts" class="import-dashboard-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Mapa de dados desejados</h2>
+                  <p class="panel-subtitle">O que o Nexo quer receber, como usa cada dado e o que ainda falta na base.</p>
+                </div>
+              </div>
+              <div id="importDataGuide" class="import-guide"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Saude da importacao</h2>
+                  <p class="panel-subtitle">O que entrou, o que mudou e o que precisa de atencao antes de confiar nos dados.</p>
+                </div>
+              </div>
+              <div id="importInsights" class="stack"></div>
             </section>
           </div>
         </section>
@@ -541,6 +965,10 @@
         <div class="modal-body" id="modalBody"></div>
       </div>
     </div>
-    <script src="/app.js"></script>
+    <script src="/vendor/echarts.min.js?v=5.5.1"></script>
+    <script src="/vendor/lucide.min.js?v=0.468.0"></script>
+    <script src="/app_core.js?v=20260509a"></script>
+    <script src="/app_charts.js?v=20260509a"></script>
+    <script src="/app.js?v=20260505m"></script>
   </body>
 </html>
