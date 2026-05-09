@@ -43,6 +43,11 @@ def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> dict:
     return dict(row) if row else {}
 
 
+def default_organization_id(conn: sqlite3.Connection) -> str:
+    row = conn.execute("SELECT id FROM organizations ORDER BY id LIMIT 1").fetchone()
+    return row["id"] if row else ""
+
+
 def max_activity_date(conn: sqlite3.Connection) -> str:
     return one(
         conn,

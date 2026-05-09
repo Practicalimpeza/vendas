@@ -9,6 +9,10 @@ import sqlite3
 import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
+
+from text_utils import canonical_customer_key
+from schema_upgrades import ensure_schema_upgrades
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +85,7 @@ def begin_db(db_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    ensure_schema_upgrades(conn)
     return conn
 
 
@@ -266,16 +271,18 @@ def upsert_customer(conn: sqlite3.Connection, org: str, batch_id: str, code: str
     if not clean:
         return None
     cid = customer_id(org, code, clean)
+    canonical = canonical_customer_key(clean) or normalize(clean) or "sem_cliente"
     conn.execute(
         """
         INSERT INTO customers
-            (id, organization_id, source_code, name, normalized_name, first_seen_import_batch_id, last_seen_import_batch_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, organization_id, source_code, name, normalized_name, canonical_name, first_seen_import_batch_id, last_seen_import_batch_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, source_code, normalized_name) DO UPDATE SET
             name = excluded.name,
+            canonical_name = excluded.canonical_name,
             last_seen_import_batch_id = excluded.last_seen_import_batch_id
         """,
-        (cid, org, code, clean, normalize(clean), batch_id, batch_id),
+        (cid, org, code, clean, normalize(clean), canonical, batch_id, batch_id),
     )
     return cid
 
@@ -302,6 +309,7 @@ def upsert_service(conn: sqlite3.Connection, org: str, batch_id: str, name: str)
 def import_products(conn: sqlite3.Connection, source_dir: Path, org: str, store: str, batch_id: str) -> None:
     source_file_id = insert_source_file(conn, batch_id, source_dir, "produtopreco__Sheet1.csv", "product_price")
     rows = read_rows(source_dir / "produtopreco__Sheet1.csv")
+    snapshot_date = date.today().isoformat()
     for line, row in enumerate(rows[1:], start=2):
         if len(row) < 7 or not row[0].isdigit():
             continue
@@ -320,17 +328,33 @@ def import_products(conn: sqlite3.Connection, source_dir: Path, org: str, store:
             """
             INSERT OR IGNORE INTO inventory_snapshots
                 (import_batch_id, organization_id, store_id, product_id, snapshot_date, quantity_on_hand, source_line)
-            VALUES (?, ?, ?, ?, CURRENT_DATE, ?, ?)
+            SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM inventory_snapshots
+                WHERE organization_id = ?
+                  AND store_id = ?
+                  AND product_id = ?
+                  AND snapshot_date = ?
+                  AND quantity_on_hand = ?
+            )
             """,
-            (batch_id, org, store, pid, money(stock), line),
+            (batch_id, org, store, pid, snapshot_date, money(stock), line, org, store, pid, snapshot_date, money(stock)),
         )
         conn.execute(
             """
             INSERT INTO price_snapshots
                 (import_batch_id, organization_id, store_id, product_id, snapshot_date, sale_price, source_line)
-            VALUES (?, ?, ?, ?, CURRENT_DATE, ?, ?)
+            SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM price_snapshots
+                WHERE organization_id = ?
+                  AND store_id = ?
+                  AND product_id = ?
+                  AND snapshot_date = ?
+                  AND sale_price = ?
+            )
             """,
-            (batch_id, org, store, pid, money(price), line),
+            (batch_id, org, store, pid, snapshot_date, money(price), line, org, store, pid, snapshot_date, money(price)),
         )
         conn.execute(
             """
@@ -345,6 +369,7 @@ def import_products(conn: sqlite3.Connection, source_dir: Path, org: str, store:
 def import_costs(conn: sqlite3.Connection, source_dir: Path, org: str, batch_id: str) -> None:
     source_file_id = insert_source_file(conn, batch_id, source_dir, "produtocusto__Sheet1.csv", "product_cost")
     rows = read_rows(source_dir / "produtocusto__Sheet1.csv")
+    snapshot_date = date.today().isoformat()
     for line, row in enumerate(rows[1:], start=2):
         if len(row) < 8 or not row[0].isdigit():
             continue
@@ -359,9 +384,39 @@ def import_costs(conn: sqlite3.Connection, source_dir: Path, org: str, batch_id:
             INSERT INTO cost_snapshots
                 (import_batch_id, organization_id, product_id, snapshot_date, purchase_cost, freight_cost,
                  icms_cost, ipi_cost, total_cost, source_line)
-            VALUES (?, ?, ?, CURRENT_DATE, ?, ?, ?, ?, ?, ?)
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM cost_snapshots
+                WHERE organization_id = ?
+                  AND product_id = ?
+                  AND snapshot_date = ?
+                  AND purchase_cost = ?
+                  AND freight_cost = ?
+                  AND icms_cost = ?
+                  AND ipi_cost = ?
+                  AND total_cost = ?
+            )
             """,
-            (batch_id, org, pid, money(purchase), money(freight), money(icms), money(ipi), money(total), line),
+            (
+                batch_id,
+                org,
+                pid,
+                snapshot_date,
+                money(purchase),
+                money(freight),
+                money(icms),
+                money(ipi),
+                money(total),
+                line,
+                org,
+                pid,
+                snapshot_date,
+                money(purchase),
+                money(freight),
+                money(icms),
+                money(ipi),
+                money(total),
+            ),
         )
         conn.execute(
             """
@@ -373,10 +428,12 @@ def import_costs(conn: sqlite3.Connection, source_dir: Path, org: str, batch_id:
         )
 
 
-def import_product_sales(conn: sqlite3.Connection, source_dir: Path, org: str, store: str, batch_id: str) -> None:
+def import_product_sales(conn: sqlite3.Connection, source_dir: Path, org: str, store: str, batch_id: str) -> dict:
     source_file_id = insert_source_file(conn, batch_id, source_dir, "saidaprod__Sheet1.csv", "product_sales")
     rows = read_rows(source_dir / "saidaprod__Sheet1.csv")
     imported = 0
+    period_start = ""
+    period_end = ""
     for line, row in enumerate(rows[1:], start=2):
         if len(row) < 8 or not row[0].isdigit():
             continue
@@ -389,6 +446,22 @@ def import_product_sales(conn: sqlite3.Connection, source_dir: Path, org: str, s
         if not conn.execute("SELECT 1 FROM products WHERE id = ?", (pid,)).fetchone():
             pid = upsert_product(conn, org=org, batch_id=batch_id, code=code, name=product_name, payload={"source_line": line})
         cid = upsert_customer(conn, org, batch_id, customer_code, customer_name)
+        payload_json = json.dumps(row, ensure_ascii=False)
+        if conn.execute(
+            """
+            SELECT 1 FROM product_sales
+            WHERE organization_id = ?
+              AND store_id = ?
+              AND product_id = ?
+              AND sold_at = ?
+              AND source_payload_json = ?
+            LIMIT 1
+            """,
+            (org, store, pid, sold_at, payload_json),
+        ).fetchone():
+            period_start = min(period_start or sold_at, sold_at)
+            period_end = max(period_end or sold_at, sold_at)
+            continue
         conn.execute(
             """
             INSERT INTO product_sales
@@ -396,16 +469,21 @@ def import_product_sales(conn: sqlite3.Connection, source_dir: Path, org: str, s
                  quantity, gross_amount, movement_type, source_line, source_payload_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (batch_id, org, store, pid, cid, sold_at, money(qty), money(amount), movement, line, json.dumps(row, ensure_ascii=False)),
+            (batch_id, org, store, pid, cid, sold_at, money(qty), money(amount), movement, line, payload_json),
         )
         imported += 1
+        period_start = min(period_start or sold_at, sold_at)
+        period_end = max(period_end or sold_at, sold_at)
     issue(conn, batch_id, source_file_id, "info", "product_sales_imported", f"{imported} vendas de produtos importadas")
+    return {"imported": imported, "period_start": period_start, "period_end": period_end}
 
 
-def import_service_sales(conn: sqlite3.Connection, source_dir: Path, org: str, store: str, batch_id: str) -> None:
+def import_service_sales(conn: sqlite3.Connection, source_dir: Path, org: str, store: str, batch_id: str) -> dict:
     source_file_id = insert_source_file(conn, batch_id, source_dir, "servico__Sheet1.csv", "service_sales")
     rows = read_rows(source_dir / "servico__Sheet1.csv")
     imported = 0
+    period_start = ""
+    period_end = ""
     for line, row in enumerate(rows[2:], start=3):
         if len(row) < 8 or not row[0].replace(".", "", 1).isdigit():
             continue
@@ -415,6 +493,22 @@ def import_service_sales(conn: sqlite3.Connection, source_dir: Path, org: str, s
         order_number, service_name, customer_name = row[1], row[2], row[3]
         sid = upsert_service(conn, org, batch_id, service_name)
         cid = upsert_customer(conn, org, batch_id, "", customer_name)
+        payload_json = json.dumps(row, ensure_ascii=False)
+        if conn.execute(
+            """
+            SELECT 1 FROM service_sales
+            WHERE organization_id = ?
+              AND store_id = ?
+              AND service_id = ?
+              AND emitted_at = ?
+              AND source_payload_json = ?
+            LIMIT 1
+            """,
+            (org, store, sid, emitted_at, payload_json),
+        ).fetchone():
+            period_start = min(period_start or emitted_at, emitted_at)
+            period_end = max(period_end or emitted_at, emitted_at)
+            continue
         conn.execute(
             """
             INSERT INTO service_sales
@@ -422,31 +516,13 @@ def import_service_sales(conn: sqlite3.Connection, source_dir: Path, org: str, s
                  order_number, quantity, gross_amount, tax_amount, net_amount, source_line, source_payload_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (batch_id, org, store, sid, cid, emitted_at, order_number, money(row[4]), money(row[5]), money(row[6]), money(row[7]), line, json.dumps(row, ensure_ascii=False)),
+            (batch_id, org, store, sid, cid, emitted_at, order_number, money(row[4]), money(row[5]), money(row[6]), money(row[7]), line, payload_json),
         )
         imported += 1
+        period_start = min(period_start or emitted_at, emitted_at)
+        period_end = max(period_end or emitted_at, emitted_at)
     issue(conn, batch_id, source_file_id, "info", "service_sales_imported", f"{imported} vendas de servicos importadas")
-
-
-def import_profit_summary(conn: sqlite3.Connection, source_dir: Path, org: str, batch_id: str) -> None:
-    source_file_id = insert_source_file(conn, batch_id, source_dir, "saidaprodlucro__Sheet1.csv", "product_profit")
-    rows = read_rows(source_dir / "saidaprodlucro__Sheet1.csv")
-    for line, row in enumerate(rows[1:], start=2):
-        if len(row) < 9 or not row[0].isdigit():
-            continue
-        code, name = row[0], row[1]
-        pid = product_id(org, code)
-        if not conn.execute("SELECT 1 FROM products WHERE id = ?", (pid,)).fetchone():
-            pid = upsert_product(conn, org=org, batch_id=batch_id, code=code, name=name, payload={"source_line": line})
-        conn.execute(
-            """
-            INSERT INTO product_profit_summaries
-                (import_batch_id, organization_id, product_id, quantity, gross_amount, cost_amount,
-                 tax_amount, operating_cost_amount, gross_profit_amount, net_profit_amount, source_line)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (batch_id, org, pid, money(row[2]), money(row[3]), money(row[4]), money(row[5]), money(row[6]), money(row[7]), money(row[8]), line),
-        )
+    return {"imported": imported, "period_start": period_start, "period_end": period_end}
 
 
 def create_operational_tasks(conn: sqlite3.Connection, org: str, store: str, batch_id: str) -> None:
@@ -480,18 +556,8 @@ def create_operational_tasks(conn: sqlite3.Connection, org: str, store: str, bat
         )
 
 
-def clear_imported_facts(conn: sqlite3.Connection, org: str) -> None:
-    for table in (
-        "product_sales",
-        "service_sales",
-        "inventory_snapshots",
-        "price_snapshots",
-        "cost_snapshots",
-        "product_profit_summaries",
-    ):
-        conn.execute(f"DELETE FROM {table} WHERE organization_id = ?", (org,))
-    # Referencias de fornecedor importadas do CSV eram inconsistentes; agora sao manuais.
-    # Limpa apenas as vindas do practica_csv, preservando preenchimentos manuais.
+def clear_deprecated_imported_supplier_references(conn: sqlite3.Connection, org: str) -> None:
+    # O CSV de custo trazia "referencia" inconsistente; a referencia valida e manual no Nexo.
     conn.execute(
         """
         DELETE FROM product_identifiers
@@ -505,33 +571,61 @@ def clear_imported_facts(conn: sqlite3.Connection, org: str) -> None:
 
 def import_all(source_dir: Path, db_path: Path, org: str, store: str) -> None:
     conn = begin_db(db_path)
-    batch_id = f"{org}:batch:{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    batch_id = f"{org}:batch:{datetime.now().strftime('%Y%m%d%H%M%S')}:{uuid4().hex[:8]}"
     with conn:
         conn.execute("INSERT OR IGNORE INTO organizations (id, name) VALUES (?, ?)", (org, "Empresa teste"))
         conn.execute("INSERT OR IGNORE INTO stores (id, organization_id, name) VALUES (?, ?, ?)", (store, org, "Loja principal"))
-        clear_imported_facts(conn, org)
+        previous_batch = conn.execute(
+            """
+            SELECT id
+            FROM import_batches
+            WHERE organization_id = ?
+              AND source_system = 'practica_csv'
+              AND status IN ('finished', 'completed')
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (org,),
+        ).fetchone()
         conn.execute(
             """
             INSERT INTO import_batches
-                (id, organization_id, store_id, source_system, status, import_mode, source_period_start, source_period_end, finished_at)
-            VALUES (?, ?, ?, 'practica_csv', 'finished', 'full_refresh', '2024-04-01', '2026-04-30', CURRENT_TIMESTAMP)
+                (id, organization_id, store_id, source_system, status, import_mode, supersedes_batch_id, finished_at)
+            VALUES (?, ?, ?, 'practica_csv', 'finished', 'incremental_sync', ?, CURRENT_TIMESTAMP)
             """,
-            (batch_id, org, store),
+            (batch_id, org, store, previous_batch["id"] if previous_batch else None),
         )
         import_products(conn, source_dir, org, store, batch_id)
         seed_brand_suppliers(conn, org)
+        clear_deprecated_imported_supplier_references(conn, org)
         import_costs(conn, source_dir, org, batch_id)
-        import_product_sales(conn, source_dir, org, store, batch_id)
-        import_service_sales(conn, source_dir, org, store, batch_id)
-        import_profit_summary(conn, source_dir, org, batch_id)
+        product_sales_info = import_product_sales(conn, source_dir, org, store, batch_id)
+        service_sales_info = import_service_sales(conn, source_dir, org, store, batch_id)
         create_operational_tasks(conn, org, store, batch_id)
+        period_starts = [item["period_start"] for item in (product_sales_info, service_sales_info) if item["period_start"]]
+        period_ends = [item["period_end"] for item in (product_sales_info, service_sales_info) if item["period_end"]]
+        source_period_start = min(period_starts) if period_starts else None
+        source_period_end = max(period_ends) if period_ends else None
         summary = {
             "products": conn.execute("SELECT COUNT(*) FROM products WHERE organization_id = ?", (org,)).fetchone()[0],
             "product_sales": conn.execute("SELECT COUNT(*) FROM product_sales WHERE organization_id = ?", (org,)).fetchone()[0],
             "service_sales": conn.execute("SELECT COUNT(*) FROM service_sales WHERE organization_id = ?", (org,)).fetchone()[0],
             "customers": conn.execute("SELECT COUNT(*) FROM customers WHERE organization_id = ?", (org,)).fetchone()[0],
+            "new_product_sales": product_sales_info["imported"],
+            "new_service_sales": service_sales_info["imported"],
+            "source_period_start": source_period_start,
+            "source_period_end": source_period_end,
         }
-        conn.execute("UPDATE import_batches SET summary_json = ? WHERE id = ?", (json.dumps(summary), batch_id))
+        conn.execute(
+            """
+            UPDATE import_batches
+            SET source_period_start = ?,
+                source_period_end = ?,
+                summary_json = ?
+            WHERE id = ?
+            """,
+            (source_period_start, source_period_end, json.dumps(summary), batch_id),
+        )
     conn.close()
     print(f"Importacao concluida em {db_path}")
 

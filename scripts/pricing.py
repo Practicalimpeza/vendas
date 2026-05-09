@@ -98,14 +98,28 @@ def api_pricing(conn: sqlite3.Connection, period: dict | None = None) -> dict:
             GROUP BY product_id
         ),
         prices AS (
-            SELECT product_id, MAX(sale_price) AS sale_price
-            FROM price_snapshots
-            GROUP BY product_id
+            SELECT product_id, sale_price
+            FROM price_snapshots ps
+            WHERE ps.id = (
+                SELECT ps2.id
+                FROM price_snapshots ps2
+                WHERE ps2.organization_id = ps.organization_id
+                  AND ps2.product_id = ps.product_id
+                ORDER BY ps2.snapshot_date DESC, ps2.id DESC
+                LIMIT 1
+            )
         ),
         costs AS (
-            SELECT product_id, MAX(total_cost) AS imported_cost
-            FROM cost_snapshots
-            GROUP BY product_id
+            SELECT product_id, total_cost AS imported_cost
+            FROM cost_snapshots cs
+            WHERE cs.id = (
+                SELECT cs2.id
+                FROM cost_snapshots cs2
+                WHERE cs2.organization_id = cs.organization_id
+                  AND cs2.product_id = cs.product_id
+                ORDER BY cs2.snapshot_date DESC, cs2.id DESC
+                LIMIT 1
+            )
         )
         SELECT
             p.id AS product_id,
@@ -129,7 +143,6 @@ def api_pricing(conn: sqlite3.Connection, period: dict | None = None) -> dict:
         WHERE p.active = 1
           AND (COALESCE(s.revenue, 0) > 0 OR COALESCE(pr.sale_price, 0) > 0)
         ORDER BY COALESCE(s.revenue, 0) DESC
-        LIMIT 250
         """,
         params,
     )
@@ -144,7 +157,7 @@ def api_pricing(conn: sqlite3.Connection, period: dict | None = None) -> dict:
     }
     priority = {"margem_negativa": 0, "sem_custo": 1, "sem_preco": 1, "margem_baixa": 2, "oportunidade": 3, "ok": 4}
     rows_with_signals.sort(key=lambda row: (priority.get(row["signal"], 9), -float(row.get("revenue") or 0)))
-    return {"summary": summary, "rows": rows_with_signals}
+    return {"contract": "pricing.v1", "period": period, "summary": summary, "rows": rows_with_signals}
 
 
 def update_product_pricing(conn: sqlite3.Connection, payload: dict) -> dict:

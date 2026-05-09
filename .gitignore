@@ -7,6 +7,7 @@ __pycache__/
 .venv/
 venv/
 .claude/
+.codex-tools/
 
 # Node / frontend
 node_modules/
@@ -31,6 +32,8 @@ Thumbs.db
 
 # Dados sensíveis Practica / CSVs reais na raiz
 /*.csv
+/*.xlsm
+/Srv import/
 
 # Arquivos legados / referência local que não pertencem ao repo
 combobox

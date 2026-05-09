@@ -7,6 +7,38 @@ CREATE TABLE IF NOT EXISTS organizations (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS organization_profiles (
+    organization_id TEXT PRIMARY KEY REFERENCES organizations(id),
+    trade_name TEXT DEFAULT '',
+    legal_name TEXT DEFAULT '',
+    document TEXT DEFAULT '',
+    state_registration TEXT DEFAULT '',
+    municipal_registration TEXT DEFAULT '',
+    contact_name TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    website TEXT DEFAULT '',
+    address_line TEXT DEFAULT '',
+    address_number TEXT DEFAULT '',
+    address_complement TEXT DEFAULT '',
+    district TEXT DEFAULT '',
+    city TEXT DEFAULT '',
+    state TEXT DEFAULT '',
+    postal_code TEXT DEFAULT '',
+    country TEXT DEFAULT 'Brasil',
+    logo_path TEXT DEFAULT '',
+    document_footer TEXT DEFAULT '',
+    default_payment_terms TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS stores (
     id TEXT PRIMARY KEY,
     organization_id TEXT NOT NULL REFERENCES organizations(id),
@@ -390,6 +422,9 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
     quote_code TEXT NOT NULL DEFAULT '',
     product_name TEXT NOT NULL DEFAULT '',
     unit TEXT DEFAULT '',
+    purchase_unit TEXT DEFAULT '',
+    purchase_package_size NUMERIC NOT NULL DEFAULT 1,
+    coverage_target_days INTEGER,
     suggested_quantity NUMERIC NOT NULL DEFAULT 0,
     requested_quantity NUMERIC NOT NULL DEFAULT 0,
     ordered_quantity NUMERIC NOT NULL DEFAULT 0,
@@ -470,6 +505,26 @@ CREATE TABLE IF NOT EXISTS action_items (
     ignored_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS operational_decisions (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    actor_user_id TEXT DEFAULT '',
+    source_kind TEXT NOT NULL DEFAULT 'user',
+    source_view TEXT NOT NULL DEFAULT '',
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL DEFAULT '',
+    entity_label TEXT NOT NULL DEFAULT '',
+    decision_type TEXT NOT NULL,
+    decision_value TEXT NOT NULL DEFAULT '',
+    scope_type TEXT NOT NULL DEFAULT 'single',
+    scope_label TEXT NOT NULL DEFAULT '',
+    applied_to_count INTEGER NOT NULL DEFAULT 1,
+    reason TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     organization_id TEXT NOT NULL REFERENCES organizations(id),
@@ -506,6 +561,9 @@ CREATE INDEX IF NOT EXISTS idx_purchase_orders_quote ON purchase_orders(organiza
 CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order ON purchase_order_items(purchase_order_id);
 CREATE INDEX IF NOT EXISTS idx_action_items_org_status ON action_items(organization_id, status, priority, created_at);
 CREATE INDEX IF NOT EXISTS idx_action_items_target ON action_items(organization_id, target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_operational_decisions_org_created ON operational_decisions(organization_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_operational_decisions_entity ON operational_decisions(organization_id, entity_type, entity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_operational_decisions_type ON operational_decisions(organization_id, decision_type, decision_value, created_at);
 
 CREATE VIEW IF NOT EXISTS v_products_effective AS
 SELECT
