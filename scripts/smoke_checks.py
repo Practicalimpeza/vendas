@@ -245,7 +245,7 @@ def smoke_static_assets() -> None:
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     js = "\n".join(
         (WEB_DIR / script_name).read_text(encoding="utf-8")
-        for script_name in ("app_core.js", "app_charts.js", "app.js")
+        for script_name in ("app_core.js", "app_charts.js", "app_tables.js", "app.js")
     )
     backend = (SCRIPTS_DIR / "serve_app.py").read_text(encoding="utf-8")
     api_routes = (SCRIPTS_DIR / "api_routes.py").read_text(encoding="utf-8")

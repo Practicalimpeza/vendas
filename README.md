@@ -47,6 +47,8 @@ nexovarejo/
     utilitarios, contratos e chamadas HTTP do frontend
   web/app_charts.js
     helpers de graficos e linhas visuais do frontend
+  web/app_tables.js
+    filtros, ordenacao e observacao de tabelas do frontend
   *.csv
     exportacoes de exemplo da empresa teste
 ```
