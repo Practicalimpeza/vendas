@@ -1,12 +1,37 @@
 {
   "id": "action_center",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Central de Acoes",
+  "purpose": "Transformar sinais do Nexo em uma fila diaria curta, explicavel e executavel pelo gestor.",
+  "inputs": [
+    "api_replenishment",
+    "api_quote_drafts",
+    "api_pricing",
+    "api_commercial_intelligence",
+    "import_readiness",
+    "action_items",
+    "operational_decisions"
+  ],
+  "outputs": [
+    "acao priorizada",
+    "motivo operacional",
+    "impacto esperado",
+    "view de execucao",
+    "status da acao"
+  ],
   "principles": [
     "A Central de Acoes deve mostrar poucas acoes de alto impacto.",
     "Cada acao precisa explicar motivo, impacto e area de execucao.",
     "Status de acao e dado operacional canonico do Nexo.",
-    "Acoes concluidas alimentam maturidade e memoria da rotina."
+    "Acoes concluidas alimentam maturidade e memoria da rotina.",
+    "A fila deve priorizar compra, margem, cliente e dado quando houver risco operacional claro.",
+    "Acoes geradas podem sair da fila, mas decisoes humanas permanecem auditaveis."
+  ],
+  "guardrails": [
+    "Nao criar fila longa para o gestor.",
+    "Nao gerar acao sem motivo e proxima tela clara.",
+    "Nao apagar decisoes humanas quando uma acao for ignorada ou concluida.",
+    "Priorizar risco operacional antes de recomendacoes cosmeticas."
   ],
   "actions": {
     "quote_pilot": {

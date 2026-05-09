@@ -1,11 +1,39 @@
 {
   "id": "implementation_journey",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Implantacao Progressiva",
+  "purpose": "Levar um novo comercio do arquivo bruto ao primeiro valor operacional com o menor atrito possivel.",
+  "inputs": [
+    "arquivos recebidos",
+    "import_batches",
+    "import_issues",
+    "implementation_projects",
+    "implementation_tasks",
+    "maturidade operacional"
+  ],
+  "outputs": [
+    "proximo passo de implantacao",
+    "pendencias de dados",
+    "primeiro valor entregue",
+    "estagio atual da jornada"
+  ],
   "principles": [
     "Nao exigir cadastro grande no inicio.",
     "Mostrar sempre o que ja e possivel com os dados atuais.",
     "Pedir o proximo dado apenas quando ele desbloqueia ganho visivel.",
-    "Transformar evolucao de dados em engajamento operacional."
+    "Transformar evolucao de dados em engajamento operacional.",
+    "A beta deve provar rotina antes de escalar tecnologia."
+  ],
+  "stages": [
+    "leitura inicial",
+    "dados confiaveis",
+    "compra assistida",
+    "rotina semanal",
+    "inteligencia recorrente"
+  ],
+  "guardrails": [
+    "Nao vender automacao antes de ter confianca nos dados.",
+    "Nao exigir fornecedor completo antes de gerar uma primeira cotacao piloto.",
+    "Registrar pendencias como proximo passo, nao como falha do cliente."
   ]
 }

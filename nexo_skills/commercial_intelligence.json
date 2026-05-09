@@ -1,11 +1,20 @@
 {
   "id": "commercial_intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Inteligencia Comercial",
+  "purpose": "Converter historico de venda em pequenas acoes comerciais, sem transformar o produto em CRM pesado.",
   "principles": [
     "Historico comercial deve virar acao pequena, nao apenas relatorio.",
     "Cliente em risco e detectado por desvio da propria cadencia historica.",
     "Recompra provavel deve ser tratada como contato simples e recorrente.",
-    "Queda de produto ou marca pede investigacao antes de conclusao."
+    "Queda de produto ou marca pede investigacao antes de conclusao.",
+    "A recomendacao deve explicar hipotese, evidencia e proximo passo."
+  ],
+  "inputs": ["product_sales", "service_sales", "customers"],
+  "outputs": ["clientes em risco", "recompra provavel", "queda/crescimento de produto ou marca", "acao comercial pequena"],
+  "guardrails": [
+    "Nao presumir causa de queda sem evidencias adicionais.",
+    "Nao sugerir campanha grande quando um contato simples valida a rotina.",
+    "Ignorar cliente generico quando a analise depende de relacionamento."
   ]
 }

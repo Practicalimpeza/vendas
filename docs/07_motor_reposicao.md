@@ -20,9 +20,10 @@ ajustavel por configuracoes operacionais.
 Dados importados:
 
 - vendas por produto e data;
-- estoque atual;
-- custo atual;
-- preco de venda;
+- estoque atual, lido pelo snapshot mais recente por produto e loja;
+- pedidos de compra em aberto, considerando saldo ainda nao recebido;
+- custo atual, lido pelo snapshot mais recente por produto;
+- preco de venda, lido pelo snapshot mais recente por produto;
 - cadastro de produto;
 - referencia do fornecedor quando existir;
 - marca e unidade quando existirem.
@@ -96,7 +97,11 @@ ponto_de_pedido =
   + estoque_minimo
 ```
 
-Se o estoque atual esta abaixo desse ponto, o produto entra em compra.
+Se o estoque projetado esta abaixo desse ponto, o produto entra em compra.
+O estoque projetado soma o estoque fisico atual com pedidos de compra ainda nao
+recebidos nos status `approved`, `sent` e `partial_received`. Quando o pedido
+em aberto cobre toda a necessidade calculada, a sugestao fica zerada. Quando
+nao cobre, o motor sugere apenas o complemento.
 
 ### Alvo de estoque
 
@@ -109,7 +114,9 @@ alvo =
   + estoque_minimo
 ```
 
-A sugestao compra ate o alvo, respeitando estoque maximo quando configurado.
+A sugestao compra ate o alvo, abatendo pedidos em aberto e respeitando estoque
+maximo quando configurado. Pedidos em aberto aparecem nos dados da linha para
+explicar a diferenca entre estoque fisico e estoque projetado.
 
 ### Arredondamento por embalagem
 
@@ -128,7 +135,7 @@ Se embalagem nao estiver configurada, assume 1 unidade.
 | `Monitorar` | Cobertura abaixo da meta, mas ainda acima do ponto de pedido. |
 | `Estoque ok` | Sem acao imediata. |
 | `Excesso` | Estoque acima do consumo projetado e da cobertura alvo. |
-| `Sem demanda` | Nao ha demanda suficiente para comprar. |
+| `Sem demanda` | Nao ha demanda suficiente para comprar no periodo analisado; o produto ainda aparece quando existe estoque, custo ou cadastro. |
 | `Fora do mix` | Produto sem estoque e sem venda recente; escondido da rotina principal por padrao. |
 | `Bloqueado` | Produto bloqueado operacionalmente. |
 | `Ignorado` | Produto fora dos relatorios de compra. |
@@ -234,7 +241,6 @@ Assim, um produto A em risco sobe acima de um produto C com pequena falta.
 
 ## Limitacoes atuais
 
-- Ainda nao considera pedidos em aberto.
 - Ainda nao considera calendario de entrega por fornecedor.
 - Ainda nao calcula sazonalidade por mes de forma explicita.
 - Ainda nao sabe rupturas passadas, porque ha apenas snapshot atual de estoque.
@@ -242,7 +248,6 @@ Assim, um produto A em risco sobe acima de um produto C com pequena falta.
 
 ## Evolucoes planejadas
 
-- Incorporar pedidos em aberto.
 - Criar configuracao em lote por fornecedor, marca e categoria.
 - Enviar cotacao por WhatsApp a partir do telefone do fornecedor.
 - Detectar sazonalidade mensal.

@@ -1,17 +1,27 @@
 {
   "id": "data_governance",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Governanca de Dados",
+  "purpose": "Separar origem importada, inferencia, configuracao manual e decisao operacional para evitar sobrescrita indevida.",
   "principles": [
     "Dados importados do ERP sao canonicos na origem e read-only no Nexo.",
     "Dados inferidos devem aparecer com baixa ou media confianca ate confirmacao.",
     "Configuracoes e decisoes operacionais feitas no Nexo sao canonicas no Nexo.",
-    "Importacoes futuras nao devem sobrescrever decisoes operacionais manuais."
+    "Importacoes futuras nao devem sobrescrever decisoes operacionais manuais.",
+    "Reimportacao deve preservar historico e impedir duplicidade de fatos iguais.",
+    "Snapshots devem ser lidos pelo registro mais recente por produto, loja e data de referencia."
   ],
+  "inputs": ["import_batches", "source_files", "source_records", "source_entity_changes", "import_issues"],
+  "outputs": ["confianca do dado", "issues de importacao", "periodo real importado", "trilha de auditoria"],
   "states": {
     "imported": "Dado vindo do ERP ou planilha base.",
     "inferred": "Dado sugerido pelo Nexo com confianca limitada.",
     "manual_confirmed": "Dado operacional confirmado pelo usuario no Nexo.",
     "operational_decision": "Decisao canonica de operacao, historico ou rotina no Nexo."
-  }
+  },
+  "guardrails": [
+    "Nao apagar vendas, servicos, custos, precos ou estoque por reimportacao.",
+    "Referencia de fornecedor antiga vinda do CSV Practica pode ser limpa porque a origem foi considerada inconsistente.",
+    "Dado manual so muda por acao explicita do operador ou por decisao de conflito."
+  ]
 }

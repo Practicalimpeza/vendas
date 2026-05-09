@@ -118,6 +118,12 @@ Resultado esperado:
 - proposta de mapeamento para o conector;
 - lista de bloqueios.
 
+No MVP atual, `/api/imports` retorna um bloco `quality` com o diagnostico do
+ultimo lote: confianca, linhas lidas, linhas mapeadas, linhas sem mapeamento,
+issues, conflitos manuais, mudancas pendentes e proximo passo recomendado. Esse
+bloco deve ser usado como semaforo da beta assistida antes de apresentar
+reposicao, cotacao ou margem como rotina confiavel.
+
 ### 4. Mapeamento para o modelo canonico
 
 Cada origem deve virar um arquivo de mapeamento semelhante a
@@ -165,6 +171,15 @@ Resultado esperado:
 - lote aprovado com ressalvas;
 - ou lote bloqueado.
 
+Para a beta, a aprovacao pratica do lote deve seguir:
+
+- **pronto**: lote concluido, sem erros, sem conflitos manuais pendentes e sem
+  linhas uteis fora do mapeamento;
+- **com ressalvas**: lote concluido, mas com avisos, mudancas de origem ou
+  campos de confianca incompletos;
+- **bloqueado**: lote incompleto, com erro, vazio ou com conflito manual
+  pendente.
+
 ### 6. Configuracao operacional
 
 Depois da carga, o cliente precisa completar informacoes que o ERP nem sempre
@@ -210,6 +225,15 @@ O primeiro dashboard de um cliente novo deve responder:
 
 O objetivo nao e mostrar tudo no primeiro dia. O objetivo e fazer o gestor confiar
 que os dados foram entendidos.
+
+Antes da primeira rotina, o implantador deve abrir a tela de importacao e
+confirmar:
+
+- confianca do lote e status do diagnostico;
+- linhas lidas versus linhas mapeadas;
+- conflitos ERP/manual resolvidos explicitamente;
+- issues e mudancas pendentes justificadas;
+- blocos essenciais cobertos: produtos, estoque, preco, custo e vendas.
 
 ### 8. Primeira rotina recorrente
 

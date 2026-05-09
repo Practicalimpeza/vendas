@@ -1,0 +1,20 @@
+{
+  "id": "pricing_guardrails",
+  "version": "0.1.0",
+  "name": "Precificacao e Margem",
+  "purpose": "Ajudar o gestor a enxergar margem e preco alvo sem substituir a decisao nem o cadastro oficial do ERP.",
+  "principles": [
+    "Preco oficial continua no ERP.",
+    "Custo manual no Nexo e uma configuracao operacional para analise, nao substitui o custo importado.",
+    "Papel do produto muda o alvo minimo de margem.",
+    "Margem negativa ou baixa deve gerar revisao, nao alteracao automatica.",
+    "Reposicao de produto com margem ruim merece alerta antes de compra."
+  ],
+  "inputs": ["price_snapshots", "cost_snapshots", "product_pricing_settings", "product_sales"],
+  "outputs": ["sinal de margem", "preco alvo", "severidade", "acao sugerida"],
+  "guardrails": [
+    "Nao escrever preco de venda no ERP.",
+    "Nao sugerir aumento sem custo confiavel.",
+    "Separar produto ancora, commodity, normal e marca propria antes de julgar margem."
+  ]
+}

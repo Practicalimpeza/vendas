@@ -33,7 +33,7 @@ padroniza os dados em um modelo SQL canônico e entrega uma **mesa de trabalho w
 | Banco | SQLite | Arquivo local `data/nexovarejo.db`, schema em `schema/canonical.sql` |
 | Frontend | HTML5 + CSS3 + JavaScript vanilla | Zero frameworks. SPA manual com `data-view` toggles no DOM |
 | Servidor HTTP | `http.server.ThreadingHTTPServer` | Servido pelo próprio Python, sem WSGI/ASGI |
-| Dependências | **Nenhuma** | `requirements.txt` vazio, apenas biblioteca padrão |
+| Dependências | Sem instalação | Backend só com biblioteca padrão; frontend usa bibliotecas vendorizadas em `web/vendor/` |
 | Build/bundler | Nenhum | Arquivos estáticos servidos diretamente de `web/` |
 
 ---
@@ -42,7 +42,9 @@ padroniza os dados em um modelo SQL canônico e entrega uma **mesa de trabalho w
 
 ```text
 nexovarejo/
-  docs/               (16 arquivos .md) — documentação do produto
+  HANDOFF.md          — estado vivo e próximos passos para novas sessões
+  docs/               — documentação do produto e decisões
+    README.md                      — índice vivo da documentação
     00_visao_produto.md             — visão, personas, jobs-to-be-done
     01_inventario_dados_exemplo.md  — catálogo dos CSVs de entrada
     02_modelo_canonico_sql.md       — modelo de dados padronizado
@@ -63,17 +65,37 @@ nexovarejo/
     17_ciclo_cotacao.md             — ciclo completo de cotação
     18_pedido_compra_canonico.md    — modelo de pedido de compra
     19_precificacao_periodo.md      — precificação por período
+    20_estado_atual.md              — snapshot do produto implementado
+    21_metodo_de_trabalho.md        — método para modelar decisões
+    22_roadmap_produto_final.md     — plano de estabilização
+    23_contratos_api.md             — contratos mínimos de API
     99_guia_de_contexto.md          — guia rápido de contexto
   schema/
-    canonical.sql                   — schema SQL completo (~20 tabelas)
+    canonical.sql                   — schema SQL completo e schema_migrations
   scripts/
-    import_practica.py              — pipeline de ingestão dos 5 CSVs (22 KB)
-    serve_app.py                    — servidor HTTP + API + regras de negócio (150 KB)
+    serve_app.py                    — camada HTTP fina, arquivos estáticos e bootstrap local
+    api_routes.py                   — mapa GET/POST das rotas
+    api_contracts.py                — validadores de contrato e health
+    http_helpers.py                 — respostas HTTP, erros e arquivos
+    import_practica.py              — pipeline de ingestão dos 5 CSVs da Practica
+    erp_import_flow.py              — importação assistida de planilhas ERP
+    replenishment.py                — reposição, estoque e compra sugerida
+    quotes.py                       — cotações, pedidos e recebimento
+    pricing.py                      — precificação acionável
+    commercial.py                   — clientes, serviços e inteligência comercial
+    supplier_ops.py                 — fornecedores, marcas e mix
+    action_center.py                — ações, timeline e pulso operacional
+    product_views.py                — dashboard, maturidade e produtos
+    schema_upgrades.py              — upgrades locais registrados em schema_migrations
+    smoke_checks.py                 — verificações automatizadas sem CSV real
   web/
-    index.html                      — shell da SPA com 12 views (20 KB)
-    app.js                          — lógica de frontend (89 KB)
-    app.css                         — estilos completos (30 KB)
-    logo.png                        — logo da empresa Practica
+    index.html                      — shell da SPA
+    app_core.js                     — API, contratos e formatadores compartilhados
+    app_charts.js                   — helpers de ECharts e linhas de dashboard
+    app.js                          — lógica de frontend vanilla
+    app.css                         — estilos completos
+    vendor/                         — ECharts e Lucide vendorizados
+    logo-practica-transparent.png   — logo da empresa Practica
   mappings/
     practica_csv.yml                — mapeamento colunas CSV → campos canônicos
   nexo_skills/
@@ -103,38 +125,42 @@ nexovarejo/
 
 | Arquivo | Peso | Função | Atenção |
 |---|---|---|---|
-| `scripts/serve_app.py` | 150 KB | Servidor HTTP + ~40 endpoints REST + analytics (RFM, ABC, reposição, precificação, cotações, auditoria) | **Monolito extremo** — toda regra de negócio, API e migração de schema está aqui |
-| `scripts/import_practica.py` | 22 KB | Pipeline de ingestão: lê 5 CSVs, faz ETL com detecção de mudanças, gera lotes de importação | Importação é `full_refresh` — deleta e reimporta a cada execução |
-| `schema/canonical.sql` | 22 KB | Define ~20 tabelas do modelo canônico | Schema base; migrações incrementais estão inline no `serve_app.py` |
-| `web/app.js` | 89 KB | Frontend completo — chamadas fetch, renderização, manipulação de DOM | JavaScript vanilla sem componentes, estado global |
-| `web/index.html` | 20 KB | Estrutura declarativa das 12 views como sections ocultas | Navegação por `data-view` + class `active` |
-| `web/app.css` | 30 KB | Todos os estilos da interface | Único arquivo, sem pré-processador |
+| `scripts/serve_app.py` | ~6 KB | Camada HTTP fina, bootstrap local e servidor de estáticos | Não recolocar regra de domínio aqui; use `api_routes.py` e módulos da área |
+| `scripts/api_routes.py` | ~5 KB | Roteamento GET/POST para funções de domínio | Endpoint novo deve nascer com contrato e smoke |
+| `scripts/import_practica.py` | ~26 KB | Pipeline de ingestão dos CSVs da Practica | Usa `incremental_sync`; não voltar para `full_refresh` destrutivo sem discutir |
+| `scripts/erp_import_flow.py` | ~113 KB | Importação assistida de planilhas ERP | Arquivo grande; localizar funções com grep antes de ler trechos |
+| `schema/canonical.sql` | ~24 KB | Define modelo canônico e `schema_migrations` | Mudança estrutural precisa de upgrade registrado |
+| `scripts/schema_upgrades.py` | ~17 KB | Upgrades locais e migração legada consolidada | Evitar `ALTER TABLE` solto fora deste trilho |
+| `scripts/smoke_checks.py` | ~46 KB | Smoke em banco temporário e HTTP | Gate principal antes/depois de mexer em fluxos centrais |
+| `web/app_core.js` | ~7 KB | API, validação de contratos e formatadores do frontend | Carregado antes de `app.js`, sem module/bundler |
+| `web/app_charts.js` | ~9 KB | Helpers de ECharts, score e linhas de dashboard | Carregado antes de `app.js`, sem module/bundler |
+| `web/app.js` | ~394 KB | Frontend principal, estado e rotinas de tela | Nunca ler inteiro; buscar função/handler específico |
+| `web/app.css` | ~176 KB | Estilos completos | Nunca ler inteiro; buscar seletor/seção específica |
+| `web/index.html` | ~20 KB | Estrutura declarativa das views | Navegação por `data-view` e sections |
 | `mappings/practica_csv.yml` | 4 KB | Mapeamento declarativo das colunas CSV para o modelo canônico | Base para futuros conectores de ERP |
 
 ---
 
 ## 5. Riscos técnicos atuais
 
-1. **Monolito de 150 KB** — `serve_app.py` concentra servidor, banco, regras de negócio, analytics e migrações. Difícil de manter e testar.
-2. **Zero autenticação** — adequado para MVP local, bloqueante para SaaS multiempresa.
-3. **SQLite multi-tenant** — schema usa `organization_id`, mas SQLite não suporta concorrência real. Migrar para PostgreSQL será necessário.
-4. **Migrações inline** — `ensure_schema_upgrades()` faz ALTER TABLE condicionais. Frágil, sem versionamento de migrations.
-5. **Full refresh na importação** — `clear_imported_facts()` deleta todos os fatos a cada importação. Inviável para volumes reais.
-6. **Caminhos hard-coded** — README referencia caminhos absolutos com `C:\Users\gabri\...`.
-7. **Dados sensíveis** — os CSVs na raiz contêm dados reais da empresa Practica (preços, custos, nomes de clientes). Verificar política de exposição.
-8. **Sem testes** — a pasta `tests/` foi deletada (`D` no git status). Nenhum teste automatizado atualmente.
+1. **Beta ainda local** — adequado para validação assistida, mas exige proteção simples antes de qualquer exposição fora de localhost.
+2. **SQLite multi-tenant** — schema usa `organization_id`, mas SQLite não resolve concorrência real de SaaS. PostgreSQL fica para etapa posterior.
+3. **Frontend grande em arquivo único** — `web/app.js` e `web/app.css` cresceram bastante; buscar trechos antes de editar e evitar reescritas amplas.
+4. **Importação assistida complexa** — `erp_import_flow.py` concentra parsing, mapeamento, conflitos e commit; mexer com smoke e casos de borda.
+5. **Migrações em transição** — existe trilho `schema_migrations`, mas upgrades locais ainda vivem consolidados em `schema_upgrades.py`.
+6. **Dados sensíveis** — os CSVs na raiz contêm dados reais da empresa Practica (preços, custos, nomes de clientes). Não expor nem comitar derivados.
+7. **Sem suíte formal de testes** — o gate atual é `scripts/smoke_checks.py`; ampliar quando fluxos de dinheiro/compra/margem mudarem.
 
 ---
 
 ## 6. Próximos passos recomendados
 
-1. Extrair endpoints da API do `serve_app.py` para documentação separada (grep `self.path.startswith` ou `def api_`).
-2. Separar regras de negócio do servidor HTTP — módulos `analytics.py`, `replenishment.py`, `quotes.py`, `pricing.py`.
-3. Criar `serve_app.py` como orquestrador fino, delegando para os módulos.
-4. Adicionar testes de integração para o pipeline de importação.
-5. Versionar migrações de schema em arquivos numerados, remover ALTER TABLE inline.
-6. Substituir caminhos absolutos por relativos no README e scripts.
-7. Migrar para PostgreSQL com connection pool antes de qualquer deploy multi-tenant.
+1. Consolidar o checkpoint atual: smoke verde, docs alinhados e working tree revisada antes de novas features grandes.
+2. Continuar a Fase 3 de UX de trabalho: compras/reposição, clientes, estoque e margem como filas de decisão.
+3. Melhorar onboarding de novos comércios: checklist de arquivos, confiança da importação e primeiro valor entregue.
+4. Fechar melhor o ciclo sugerido → cotado → comprado → recebido.
+5. Definir proteção simples de acesso antes de qualquer beta fora de localhost.
+6. Consolidar ou arquivar docs antigos que viraram histórico.
 
 ---
 
@@ -143,37 +169,37 @@ nexovarejo/
 ### Ordem de leitura otimizada
 
 1. **Este arquivo** (`PROJECT_MAP.md`) — visão geral
-2. `docs/99_guia_de_contexto.md` — guia rápido de contexto do produto
-3. `docs/00_visao_produto.md` — visão, personas e jobs-to-be-done
-4. `schema/canonical.sql` — modelo de dados (ler primeiras 80 linhas para entender as tabelas principais)
-5. `scripts/import_practica.py` — pipeline de ingestão (ler completo, 22 KB)
-6. `scripts/serve_app.py` — **não ler inteiro**. Use os comandos abaixo para explorar seções específicas
-7. `web/index.html` — estrutura das views (já lido)
+2. `HANDOFF.md` — estado vivo e próximos passos
+3. `docs/README.md` — índice vivo da documentação
+4. `docs/20_estado_atual.md` — snapshot do produto
+5. `docs/22_roadmap_produto_final.md` — fase atual e prioridades
+6. `docs/23_contratos_api.md` — contrato de endpoints centrais
+7. Documento específico da área que será alterada
 
 ### Comandos de entrada
 
 ```bash
-# Listar todos os endpoints da API
-grep -n "self.path.startswith\|self.path ==" scripts/serve_app.py
+# Listar rotas da API
+rg -n "GET_ROUTES|POST_ROUTES|/api/" scripts/api_routes.py scripts/serve_app.py
 
-# Ver assinatura das funções de analytics
-grep -n "^def " scripts/serve_app.py
+# Ver funções por módulo
+rg -n "^def " scripts/replenishment.py scripts/quotes.py scripts/pricing.py scripts/commercial.py
 
 # Encontrar lógica específica por palavra-chave
-grep -n "replenishment\|rfm\|abc\|quote\|pricing\|maturity" scripts/serve_app.py
+rg -n "replenishment|rfm|abc|quote|pricing|maturity|contract" scripts
 
 # Ver estrutura das tabelas principais
 head -n 200 schema/canonical.sql
 
-# Roadmap do produto
-cat roadmap.txt
+# Gate de verificação
+python scripts\smoke_checks.py
 ```
 
 ### Regras de contexto
 
 - O projeto está em **português** (código, comentários, docs, interface).
 - **Não editar arquivos** sem ler o conteúdo atual primeiro.
-- `serve_app.py` é grande — sempre use `grep` para localizar a seção relevante antes de ler com `offset/limit`.
+- Arquivos grandes como `erp_import_flow.py`, `web/app.js` e `web/app.css` devem ser explorados com grep/rg antes de ler trechos.
 - Os CSVs na raiz são **dados de exemplo** do ERP Practica, não são lixo.
 - `data/`, `outputs/` e `*.db` estão no `.gitignore` — bancos locais não são commitados.
 - A branch `main` é a única branch ativa.

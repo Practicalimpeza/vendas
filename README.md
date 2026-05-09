@@ -21,34 +21,52 @@ fornecedores, clientes, vendas, servicos, margem e desempenho.
 
 ```text
 nexovarejo/
+  HANDOFF.md
   docs/
+    README.md
     00_visao_produto.md
-    01_inventario_dados_exemplo.md
+    20_estado_atual.md
     02_modelo_canonico_sql.md
     03_ingestao_e_padronizacao.md
-    04_catalogo_analitico.md
     05_roadmap_operacional.md
     06_implantacao_novos_comercios.md
+    07_motor_reposicao.md
+    13_central_acoes.md
+    15_skills_internas_nexo.md
     99_guia_de_contexto.md
+  nexo_skills/
+    manifest.json
+    *.json
   schema/
     canonical.sql
   mappings/
     practica_csv.yml
+  web/vendor/
+    dependencias frontend vendorizadas
+  web/app_core.js
+    utilitarios, contratos e chamadas HTTP do frontend
+  web/app_charts.js
+    helpers de graficos e linhas visuais do frontend
   *.csv
     exportacoes de exemplo da empresa teste
 ```
 
+## Dependencias adicionadas
+
+O frontend agora usa bibliotecas vendorizadas em `web/vendor/`, sem build step:
+
+- ECharts 5.5.1 para graficos mais ricos.
+- Lucide 0.468.0 para iconografia consistente.
+
 ## Ordem recomendada de leitura
 
-1. `docs/00_visao_produto.md`
-2. `docs/01_inventario_dados_exemplo.md`
-3. `docs/02_modelo_canonico_sql.md`
-4. `docs/03_ingestao_e_padronizacao.md`
-5. `docs/04_catalogo_analitico.md`
+1. `HANDOFF.md`
+2. `docs/README.md`
+3. `docs/20_estado_atual.md`
+4. `docs/00_visao_produto.md`
+5. `docs/03_ingestao_e_padronizacao.md`
 6. `docs/05_roadmap_operacional.md`
-7. `docs/06_implantacao_novos_comercios.md`
-8. `docs/07_motor_reposicao.md`
-9. `mappings/practica_csv.yml`
+7. Documento especifico da area em `docs/`
 
 ## Principio tecnico central
 
@@ -68,16 +86,22 @@ e observacoes internas.
 
 ## Rodando o MVP local
 
+Verifique a base tecnica sem ler os CSVs reais:
+
+```powershell
+python scripts\smoke_checks.py
+```
+
 Importe os CSVs para SQLite:
 
 ```powershell
-& "C:\Users\gabri\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scripts\import_practica.py --source-dir . --db data\nexovarejo.db
+python scripts\import_practica.py --source-dir . --db data\nexovarejo.db
 ```
 
 Suba o app:
 
 ```powershell
-& "C:\Users\gabri\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scripts\serve_app.py --db data\nexovarejo.db --port 8010
+python scripts\serve_app.py --db data\nexovarejo.db --port 8010
 ```
 
 Acesse `http://127.0.0.1:8010`.

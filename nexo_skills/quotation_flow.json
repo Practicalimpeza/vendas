@@ -1,11 +1,20 @@
 {
   "id": "quotation_flow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Cotacao e Fornecedor",
+  "purpose": "Conduzir a compra assistida por fornecedor, preservando sugestao, cotacao, resposta e pedido final.",
   "principles": [
     "Pedido de cotacao deve ser agrupado por fornecedor real, nao apenas por marca inferida.",
     "Codigo interno do produto e do Nexo; referencia do fornecedor deve ser usada quando existir.",
     "Itens com decisao de mix pendente aparecem junto do fornecedor quando o pedido ja esta sendo montado.",
-    "Cotacao e oportunidade de aprender preco, prazo, disponibilidade e divisor de embalagem."
+    "Cotacao e oportunidade de aprender preco, prazo, disponibilidade e divisor de embalagem.",
+    "Pedido de compra canonico preserva diferenca entre sugerido, cotado e comprado."
+  ],
+  "inputs": ["api_replenishment", "suppliers", "quote_requests", "quote_request_items", "purchase_orders"],
+  "outputs": ["cotacao em rascunho", "resposta registrada", "pedido de compra", "aprendizado por fornecedor"],
+  "guardrails": [
+    "Marcar enviada nao envia mensagem automaticamente no MVP.",
+    "Nao fechar pedido sem decisao explicita dos itens respondidos.",
+    "Fornecedor inferido por marca deve ser confirmado quando virar rotina."
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "id": "operational_memory",
+  "version": "0.1.0",
+  "name": "Memoria Operacional",
+  "purpose": "Preservar decisoes humanas e eventos relevantes para o Nexo aprender a rotina sem apagar contexto em novas importacoes.",
+  "principles": [
+    "Acao concluida, ignorada ou iniciada e memoria do Nexo.",
+    "Decisao operacional manual tem mais peso que inferencia.",
+    "Linha do tempo deve misturar importacoes, cotacoes, pedidos, decisoes e auditoria.",
+    "Memoria operacional deve explicar o que mudou e por que a recomendacao apareceu.",
+    "Importacao nova nao apaga decisoes anteriores."
+  ],
+  "inputs": ["action_items", "operational_decisions", "audit_log", "import_batches", "quote_requests", "purchase_orders"],
+  "outputs": ["historico da rotina", "status de acao", "pulso operacional", "evidencia para explicacao"],
+  "guardrails": [
+    "Nao sobrescrever decisao manual com geracao automatica.",
+    "Nao tratar evento importado como decisao humana.",
+    "Manter acao auditavel mesmo quando ela deixa de aparecer na fila principal."
+  ]
+}

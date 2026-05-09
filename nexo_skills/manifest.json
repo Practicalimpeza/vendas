@@ -1,41 +1,59 @@
 {
-  "schema_version": "2026-05-03",
+  "schema_version": "2026-05-06",
   "product": "NexoVarejo",
   "description": "Skills internas versionadas que definem como o Nexo pensa, explica e prioriza rotinas operacionais.",
   "skills": [
     {
       "id": "data_governance",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "name": "Governanca de Dados",
       "file": "data_governance.json"
     },
     {
       "id": "replenishment_mix",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "name": "Reposicao e Mix",
       "file": "replenishment_mix.json"
     },
     {
       "id": "quotation_flow",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "name": "Cotacao e Fornecedor",
       "file": "quotation_flow.json"
     },
     {
       "id": "commercial_intelligence",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "name": "Inteligencia Comercial",
       "file": "commercial_intelligence.json"
     },
     {
       "id": "implementation_journey",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "name": "Implantacao Progressiva",
       "file": "implementation_journey.json"
     },
     {
-      "id": "action_center",
+      "id": "pricing_guardrails",
       "version": "0.1.0",
+      "name": "Precificacao e Margem",
+      "file": "pricing_guardrails.json"
+    },
+    {
+      "id": "supplier_workbench",
+      "version": "0.1.0",
+      "name": "Mesa de Fornecedor",
+      "file": "supplier_workbench.json"
+    },
+    {
+      "id": "operational_memory",
+      "version": "0.1.0",
+      "name": "Memoria Operacional",
+      "file": "operational_memory.json"
+    },
+    {
+      "id": "action_center",
+      "version": "0.2.0",
       "name": "Central de Acoes",
       "file": "action_center.json"
     }

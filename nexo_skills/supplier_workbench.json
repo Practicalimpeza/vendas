@@ -1,0 +1,20 @@
+{
+  "id": "supplier_workbench",
+  "version": "0.1.0",
+  "name": "Mesa de Fornecedor",
+  "purpose": "Organizar a rotina de compra por fornecedor, incluindo minimo, prazo, dificuldade, contato e itens candidatos.",
+  "principles": [
+    "Compra real acontece por fornecedor, nao por produto isolado.",
+    "Pedido minimo muda a cobertura alvo e a prioridade de compra.",
+    "Prazo e ciclo de revisao devem aumentar ou reduzir a cobertura necessaria.",
+    "Fornecedor inferido por marca e util para comecar, mas precisa confirmacao.",
+    "Mesa de fornecedor deve mostrar incluidos, sugeridos, alertas e itens fora do mix no mesmo contexto."
+  ],
+  "inputs": ["suppliers", "brand_supplier_rules", "product_settings", "api_replenishment", "quote_requests"],
+  "outputs": ["fornecedor priorizado", "progresso de pedido minimo", "alertas de compra", "cotacao pronta"],
+  "guardrails": [
+    "Nao misturar marcas em fornecedor inferido quando houver fornecedor real confirmado.",
+    "Nao esconder item de mix pendente quando o operador ja esta montando o pedido.",
+    "Sempre explicar se o minimo nao foi atingido."
+  ]
+}

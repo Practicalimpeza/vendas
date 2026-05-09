@@ -26,14 +26,19 @@ A coluna `referencia` do CSV `produtocusto` nao e mais importada: os valores
 vinham inconsistentes do ERP. A referencia do fornecedor agora e preenchida
 manualmente na ficha do produto (web), gravada em
 `product_identifiers (identifier_type='supplier_reference', source_system='manual')`.
-Re-importar o lote remove apenas os registros antigos com `source_system='practica_csv'`,
-preservando o que foi preenchido a mao.
+Re-importar a base remove apenas referencias de fornecedor antigas com
+`source_system='practica_csv'`, preservando o que foi preenchido a mao.
 
 Na pratica:
 
-- importacao cria um novo lote;
+- importacao cria um novo lote com `import_mode='incremental_sync'`;
 - linhas e registros de origem ficam rastreaveis;
-- eventos e snapshots importados sao carregados pelo lote;
+- eventos e snapshots importados sao carregados pelo lote sem apagar fatos
+  anteriores;
+- linhas identicas ja importadas nao devem duplicar vendas, servicos ou
+  snapshots iguais do mesmo dia;
+- estoque, custo e preco usados pelo produto sao sempre o snapshot mais recente
+  por produto, nao a soma historica nem o maior valor observado;
 - configuracoes operacionais sao lidas por chave canonica e nao substituem campos
   vindos do ERP;
 - se um codigo de origem desaparecer em uma nova importacao, o produto pode ficar
@@ -157,5 +162,6 @@ Para a primeira beta, cada importacao deve conseguir gerar:
 - vendas de produtos;
 - vendas de servicos;
 - clientes;
-- relatorio de lucro por produto, quando disponivel;
-- lista de pendencias cadastrais.
+- lista de pendencias cadastrais;
+- resumo de periodo real importado;
+- trilha auditavel de arquivos, registros brutos, issues e mudancas de cadastro.

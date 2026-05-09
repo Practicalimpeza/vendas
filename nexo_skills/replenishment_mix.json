@@ -1,14 +1,22 @@
 {
   "id": "replenishment_mix",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Reposicao e Mix",
+  "purpose": "Transformar estoque, demanda, fornecedor e confianca em uma fila de compra ou decisao de mix.",
   "principles": [
     "Reposicao automatica precisa considerar demanda, cobertura, fornecedor, minimo, embalagem e confianca.",
     "Fornecedor facil permite alvo menor; fornecedor dificil pode exigir alvo maior.",
     "Produto sem confianca de recompra nao deve entrar automaticamente no pedido.",
-    "Quando o estoque esta acabando e a demanda nao justifica compra, o operador decide entre tirar do mix ou forcar mais uma compra."
+    "Quando o estoque esta acabando e a demanda nao justifica compra, o operador decide entre tirar do mix ou forcar mais uma compra.",
+    "Produto sem venda no periodo ainda deve aparecer com leitura operacional se houver estoque, custo ou cadastro."
   ],
+  "inputs": ["product_sales", "inventory_snapshots", "cost_snapshots", "price_snapshots", "product_settings", "suppliers"],
+  "outputs": ["status de reposicao", "quantidade sugerida", "prioridade", "motivo", "alerta de mix"],
   "status_policy": {
+    "no_demand": {
+      "label": "Sem demanda no periodo",
+      "meaning": "Produto sem venda no recorte analisado, mas ainda rastreavel para estoque, custo e decisao manual."
+    },
     "mix_review": {
       "label": "Decidir mix",
       "meaning": "Estoque baixo, mas recompra automatica sem confianca suficiente.",
@@ -18,5 +26,10 @@
       "label": "Fora do mix",
       "meaning": "Sem estoque e sem venda recente; ocultado da rotina principal."
     }
-  }
+  },
+  "guardrails": [
+    "Nunca sugerir compra automatica para produto bloqueado ou ignorado.",
+    "Arredondar por embalagem antes de enviar para cotacao.",
+    "Explicar ruptura, excesso e decisao de mix com dados simples: estoque, demanda, cobertura e fornecedor."
+  ]
 }

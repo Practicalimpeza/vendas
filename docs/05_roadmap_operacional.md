@@ -1,11 +1,18 @@
 # Roadmap Operacional
 
+Este roadmap reflete o momento atual do MVP local em 2026-05-06. A prioridade
+nao e aumentar escopo; e transformar o que ja existe em uma beta confiavel,
+explicavel e facil de implantar.
+
 ## Fase 0 - Fundacao
 
-- Consolidar contrato canonico SQL.
-- Criar conector da base exemplo.
-- Rodar importacao local reprodutivel.
-- Gerar relatorio de qualidade do lote.
+- Consolidar contrato canonico SQL. **Implementado.**
+- Criar conector da base exemplo. **Implementado.**
+- Rodar importacao local reprodutivel. **Implementado.**
+- Trocar `full_refresh` destrutivo por sincronizacao incremental. **Implementado.**
+- Gerar relatorio de qualidade do lote. **Primeira versao implementada.**
+- Criar smoke automatizado de fluxo beta ponta a ponta. **Implementado.**
+- Consolidar arquitetura pos-monolito em modulos por area. **Implementado.**
 - Criar testes para cabecalho deslocado, datas serializadas e rodapes.
 
 ## Fase 1 - Beta analitica
@@ -17,10 +24,11 @@
 - Sugestao inicial de compra por produto.
 - Clientes por RFM.
 - Servicos por receita e recorrencia.
-- Relatorio de margem por produto usando o arquivo de lucro.
+- Precificacao por custo importado/manual, papel do produto e margem alvo.
 - Pendencias cadastrais de produto, marca, fornecedor e categoria.
 - Playbook de implantacao para novos comercios.
-- Relatorio automatico de qualidade e reconciliacao do lote.
+- Relatorio automatico de qualidade e reconciliacao do lote. **Primeira versao implementada.**
+- Checklist de beta assistida com primeiro valor entregue.
 
 ## Fase 2 - Mesa de compras
 
@@ -50,7 +58,8 @@
 ## Fase 4 - SaaS escalavel
 
 - Multiempresa completo.
-- Autenticacao e permissoes.
+- Autenticacao e permissoes. Antes disso, servidor local bloqueia exposicao de
+  rede por padrao. **Protecao minima implementada.**
 - Auditoria de alteracoes manuais.
 - Skills internas versionadas do Nexo. **Primeira versao implementada.**
 - Motor do Nexo para explicar skills, regras e acoes. **Primeira versao implementada.**
@@ -62,6 +71,7 @@
 
 ## Proxima decisao recomendada
 
-Implementar primeiro o conector da exportacao atual e um banco local canonico. Sem
-isso, qualquer dashboard corre o risco de virar uma analise presa a uma planilha,
-e nao um produto reutilizavel.
+Transformar o MVP local em beta assistida: documentacao enxuta, skills alinhadas
+ao comportamento real, smoke tests e um fluxo claro de implantacao para novos
+comercios. Migracao para Postgres e autenticacao completa so devem entrar quando
+o ambiente de uso da beta estiver definido.

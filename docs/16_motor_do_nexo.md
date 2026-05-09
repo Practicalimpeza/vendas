@@ -8,6 +8,7 @@ acao especifica apareceu.
 
 - Aba `Motor`.
 - Resumo de skills, regras, regras ativas e acoes atuais.
+- Manifesto versionado em `nexo_skills/manifest.json`.
 - Legenda de confianca:
   - ERP/importado;
   - inferido;
@@ -37,3 +38,10 @@ O Motor tambem prepara o caminho para:
 - testes A/B de playbooks;
 - agentes futuros usando as mesmas skills;
 - interface interna de edicao segura das regras.
+
+## Regra atual
+
+O Motor deve refletir o comportamento real do produto. Se uma regra de compra,
+precificacao, memoria operacional ou implantacao passar a orientar a interface,
+ela precisa existir como skill ou como regra documentada. Se uma skill deixar de
+ter efeito pratico, ela deve ser arquivada ou marcada como futura.

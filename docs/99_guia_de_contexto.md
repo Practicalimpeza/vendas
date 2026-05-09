@@ -4,15 +4,18 @@ Use este guia para trabalhar com poucos tokens.
 
 ## Ordem minima antes de uma tarefa
 
-1. `README.md`
-2. Documento especifico da area:
+1. `HANDOFF.md`
+2. `docs/README.md`
+3. `docs/20_estado_atual.md`
+4. `docs/21_metodo_de_trabalho.md` para mudancas grandes.
+5. Documento especifico da area:
    - produto: `docs/00_visao_produto.md`
-   - dados: `docs/01_inventario_dados_exemplo.md`
+   - dados: `docs/03_ingestao_e_padronizacao.md`
    - banco: `docs/02_modelo_canonico_sql.md`
-   - importacao: `docs/03_ingestao_e_padronizacao.md`
    - analises: `docs/04_catalogo_analitico.md`
    - roadmap: `docs/05_roadmap_operacional.md`
    - implantacao: `docs/06_implantacao_novos_comercios.md`
+   - skills: `docs/15_skills_internas_nexo.md`
 
 ## Evite abrir por padrao
 
@@ -39,3 +42,6 @@ Todo novo comportamento deve dizer em qual camada atua:
 - API;
 - interface;
 - operacao/implantacao.
+
+Para mudanca importante, comece modelando o dominio e depois pressione a decisao
+com perguntas uma por vez antes de implementar.

@@ -25,6 +25,16 @@ O pedido preserva tres camadas:
 Isso permite, no futuro, comparar sugestao, resposta, compra real, entrada no
 ERP e recebimento fisico.
 
+Na montagem do pedido, o rascunho tambem pode preservar ajustes operacionais
+por item:
+
+- Unidade de compra usada com o fornecedor, como unidade, caixa, fardo ou saco.
+- Quantidade de unidades por embalagem de compra.
+- Cobertura alvo em dias usada para recalcular a quantidade solicitada.
+
+Esses ajustes pertencem ao rascunho/pedido do Nexo. Eles ajudam a operar a
+compra sem alterar automaticamente o cadastro importado do ERP.
+
 ## Pedido minimo
 
 O fechamento calcula se o valor final atingiu o pedido minimo cadastrado do
