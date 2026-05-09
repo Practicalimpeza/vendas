@@ -88,6 +88,9 @@ continuar sem reabrir tudo.
 - Primeira rodada de fluidez aplicada: tabelas priorizam a view ativa, views
   fora de foco sao melhoradas em tempo ocioso e paineis/tabelas usam
   `content-visibility`/containment para reduzir custo de layout e paint.
+- Primeira rodada de fluidez em edicoes aplicada na mesa de compras: saves de
+  quantidade atualizam a linha/totais de forma otimista, ignoram no-op e
+  agrupam refreshes secundarios de acoes/maturidade.
 - Criado `docs/22_roadmap_produto_final.md` com quatro fases: Confiabilidade,
   Organizacao Interna, UX de Trabalho e Produto Operavel.
 - Criado `docs/23_contratos_api.md` e adicionados `contract`/`period` aos

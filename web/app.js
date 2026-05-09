@@ -13,6 +13,8 @@ const state = {
   quoteMode: "operational",
   quoteStep: "supplier",
   quoteSaveTimers: new Map(),
+  postSaveRefreshTasks: {},
+  postSaveRefreshTimer: null,
   quoteSupplierChip: "all",
   quoteSupplierChipPinned: false,
   quoteSupplierPreviewId: "",
@@ -1853,7 +1855,24 @@ function deferAfterPaint(callback, delay = 0) {
   }, delay);
 }
 
+function queueRefreshAfterSave(tasks = {}, options = {}) {
+  Object.entries(tasks).forEach(([key, enabled]) => {
+    if (enabled) state.postSaveRefreshTasks[key] = true;
+  });
+  if (state.postSaveRefreshTimer) clearTimeout(state.postSaveRefreshTimer);
+  state.postSaveRefreshTimer = setTimeout(() => {
+    const pending = { ...state.postSaveRefreshTasks };
+    state.postSaveRefreshTasks = {};
+    state.postSaveRefreshTimer = null;
+    refreshAfterSave(pending, { defer: true, delay: options.deferDelay || 0 });
+  }, options.delay ?? 900);
+}
+
 function refreshAfterSave(tasks = {}, options = {}) {
+  if (options.coalesce) {
+    queueRefreshAfterSave(tasks, options);
+    return;
+  }
   const run = () => {
     const work = [];
     if (tasks.suppliers) {
@@ -4408,10 +4427,42 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
   const purchaseUnit = rowEl.querySelector(".quote-unit-select")?.value || row.purchase_unit || row.unit || "UN";
   const purchasePackageSize = parseInputNumber(rowEl.querySelector(".quote-package-input")?.value || row.package_size || 1) || 1;
   const coverageTargetDays = parseInputNumber(rowEl.querySelector(".quote-coverage-input")?.value || "");
+  const nextCoverageTargetDays = coverageTargetDays > 0 ? coverageTargetDays : null;
+  const nextInQuote = quantity > 0;
   if (purchasePackageSize <= 0) {
     status.textContent = "Embalagem invalida";
     return;
   }
+  const currentUnit = String(row.purchase_unit || row.unit || "UN").toUpperCase();
+  const nextUnit = String(purchaseUnit || "UN").toUpperCase();
+  const currentPackageSize = Number(row.purchase_package_size || row.package_size || 1) || 1;
+  const currentCoverageTargetDays = row.quote_coverage_target_days ? Number(row.quote_coverage_target_days) : null;
+  const unchanged =
+    Boolean(row.in_quote) === nextInQuote
+    && Number(row.quote_quantity || 0) === quantity
+    && currentUnit === nextUnit
+    && currentPackageSize === purchasePackageSize
+    && currentCoverageTargetDays === nextCoverageTargetDays;
+  if (unchanged) {
+    status.textContent = "Sem mudanca";
+    return;
+  }
+  const previousRow = {
+    in_quote: row.in_quote,
+    quote_quantity: row.quote_quantity,
+    purchase_unit: row.purchase_unit,
+    purchase_package_size: row.purchase_package_size,
+    package_size: row.package_size,
+    quote_coverage_target_days: row.quote_coverage_target_days,
+  };
+  row.in_quote = nextInQuote;
+  row.quote_quantity = quantity;
+  row.purchase_unit = nextUnit;
+  row.purchase_package_size = purchasePackageSize;
+  row.package_size = purchasePackageSize;
+  row.quote_coverage_target_days = nextCoverageTargetDays;
+  syncQuoteRow(rowEl, row);
+  updateWorkbenchTotalsFromRows();
   status.textContent = "Salvando";
   try {
     const result = await apiPost("/api/quote-item/upsert", {
@@ -4419,17 +4470,11 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
       supplier_id: rowEl.dataset.supplierId,
       product_id: rowEl.dataset.productId,
       requested_quantity: quantity,
-      purchase_unit: purchaseUnit,
+      purchase_unit: nextUnit,
       purchase_package_size: purchasePackageSize,
-      coverage_target_days: coverageTargetDays > 0 ? coverageTargetDays : null,
+      coverage_target_days: nextCoverageTargetDays,
       notes: row.quote_notes || "",
     });
-    row.in_quote = quantity > 0;
-    row.quote_quantity = quantity;
-    row.purchase_unit = purchaseUnit;
-    row.purchase_package_size = purchasePackageSize;
-    row.package_size = purchasePackageSize;
-    row.quote_coverage_target_days = coverageTargetDays > 0 ? coverageTargetDays : null;
     if (!state.quoteWorkbench.current_quote && result.current_quote_id) {
       state.quoteWorkbench.current_quote = { id: result.current_quote_id, status: "draft" };
     }
@@ -4439,8 +4484,11 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
     syncQuoteRow(rowEl, row);
     updateWorkbenchTotalsFromRows();
     status.textContent = "Salvo";
-    refreshAfterSave({ actions: true, maturity: true });
+    refreshAfterSave({ actions: true, maturity: true }, { coalesce: true, delay: 900 });
   } catch (error) {
+    Object.assign(row, previousRow);
+    syncQuoteRow(rowEl, row);
+    updateWorkbenchTotalsFromRows();
     status.textContent = error.message;
   }
 }
