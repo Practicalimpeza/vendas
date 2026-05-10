@@ -91,6 +91,8 @@ continuar sem reabrir tudo.
 - Primeira rodada de fluidez em edicoes aplicada na mesa de compras: saves de
   quantidade atualizam a linha/totais de forma otimista, ignoram no-op e
   agrupam refreshes secundarios de acoes/maturidade.
+- Cotacoes em aberto agora podem ser descartadas pela mesa de compras; o
+  backend remove a cotacao e seus itens em vez de manter historico cancelado.
 - Criado `docs/22_roadmap_produto_final.md` com quatro fases: Confiabilidade,
   Organizacao Interna, UX de Trabalho e Produto Operavel.
 - Criado `docs/23_contratos_api.md` e adicionados `contract`/`period` aos

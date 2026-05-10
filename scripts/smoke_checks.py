@@ -56,6 +56,7 @@ from quotes import (  # noqa: E402
     export_quote_pdf,
     latest_purchase_costs,
     receive_purchase_order,
+    update_quote_request,
     update_quote_response,
     upsert_quote_item,
 )
@@ -489,6 +490,33 @@ def smoke_quotes(conn: sqlite3.Connection) -> None:
     check(float(detail["items"][0]["purchase_package_size"]) == 3.0, "Upsert nao atualizou embalagem de compra da cotacao.")
     check(int(detail["items"][0]["coverage_target_days"]) == 30, "Upsert nao atualizou cobertura alvo da cotacao.")
     check(detail["items"][0]["notes"] == "validade longa", "Upsert nao preservou observacao do item.")
+    conn.execute(
+        """
+        INSERT INTO quote_requests
+            (id, organization_id, supplier_id, supplier_name, contact_phone, status, total_estimated_amount, item_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("quote_discard_smoke", ORG_ID, SUPPLIER_ID, "Fornecedor Smoke", "", "draft", 13, 1),
+    )
+    conn.execute(
+        """
+        INSERT INTO quote_request_items
+            (quote_request_id, product_id, source_code, quote_code, product_name, unit,
+             suggested_quantity, requested_quantity, estimated_unit_cost, estimated_total_amount)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("quote_discard_smoke", PRODUCT_NO_SALES, "P002", "P002", "Produto Sem Venda", "UN", 1, 1, 13, 13),
+    )
+    discarded = update_quote_request(conn, {"id": "quote_discard_smoke", "status": "cancelled"})
+    check(discarded.get("deleted") is True, "Cotacao descartada deveria ser removida, nao mantida como historico.")
+    check(
+        conn.execute("SELECT COUNT(*) FROM quote_requests WHERE id = ?", ("quote_discard_smoke",)).fetchone()[0] == 0,
+        "Cotacao descartada continuou em quote_requests.",
+    )
+    check(
+        conn.execute("SELECT COUNT(*) FROM quote_request_items WHERE quote_request_id = ?", ("quote_discard_smoke",)).fetchone()[0] == 0,
+        "Itens da cotacao descartada continuaram no banco.",
+    )
     item_id = detail["items"][0]["id"]
     response = update_quote_response(
         conn,

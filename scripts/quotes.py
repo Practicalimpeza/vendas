@@ -1060,6 +1060,19 @@ def update_quote_request(conn: sqlite3.Connection, payload: dict) -> dict:
     allowed = {"draft", "sent", "responded", "approved", "cancelled"}
     if not quote_id or status not in allowed:
         raise ValueError("id e status valido sao obrigatorios.")
+    if status == "cancelled":
+        quote = one(conn, "SELECT id, status FROM quote_requests WHERE id = ?", (quote_id,))
+        if not quote:
+            raise ValueError("Cotacao nao encontrada.")
+        if quote["status"] not in {"draft", "sent", "responded"}:
+            raise ValueError("Apenas cotacoes em aberto podem ser descartadas.")
+        purchase_order = one(conn, "SELECT id FROM purchase_orders WHERE quote_request_id = ? LIMIT 1", (quote_id,))
+        if purchase_order:
+            raise ValueError("Cotacao ja tem pedido vinculado e nao pode ser descartada.")
+        conn.execute("DELETE FROM quote_request_items WHERE quote_request_id = ?", (quote_id,))
+        conn.execute("DELETE FROM quote_requests WHERE id = ?", (quote_id,))
+        conn.commit()
+        return {"ok": True, "id": quote_id, "status": "discarded", "deleted": True}
     timestamp_columns = {
         "sent": "sent_at",
         "responded": "responded_at",

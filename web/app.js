@@ -3453,6 +3453,7 @@ function quoteAssemblyOverview(workbench) {
       : "Minimo atingido";
   const selected = totals.items.slice(0, 4);
   const statusLabel = currentQuote ? statusText(currentQuote.status) : "Montando";
+  const canDiscardQuote = ["draft", "sent", "responded"].includes(currentQuote?.status || "");
   const primaryLabel = currentQuote?.status === "sent"
     ? "Continuar pedido"
     : currentQuote?.status === "responded"
@@ -3488,6 +3489,7 @@ function quoteAssemblyOverview(workbench) {
         ${totals.itemCount > selected.length ? `<span>+${number(totals.itemCount - selected.length)} item(ns)</span>` : ""}
       </div>
       <div class="quote-assembly-actions">
+        ${canDiscardQuote ? `<button class="secondary-button" type="button" data-quote-command="discard">Descartar cotacao</button>` : ""}
         <button class="action-button" type="button" data-quote-command="${escapeAttr(primaryCommand)}" ${totals.itemCount ? "" : "disabled"}>${escapeHtml(primaryLabel)}</button>
         <span class="save-state" id="quoteWorkbenchStatus" aria-live="polite"></span>
       </div>
@@ -4919,6 +4921,24 @@ async function markCurrentQuoteSent() {
   await refreshCurrentQuoteWorkbench();
 }
 
+async function discardCurrentQuote() {
+  const quote = state.quoteWorkbench?.current_quote;
+  const status = document.querySelector("#quoteWorkbenchStatus") || document.querySelector("#quoteFinal .quote-final-note");
+  if (!quote?.id) {
+    if (status) status.textContent = "Nao ha cotacao aberta para descartar.";
+    return;
+  }
+  if (!["draft", "sent", "responded"].includes(quote.status || "")) {
+    if (status) status.textContent = "Esta cotacao ja virou pedido.";
+    return;
+  }
+  if (!window.confirm("Descartar esta cotacao aberta? Os itens marcados serao removidos da mesa.")) return;
+  if (status) status.textContent = "Descartando cotacao";
+  await apiPost("/api/quotes/status", { id: quote.id, status: "cancelled" });
+  await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId, { keepStep: true, silent: true });
+  await refreshAfterSave({ quotes: true, actions: true, maturity: true }, { defer: true, delay: 150 });
+}
+
 function quoteResponseRows(items = []) {
   return items.map((item) => `
     <tr data-quote-item-id="${escapeAttr(item.id)}">
@@ -5175,6 +5195,10 @@ function runQuoteCommand(command) {
   }
   if (command === "quote") {
     setQuoteStep("quote");
+    return;
+  }
+  if (command === "discard") {
+    discardCurrentQuote();
     return;
   }
   if (command === "send") markCurrentQuoteSent();
