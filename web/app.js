@@ -7437,21 +7437,77 @@ async function confirmLinkImport() {
   }
 }
 
+function referenceFileStatusText(file) {
+  if (!file.exists) return "Nao encontrado";
+  if (file.needs_update && file.last_imported_at) return "Modificado";
+  if (file.needs_update) return "Novo";
+  return "Atual";
+}
+
+function referenceFileTone(file) {
+  if (!file.exists) return "warn";
+  if (file.needs_update) return "good";
+  return "muted";
+}
+
+function referenceFileMeta(file) {
+  const parts = [];
+  if (file.modified_at) parts.push(`arquivo ${shortDateTime(file.modified_at)}`);
+  if (file.last_imported_at) parts.push(`ultimo lote ${shortDateTime(file.last_imported_at)}`);
+  if (Number(file.rows_imported || 0)) parts.push(`${number(file.rows_imported)} linhas`);
+  return parts.join(" - ") || "Sem historico de importacao.";
+}
+
 function renderRefreshTargets(targets = []) {
   const panel = document.querySelector("#refreshTargetsPanel");
   const list = document.querySelector("#refreshTargets");
   if (!panel || !list) return;
-  if (!targets.length) {
-    panel.hidden = true;
-    list.innerHTML = "";
-    return;
-  }
+  const local = state.imports?.local_reference || {};
+  const files = local.files || [];
+  const configured = Boolean(local.configured);
+  const folderExists = Boolean(local.folder_exists);
+  const updateCount = files.filter((file) => file.exists && file.needs_update).length;
+  const existingCount = files.filter((file) => file.exists).length;
+  const alertClass = !configured || !folderExists ? "warn" : updateCount ? "good" : "neutral";
+  const alertText = !configured
+    ? "Defina a pasta onde ficam os arquivos do ERP para habilitar a atualizacao rapida."
+    : !folderExists
+      ? "A pasta salva nao foi encontrada. Confira o caminho antes de atualizar."
+      : updateCount
+        ? `${number(updateCount)} arquivo(s) de referencia mudaram desde a ultima importacao.`
+        : "Arquivos de referencia iguais ao ultimo lote importado.";
   panel.hidden = false;
-  const latest = targets[0] || {};
   list.innerHTML = `
-    <div class="refresh-single-action">
-      <button class="action-button" type="button" data-refresh-index="0">Atualizar fonte conhecida</button>
-      <span>Ultima fonte: ${escapeHtml(latest.file_name || "mapeamento salvo")} - ${number(latest.mapped_field_count || 0)} campos conhecidos.</span>
+    <div class="refresh-folder-card">
+      <label for="referenceFolderInput">Pasta de referencia</label>
+      <div class="refresh-folder-row">
+        <input class="inline-input" id="referenceFolderInput" type="text" value="${escapeAttr(local.folder || "")}" placeholder="C:\\caminho\\das\\planilhas" />
+        <button class="secondary-button" id="referenceFolderSave" type="button">Salvar pasta</button>
+      </div>
+    </div>
+    <p class="refresh-local-alert ${escapeAttr(alertClass)}">${escapeHtml(alertText)}</p>
+    <div class="refresh-file-list">
+      ${files
+        .map((file) => {
+          const checked = file.exists && file.needs_update ? "checked" : "";
+          const disabled = file.exists ? "" : "disabled";
+          return `
+            <label class="refresh-file-row ${escapeAttr(referenceFileTone(file))}">
+              <input type="checkbox" data-reference-file="${escapeAttr(file.file_name || "")}" ${checked} ${disabled} />
+              <span>
+                <strong>${escapeHtml(file.file_name || "Arquivo")}</strong>
+                <em>${escapeHtml(referenceFileMeta(file))}</em>
+              </span>
+              <b>${escapeHtml(referenceFileStatusText(file))}</b>
+            </label>
+          `;
+        })
+        .join("") || `<div class="info-card"><strong>Nenhuma fonte conhecida</strong><span>Importe as planilhas pelo fluxo manual uma vez.</span></div>`}
+    </div>
+    <div class="refresh-confirm-row">
+      <button class="action-button" id="refreshSelectedLocalBtn" type="button" ${configured && folderExists && existingCount ? "" : "disabled"}>Atualizar selecionados</button>
+      <button class="secondary-button" id="selectModifiedReferenceFiles" type="button" ${updateCount ? "" : "disabled"}>Selecionar alterados</button>
+      <button class="secondary-button" id="selectAllReferenceFiles" type="button" ${existingCount ? "" : "disabled"}>Selecionar todos</button>
     </div>
   `;
   state.refreshTargets = targets;
@@ -7475,6 +7531,65 @@ function renderRefreshTargets(targets = []) {
     })
     .join("");
   state.refreshTargets = targets;
+}
+
+function setReferenceFileSelection(mode) {
+  document.querySelectorAll("[data-reference-file]").forEach((input) => {
+    if (input.disabled) return;
+    const file = (state.imports?.local_reference?.files || []).find((item) => item.file_name === input.dataset.referenceFile);
+    input.checked = mode === "all" ? true : Boolean(file?.needs_update);
+  });
+}
+
+function renderLocalRefreshResults(results = []) {
+  if (!results.length) return "";
+  return results
+    .map((item) => {
+      if (!item.ok) return `${item.file_name}: ${item.error || "nao atualizado"}`;
+      const impact = erpImportImpactText(item.summary || {});
+      return `${item.file_name}: ${number(item.summary?.mapped_rows || 0)} linhas${impact ? `; ${impact}` : ""}`;
+    })
+    .join(" | ");
+}
+
+async function saveReferenceFolder() {
+  const input = document.querySelector("#referenceFolderInput");
+  const status = document.querySelector("#refreshTargetStatus");
+  if (!input || !status) return;
+  status.textContent = "Salvando pasta de referencia...";
+  try {
+    const result = await apiPost("/api/imports/reference-folder", { folder: input.value.trim() });
+    state.imports = result.imports;
+    renderImports(result.imports);
+    document.querySelector("#refreshTargetStatus").textContent = "Pasta salva.";
+  } catch (error) {
+    status.textContent = error.message || "Nao foi possivel salvar a pasta.";
+  }
+}
+
+async function refreshSelectedLocalFiles() {
+  const selected = [...document.querySelectorAll("[data-reference-file]:checked")]
+    .map((input) => input.dataset.referenceFile)
+    .filter(Boolean);
+  const status = document.querySelector("#refreshTargetStatus");
+  const button = document.querySelector("#refreshSelectedLocalBtn");
+  if (!status) return;
+  if (!selected.length) {
+    status.textContent = "Selecione pelo menos um arquivo.";
+    return;
+  }
+  if (button) button.disabled = true;
+  status.textContent = `Atualizando ${number(selected.length)} arquivo(s)...`;
+  try {
+    const result = await apiPost("/api/imports/refresh-local", { file_names: selected });
+    state.imports = result.imports;
+    renderImports(result.imports);
+    const message = renderLocalRefreshResults(result.results || []);
+    document.querySelector("#refreshTargetStatus").textContent = message || "Atualizacao concluida.";
+  } catch (error) {
+    status.textContent = error.message || "Nao foi possivel atualizar os arquivos.";
+    if (button) button.disabled = false;
+  }
 }
 
 async function startRefreshTarget(index) {
@@ -7704,6 +7819,23 @@ async function boot() {
   document.querySelector("#erpImportAnalyze")?.addEventListener("click", analyzeErpImportFile);
   document.querySelector("#erpImportConfirm")?.addEventListener("click", confirmErpImportMapping);
   document.querySelector("#refreshTargets")?.addEventListener("click", (event) => {
+    const actionButton = event.target.closest("button");
+    if (actionButton?.id === "referenceFolderSave") {
+      saveReferenceFolder();
+      return;
+    }
+    if (actionButton?.id === "refreshSelectedLocalBtn") {
+      refreshSelectedLocalFiles();
+      return;
+    }
+    if (actionButton?.id === "selectModifiedReferenceFiles") {
+      setReferenceFileSelection("modified");
+      return;
+    }
+    if (actionButton?.id === "selectAllReferenceFiles") {
+      setReferenceFileSelection("all");
+      return;
+    }
     const button = event.target.closest("button[data-refresh-index]");
     if (!button) return;
     startRefreshTarget(Number(button.dataset.refreshIndex));

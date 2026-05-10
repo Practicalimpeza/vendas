@@ -423,11 +423,17 @@ def assert_purchase_order_detail_contract(payload: dict) -> None:
 
 
 def assert_imports_contract(payload: dict) -> None:
-    require_keys(payload, {"contract", "batches", "issues", "changes", "refresh_targets", "readiness", "quality"}, "imports.v1")
+    require_keys(payload, {"contract", "batches", "issues", "changes", "refresh_targets", "local_reference", "readiness", "quality"}, "imports.v1")
     check(payload["contract"] == "imports.v1", "Contrato de /api/imports mudou sem nova versao.")
     require_row_keys(payload["batches"], {"id", "source_system", "status", "started_at", "finished_at", "summary_json", "files", "stats"}, "imports.v1.batches")
     require_row_keys(payload["issues"], {"severity", "code", "message", "source_line"}, "imports.v1.issues")
     require_row_keys(payload["changes"], {"entity_type", "source_code", "field_name", "previous_value", "new_value", "review_status", "created_at"}, "imports.v1.changes")
+    require_keys(payload["local_reference"], {"configured", "folder", "folder_exists", "files"}, "imports.v1.local_reference")
+    require_row_keys(
+        payload["local_reference"]["files"],
+        {"file_name", "exists", "modified", "needs_update", "size", "modified_at", "last_imported_at", "last_batch_id", "rows_imported"},
+        "imports.v1.local_reference.files",
+    )
     require_keys(payload["readiness"], {"coverage", "plan"}, "imports.v1.readiness")
     require_row_keys(payload["readiness"]["plan"], {"id", "priority", "title", "expected_files", "what_to_send", "used_for", "coverage"}, "imports.v1.readiness.plan")
     require_keys(payload["quality"], {"status", "score", "latest_batch_id", "summary", "checks", "next_step"}, "imports.v1.quality")

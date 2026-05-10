@@ -7,7 +7,7 @@ from api_contracts import api_health
 from commercial import api_commercial_intelligence, api_customers, api_services
 from company_profile import api_company_profile, update_company_profile
 from db_helpers import parse_int, scalar_text
-from erp_import_flow import api_erp_import_commit, api_erp_import_preview, api_imports
+from erp_import_flow import api_erp_import_commit, api_erp_import_preview, api_import_reference_folder, api_import_refresh_local, api_imports
 from nexo_skills_runtime import api_nexo_skills
 from operational_decisions import record_operational_decision, record_quick_action
 from pricing import api_pricing, update_product_pricing
@@ -84,6 +84,8 @@ def post_api_payload(route: str, conn: sqlite3.Connection, payload: dict) -> obj
     handlers = {
         "/api/erp/import-preview": api_erp_import_preview,
         "/api/erp/import-commit": api_erp_import_commit,
+        "/api/imports/reference-folder": api_import_reference_folder,
+        "/api/imports/refresh-local": api_import_refresh_local,
         "/api/links/inspect": api_link_inspect,
         "/api/links/preview": api_link_preview,
         "/api/links/commit": api_link_commit,

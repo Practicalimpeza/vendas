@@ -28,6 +28,11 @@ from supplier_ops import seed_brand_suppliers
 from text_utils import canonical_customer_key, clean_phone, make_supplier_id, normalize
 
 
+ROOT = Path(__file__).resolve().parents[1]
+LOCAL_IMPORT_CONFIG_PATH = ROOT / "data" / "import_reference.json"
+REFERENCE_FILE_ORDER = ("produtopreco.xls", "produtocusto.xls", "saidaprod.xls", "servico.xls")
+
+
 ERP_FIELD_CATALOG = [
     {"entity": "produto", "field": "codigo_produto", "label": "Produto - codigo", "keywords": ["codigo_produto", "cod_produto", "codprod", "produto_codigo", "sku", "referencia_produto", "cod_item", "item_codigo", "codigo"]},
     {"entity": "identificador", "field": "barcode", "label": "Produto - codigo de barras", "keywords": ["codigo_de_barras", "codigo_barras", "cod_barras", "cod_barra", "barra", "barras", "ean", "gtin", "upc"]},
@@ -716,6 +721,14 @@ def parse_erp_file_payload(payload: dict) -> tuple[str, list[dict], dict, str, i
     else:
         raw_bytes = scalar_text(payload.get("content")).encode("utf-8")
     return parse_erp_file_bytes(file_name, raw_bytes)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def erp_sheet_signature(columns: list[dict]) -> str:
@@ -3120,6 +3133,195 @@ def import_refresh_targets(conn: sqlite3.Connection) -> list[dict]:
     return targets
 
 
+def read_local_import_config() -> dict:
+    try:
+        return json.loads(LOCAL_IMPORT_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_local_import_config(config: dict) -> None:
+    LOCAL_IMPORT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LOCAL_IMPORT_CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def latest_import_file_metadata(conn: sqlite3.Connection) -> dict[str, dict]:
+    result = {}
+    for row in rows(
+        conn,
+        """
+        WITH ranked AS (
+            SELECT
+                sf.file_name,
+                sf.content_hash,
+                sf.row_count,
+                sf.file_size_bytes,
+                ib.id AS batch_id,
+                ib.finished_at,
+                ib.started_at,
+                ib.summary_json,
+                ROW_NUMBER() OVER (PARTITION BY sf.file_name ORDER BY ib.finished_at DESC, ib.started_at DESC) AS rn
+            FROM source_files sf
+            JOIN import_batches ib ON ib.id = sf.import_batch_id
+            WHERE ib.status = 'completed' AND sf.file_name IS NOT NULL AND sf.file_name <> ''
+        )
+        SELECT file_name, content_hash, row_count, file_size_bytes, batch_id, finished_at, started_at, summary_json
+        FROM ranked
+        WHERE rn = 1
+        """,
+    ):
+        result[row["file_name"]] = row
+    return result
+
+
+def reference_file_names(_conn: sqlite3.Connection) -> list[str]:
+    return list(REFERENCE_FILE_ORDER)
+
+
+def local_reference_status(conn: sqlite3.Connection) -> dict:
+    config = read_local_import_config()
+    folder = scalar_text(config.get("folder"))
+    folder_path = Path(folder).expanduser() if folder else None
+    latest_by_file = latest_import_file_metadata(conn)
+    files = []
+    for file_name in reference_file_names(conn):
+        if Path(file_name).name != file_name:
+            continue
+        latest = latest_by_file.get(file_name) or {}
+        path = folder_path / file_name if folder_path else None
+        exists = bool(path and path.exists() and path.is_file())
+        current_hash = ""
+        modified = False
+        size = 0
+        modified_at = ""
+        if exists and path:
+            stat = path.stat()
+            size = int(stat.st_size)
+            modified_at = datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
+            try:
+                current_hash = sha256_file(path)
+            except OSError:
+                current_hash = ""
+            modified = bool(current_hash and latest.get("content_hash") and current_hash != latest.get("content_hash"))
+            needs_update = bool(current_hash and (not latest.get("content_hash") or current_hash != latest.get("content_hash")))
+        elif latest.get("content_hash"):
+            modified = False
+            needs_update = False
+        else:
+            needs_update = False
+        files.append(
+            {
+                "file_name": file_name,
+                "exists": exists,
+                "modified": modified,
+                "needs_update": needs_update,
+                "size": size,
+                "modified_at": modified_at,
+                "last_imported_at": latest.get("finished_at") or latest.get("started_at") or "",
+                "last_batch_id": latest.get("batch_id") or "",
+                "rows_imported": int(latest.get("row_count") or 0),
+            }
+        )
+    return {
+        "configured": bool(folder),
+        "folder": folder,
+        "folder_exists": bool(folder_path and folder_path.exists() and folder_path.is_dir()),
+        "files": files,
+    }
+
+
+def api_import_reference_folder(conn: sqlite3.Connection, payload: dict) -> dict:
+    folder = scalar_text(payload.get("folder"))
+    if not folder:
+        write_local_import_config({"folder": ""})
+        return {"ok": True, "local_reference": local_reference_status(conn), "imports": api_imports(conn)}
+    path = Path(folder).expanduser()
+    if not path.exists() or not path.is_dir():
+        raise ValueError("Pasta de referencia nao encontrada.")
+    write_local_import_config({"folder": str(path)})
+    return {"ok": True, "local_reference": local_reference_status(conn), "imports": api_imports(conn)}
+
+
+def mappings_from_import_preview(preview: dict) -> list[dict]:
+    mappings = []
+    for sheet_index, sheet in enumerate(preview.get("sheets") or []):
+        columns = []
+        for column in sheet.get("columns") or []:
+            suggestion = column.get("suggestion") or {}
+            columns.append(
+                {
+                    "index": column.get("index") or 0,
+                    "header": column.get("header") or "",
+                    "entity": suggestion.get("entity") or "ignorar",
+                    "field": suggestion.get("field") or "ignorar",
+                    "label": suggestion.get("label") or "Ignorar / nao mapeado",
+                }
+            )
+        mappings.append(
+            {
+                "sheet_index": sheet_index,
+                "sheet_name": sheet.get("sheet_name") or f"Aba {sheet_index + 1}",
+                "signature": sheet.get("signature") or "",
+                "columns": columns,
+            }
+        )
+    return mappings
+
+
+def api_import_refresh_local(conn: sqlite3.Connection, payload: dict) -> dict:
+    config = read_local_import_config()
+    folder = scalar_text(config.get("folder"))
+    if not folder:
+        raise ValueError("Configure a pasta de referencia antes de atualizar.")
+    folder_path = Path(folder).expanduser()
+    if not folder_path.exists() or not folder_path.is_dir():
+        raise ValueError("Pasta de referencia nao encontrada.")
+    selected = payload.get("file_names") or payload.get("files") or []
+    if isinstance(selected, str):
+        selected = [item.strip() for item in selected.split(",") if item.strip()]
+    allowed = set(reference_file_names(conn))
+    results = []
+    for file_name in selected:
+        clean_name = Path(scalar_text(file_name)).name
+        if not clean_name or clean_name not in allowed:
+            results.append({"file_name": clean_name or scalar_text(file_name), "ok": False, "error": "Arquivo fora das fontes conhecidas."})
+            continue
+        path = folder_path / clean_name
+        if not path.exists() or not path.is_file():
+            results.append({"file_name": clean_name, "ok": False, "error": "Arquivo nao encontrado na pasta configurada."})
+            continue
+        try:
+            raw_bytes = path.read_bytes()
+            preview = api_erp_import_preview(conn, {"file_name": clean_name, "_file_bytes": raw_bytes})
+            total_columns = int((preview.get("summary") or {}).get("columns") or 0)
+            reused_mappings = int((preview.get("summary") or {}).get("reused_mappings") or 0)
+            required_review = int((preview.get("summary") or {}).get("required_review") or 0)
+            if required_review or reused_mappings < total_columns:
+                results.append(
+                    {
+                        "file_name": clean_name,
+                        "ok": False,
+                        "error": "Estrutura mudou ou mapeamento incompleto. Use o importador manual para revisar.",
+                        "summary": preview.get("summary") or {},
+                    }
+                )
+                continue
+            commit = api_erp_import_commit(
+                conn,
+                {
+                    "file_name": clean_name,
+                    "_file_bytes": raw_bytes,
+                    "import_mode": "configured_update",
+                    "mappings": mappings_from_import_preview(preview),
+                },
+            )
+            results.append({"file_name": clean_name, "ok": True, "batch_id": commit.get("batch_id"), "summary": commit.get("summary") or {}})
+        except Exception as exc:
+            conn.rollback()
+            results.append({"file_name": clean_name, "ok": False, "error": str(exc)})
+    return {"ok": all(item.get("ok") for item in results), "results": results, "imports": api_imports(conn)}
+
+
 def import_batch_stats(conn: sqlite3.Connection, batch_ids: list[str]) -> dict[str, dict]:
     if not batch_ids:
         return {}
@@ -3237,6 +3439,7 @@ def api_imports(conn: sqlite3.Connection) -> dict:
         "issues": rows(conn, "SELECT severity, code, message, source_line FROM import_issues ORDER BY id DESC LIMIT 200"),
         "changes": rows(conn, "SELECT entity_type, source_code, field_name, previous_value, new_value, review_status, created_at FROM source_entity_changes ORDER BY id DESC LIMIT 200"),
         "refresh_targets": import_refresh_targets(conn),
+        "local_reference": local_reference_status(conn),
         "readiness": api_import_readiness(conn),
         "quality": import_quality_report(conn),
     }
