@@ -5479,6 +5479,15 @@ async function openQuoteProductDrawer(productId) {
   const quantityLabel = currentQty > 0
     ? packageSize > 1 ? `${number(Math.ceil(currentQty / packageSize))} ${purchaseUnit.toLowerCase()} / ${number(currentQty)} un` : `${number(currentQty)} ${purchaseUnit}`
     : "Nao marcado";
+  const packageUnitOptions = [
+    ["UN", "Avulso"],
+    ["CX", "Caixa"],
+    ["FD", "Fardo"],
+    ["SC", "Saco"],
+  ];
+  const packageSummary = packageSize > 1
+    ? `1 ${escapeHtml(purchaseUnit)} = ${number(packageSize)} UN`
+    : "Avulso";
   if (document.querySelector("#modalOverlay")?.hidden) return;
   body.innerHTML = `
     ${detail.load_error ? `<div class="modal-preview warn">${escapeHtml(detail.load_error)}</div>` : ""}
@@ -5496,22 +5505,23 @@ async function openQuoteProductDrawer(productId) {
       </div>
     </div>
     <section class="quote-info-card quote-info-wide quote-package-editor">
-      <div>
-        <h3>Caixa e compra</h3>
-        <p>${packageSize > 1 ? `${number(packageSize)} unidades por caixa/embalagem` : "Embalagem ainda tratada como unidade avulsa"}</p>
+      <div class="quote-package-summary">
+        <span>Embalagem de compra</span>
+        <strong>${packageSummary}</strong>
       </div>
-      <label class="modal-field compact">
-        <span>Unidade de compra</span>
-        <select class="inline-input quote-modal-unit-select" aria-label="Unidade de compra">
-          ${["UN", "CX", "FD", "SC"].map((unit) => `<option value="${unit}" ${unit === String(purchaseUnit).toUpperCase() ? "selected" : ""}>${unit}</option>`).join("")}
-        </select>
-      </label>
-      <label class="modal-field compact">
-        <span>Itens por caixa</span>
-        <input class="inline-input quote-modal-package-input" type="text" inputmode="decimal" value="${inputValue(packageSize)}" aria-label="Itens por caixa" />
-      </label>
-      <button class="action-button drawer-save-package" type="button">Salvar caixa</button>
-      <span class="save-state drawer-package-state" aria-live="polite"></span>
+      <div class="quote-package-controls">
+        <div class="quote-package-type" role="group" aria-label="Tipo de embalagem">
+          ${packageUnitOptions.map(([unit, label]) => `
+            <button class="quote-package-unit ${unit === String(purchaseUnit).toUpperCase() ? "active" : ""}" type="button" data-package-unit="${unit}" aria-pressed="${unit === String(purchaseUnit).toUpperCase() ? "true" : "false"}">${label}</button>
+          `).join("")}
+        </div>
+        <label class="quote-package-amount">
+          <span>Unidades na embalagem</span>
+          <input class="inline-input quote-modal-package-input" type="text" inputmode="decimal" value="${inputValue(packageSize)}" aria-label="Unidades na embalagem" ${String(purchaseUnit).toUpperCase() === "UN" ? "disabled" : ""} />
+        </label>
+        <button class="action-button drawer-save-package" type="button">Salvar embalagem</button>
+        <span class="save-state drawer-package-state" aria-live="polite"></span>
+      </div>
     </section>
     <section class="quote-info-card quote-info-wide quote-coverage-compare">
       <h3>Antes e depois</h3>
@@ -5605,10 +5615,36 @@ async function openQuoteProductDrawer(productId) {
     const rowEl = document.querySelector(`#quoteDetail [data-product-id="${CSS.escape(productId)}"]`);
     if (rowEl) toggleWorkbenchRow(rowEl);
   });
+  const updatePackageEditorSummary = () => {
+    const unit = String(body.querySelector(".quote-package-unit.active")?.dataset.packageUnit || "UN").toUpperCase();
+    const amount = unit === "UN" ? 1 : parseInputNumber(body.querySelector(".quote-modal-package-input")?.value || "0");
+    const summary = body.querySelector(".quote-package-summary strong");
+    const plus = body.querySelector(".drawer-plus-package");
+    if (summary) summary.textContent = unit === "UN" ? "Avulso" : `1 ${unit} = ${number(amount || 0)} UN`;
+    if (plus) plus.textContent = `+1 ${unit.toLowerCase()}`;
+  };
+  body.querySelectorAll(".quote-package-unit").forEach((button) => {
+    button.addEventListener("click", () => {
+      body.querySelectorAll(".quote-package-unit").forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      const input = body.querySelector(".quote-modal-package-input");
+      if (input) {
+        const isAvulso = button.dataset.packageUnit === "UN";
+        input.disabled = isAvulso;
+        if (isAvulso) input.value = "1";
+        else if (!parseInputNumber(input.value || "0")) input.value = inputValue(row.purchase_package_size || row.package_size || 1);
+      }
+      updatePackageEditorSummary();
+    });
+  });
+  body.querySelector(".quote-modal-package-input")?.addEventListener("input", updatePackageEditorSummary);
   body.querySelector(".drawer-save-package")?.addEventListener("click", async () => {
     const stateEl = body.querySelector(".drawer-package-state");
-    const nextPackageSize = parseInputNumber(body.querySelector(".quote-modal-package-input")?.value || "0");
-    const nextUnit = String(body.querySelector(".quote-modal-unit-select")?.value || row.purchase_unit || row.unit || "UN").toUpperCase();
+    const nextUnit = String(body.querySelector(".quote-package-unit.active")?.dataset.packageUnit || row.purchase_unit || row.unit || "UN").toUpperCase();
+    const nextPackageSize = nextUnit === "UN" ? 1 : parseInputNumber(body.querySelector(".quote-modal-package-input")?.value || "0");
     if (nextPackageSize <= 0) {
       if (stateEl) stateEl.textContent = "Informe um valor maior que zero";
       return;
@@ -5660,7 +5696,8 @@ async function openQuoteProductDrawer(productId) {
   body.querySelector(".drawer-plus-package")?.addEventListener("click", () => {
     const rowEl = document.querySelector(`#quoteDetail [data-product-id="${CSS.escape(productId)}"]`);
     const input = rowEl?.querySelector(".quote-quantity-input");
-    const currentPackageSize = parseInputNumber(body.querySelector(".quote-modal-package-input")?.value || packageSize) || packageSize;
+    const selectedUnit = String(body.querySelector(".quote-package-unit.active")?.dataset.packageUnit || purchaseUnit).toUpperCase();
+    const currentPackageSize = selectedUnit === "UN" ? 1 : parseInputNumber(body.querySelector(".quote-modal-package-input")?.value || packageSize) || packageSize;
     if (input) {
       const nextQuantity = Number(row.quote_quantity || 0) + currentPackageSize;
       input.value = String(nextQuantity).replace(".", ",");

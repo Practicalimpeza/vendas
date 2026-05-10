@@ -6075,10 +6075,15 @@ th.sortable-th[data-sort-dir="desc"]::after {
 .modal.quote-product-modal {
   width: min(1120px, calc(100vw - 32px));
   max-height: min(820px, calc(100vh - 32px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal.quote-product-modal .modal-body {
   gap: 10px;
+  overflow: auto;
+  align-content: start;
 }
 
 .product-decision {
@@ -8160,30 +8165,83 @@ th.sortable-th[data-sort-dir="desc"]::after {
 
 .quote-package-editor {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 120px 130px auto minmax(72px, auto);
-  gap: 10px;
-  align-items: end;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: start;
   margin-bottom: 10px;
   background: #fbfcfb;
+  overflow: hidden;
 }
 
-.quote-package-editor h3 {
-  margin-bottom: 3px;
+.quote-package-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
 
-.quote-package-editor p {
-  margin: 0;
+.quote-package-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.quote-package-summary strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.quote-package-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 180px auto minmax(88px, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.quote-package-type {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quote-package-unit {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 850;
+  cursor: pointer;
+  padding: 0 13px;
 }
 
-.quote-package-editor .modal-field {
-  margin: 0;
+.quote-package-unit.active {
+  border-color: #14533f;
+  background: #eef6f3;
+  color: #14533f;
+}
+
+.quote-package-amount {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.quote-package-amount span {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .quote-package-editor .inline-input {
   height: 34px;
+  width: 100%;
 }
 
 .quote-package-editor .save-state {
@@ -8303,8 +8361,18 @@ th.sortable-th[data-sort-dir="desc"]::after {
 
   .quote-decision-hero,
   .quote-package-editor,
+  .quote-package-controls,
   .quote-info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .quote-package-summary {
+    display: grid;
+    gap: 4px;
+  }
+
+  .quote-package-summary strong {
+    white-space: normal;
   }
 
   .quote-decision-actions {
