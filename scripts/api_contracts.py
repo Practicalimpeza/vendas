@@ -188,6 +188,7 @@ def assert_supplier_workbench_suppliers_contract(payload: list[dict]) -> None:
             "alert_count",
             "open_quote_count",
             "latest_quote_at",
+            "latest_quote_id",
             "estimated_value",
         },
         "supplier_workbench_suppliers.v1",

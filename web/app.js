@@ -101,6 +101,7 @@ const SUPPLIER_WORKBENCH_SUPPLIER_KEYS = [
   "alert_count",
   "open_quote_count",
   "latest_quote_at",
+  "latest_quote_id",
   "estimated_value",
 ];
 const VIEW_META = {
@@ -3048,6 +3049,7 @@ function quoteSupplierInspector(row) {
   const buyNow = Number(row.buy_now_count || 0);
   const alerts = Number(row.alert_count || 0);
   const openQuotes = Number(row.open_quote_count || 0);
+  const latestQuoteId = row.latest_quote_id || "";
   const activeSkus = Number(row.active_skus || 0);
   const missing = Math.max(0, minimum - total);
   const decision = status.rank === "ready"
@@ -3101,6 +3103,7 @@ function quoteSupplierInspector(row) {
     </section>
     <div class="quote-supplier-actions">
       <button class="action-button" type="button" data-quote-supplier-action="${escapeAttr(row.supplier_id)}">${escapeHtml(status.rank === "open" ? "Retomar cotacao" : "Montar pedido")}</button>
+      ${latestQuoteId ? `<button class="secondary-button" type="button" data-quote-discard="${escapeAttr(latestQuoteId)}" data-quote-discard-supplier="${escapeAttr(row.supplier_id)}">Descartar cotacao</button>` : ""}
     </div>
   `;
 }
@@ -4921,8 +4924,7 @@ async function markCurrentQuoteSent() {
   await refreshCurrentQuoteWorkbench();
 }
 
-async function discardCurrentQuote() {
-  const quote = state.quoteWorkbench?.current_quote;
+async function discardQuote(quote, supplierId = state.selectedQuoteSupplierId) {
   const status = document.querySelector("#quoteWorkbenchStatus") || document.querySelector("#quoteFinal .quote-final-note");
   if (!quote?.id) {
     if (status) status.textContent = "Nao ha cotacao aberta para descartar.";
@@ -4935,8 +4937,13 @@ async function discardCurrentQuote() {
   if (!window.confirm("Descartar esta cotacao aberta? Os itens marcados serao removidos da mesa.")) return;
   if (status) status.textContent = "Descartando cotacao";
   await apiPost("/api/quotes/status", { id: quote.id, status: "cancelled" });
-  await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId, { keepStep: true, silent: true });
+  if (supplierId) await loadQuoteSupplierWorkbench(supplierId, { keepStep: true, silent: true });
+  await refreshQuotes();
   await refreshAfterSave({ quotes: true, actions: true, maturity: true }, { defer: true, delay: 150 });
+}
+
+async function discardCurrentQuote() {
+  await discardQuote(state.quoteWorkbench?.current_quote);
 }
 
 function quoteResponseRows(items = []) {
@@ -7847,6 +7854,11 @@ async function boot() {
     renderQuotes();
   });
   document.querySelector("#quoteSupplierInspector").addEventListener("click", async (event) => {
+    const discard = event.target.closest("[data-quote-discard]");
+    if (discard?.dataset.quoteDiscard) {
+      await discardQuote({ id: discard.dataset.quoteDiscard, status: "draft" }, discard.dataset.quoteDiscardSupplier || state.quoteSupplierPreviewId);
+      return;
+    }
     const button = event.target.closest("[data-quote-supplier-action]");
     if (button?.dataset.quoteSupplierAction) await loadQuoteSupplierWorkbench(button.dataset.quoteSupplierAction);
   });

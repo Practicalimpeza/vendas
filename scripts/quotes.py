@@ -311,7 +311,15 @@ def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
             SELECT
                 supplier_id,
                 COUNT(*) AS open_quote_count,
-                MAX(created_at) AS latest_quote_at
+                MAX(created_at) AS latest_quote_at,
+                (
+                    SELECT qr2.id
+                    FROM quote_requests qr2
+                    WHERE qr2.supplier_id = quote_requests.supplier_id
+                      AND qr2.status IN ('draft', 'sent', 'responded')
+                    ORDER BY qr2.created_at DESC
+                    LIMIT 1
+                ) AS latest_quote_id
             FROM quote_requests
             WHERE status IN ('draft', 'sent', 'responded')
             GROUP BY supplier_id
@@ -388,6 +396,7 @@ def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
                 "alert_count": m["alerts"],
                 "open_quote_count": int(quote_info.get("open_quote_count") or 0),
                 "latest_quote_at": quote_info.get("latest_quote_at") or "",
+                "latest_quote_id": quote_info.get("latest_quote_id") or "",
                 "estimated_value": round(m["value"], 2),
             }
         )
