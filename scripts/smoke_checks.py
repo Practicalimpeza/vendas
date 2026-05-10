@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import struct
 import sys
 import tempfile
 import threading
@@ -48,6 +49,7 @@ from erp_import_flow import (  # noqa: E402
     materialize_erp_price_snapshot,
     materialize_erp_product_sale,
     materialize_erp_product_settings,
+    parse_biff_sheet,
 )
 from nexo_skills_runtime import api_nexo_skills  # noqa: E402
 from pricing import api_pricing, update_product_pricing  # noqa: E402
@@ -458,6 +460,20 @@ def smoke_erp_context_materialization() -> None:
         )
     finally:
         conn.close()
+
+
+def smoke_erp_biff_formula_text() -> None:
+    formula_body = struct.pack("<HHH", 1, 0, 0) + (b"\x00" * 6 + b"\xff\xff") + b"\x00" * 6
+    string_body = struct.pack("<H", 4) + b"\x00" + b"P902"
+    workbook = (
+        struct.pack("<HH", 0x0006, len(formula_body))
+        + formula_body
+        + struct.pack("<HH", 0x0207, len(string_body))
+        + string_body
+        + struct.pack("<HH", 0x000A, 0)
+    )
+    rows = parse_biff_sheet(workbook, 0, [])
+    check(rows[1][0] == "P902", "Parser XLS nao leu texto calculado de formula BIFF.")
 
 
 def smoke_latest_purchase_cost_by_snapshot_date() -> None:
@@ -1061,6 +1077,7 @@ def run() -> None:
     smoke_skills()
     smoke_imported_settings_guardrails()
     smoke_erp_context_materialization()
+    smoke_erp_biff_formula_text()
     smoke_latest_purchase_cost_by_snapshot_date()
     conn = open_memory_db()
     try:
@@ -1085,6 +1102,7 @@ def main() -> int:
         "skills",
         "configuracao importada",
         "materializacao ERP contextual",
+        "parser XLS formula texto",
         "custo por data",
         "resumo por periodo",
         "reposicao",

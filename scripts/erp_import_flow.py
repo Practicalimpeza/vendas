@@ -417,6 +417,7 @@ def biff_cell_set(cells: dict[int, dict[int, str]], row: int, col: int, value: o
 def parse_biff_sheet(workbook: bytes, start: int, shared_strings: list[str]) -> list[list[str]]:
     cells: dict[int, dict[int, str]] = {}
     pos = start
+    pending_formula_text_cell: tuple[int, int] | None = None
     while pos + 4 <= len(workbook):
         record_id, size = struct.unpack_from("<HH", workbook, pos)
         body = workbook[pos + 4 : pos + 4 + size]
@@ -448,8 +449,16 @@ def parse_biff_sheet(workbook: bytes, start: int, shared_strings: list[str]) -> 
             biff_cell_set(cells, row, col, text)
         elif record_id == 0x0006 and len(body) >= 14:
             row, col = struct.unpack_from("<HH", body, 0)
-            number = struct.unpack_from("<d", body, 6)[0]
-            biff_cell_set(cells, row, col, number)
+            cached = body[6:14]
+            if len(cached) == 8 and cached[6:8] == b"\xff\xff":
+                pending_formula_text_cell = (row, col)
+            else:
+                number = struct.unpack_from("<d", body, 6)[0]
+                biff_cell_set(cells, row, col, number)
+        elif record_id == 0x0207 and pending_formula_text_cell:
+            text, _ = biff_text(body, 0)
+            biff_cell_set(cells, pending_formula_text_cell[0], pending_formula_text_cell[1], text)
+            pending_formula_text_cell = None
     if not cells:
         return []
     max_row = max(cells)
