@@ -901,6 +901,7 @@ def apply_erp_product_context(record: dict, context: dict) -> dict:
     current_code = scalar_text(normalized.get("produto.codigo_produto"))
     current_name = scalar_text(normalized.get("produto.nome_produto"))
     if current_code:
+        normalized.pop("_meta.product_code_inherited", None)
         if current_code != scalar_text(context.get("code")):
             context = {"code": current_code, "name": current_name}
         elif current_name:
@@ -910,6 +911,7 @@ def apply_erp_product_context(record: dict, context: dict) -> dict:
     if not previous_code:
         return context
     normalized["produto.codigo_produto"] = previous_code
+    normalized["_meta.product_code_inherited"] = "1"
     if current_name:
         context["name"] = current_name
     elif scalar_text(context.get("name")):
@@ -927,22 +929,10 @@ def apply_erp_service_context(record: dict, context: dict) -> dict:
     return context
 
 
-def should_apply_erp_product_context(normalized: dict) -> bool:
-    has_sale = any(
-        scalar_text(normalized.get(key))
-        for key in ("venda.data_venda", "venda.quantidade_vendida", "venda.valor_venda", "venda.valor_liquido")
-    )
-    has_static_product_fact = any(
-        scalar_text(normalized.get(key))
-        for key in (
-            "estoque.estoque_atual",
-            "preco.preco_venda",
-            "custo.purchase_cost",
-            "custo.total_cost",
-            "custo.custo",
-        )
-    )
-    return has_sale and not has_static_product_fact and "servico.nome_servico" not in normalized
+def should_apply_erp_product_context(_normalized: dict) -> bool:
+    # Em vendas de produto, codigo herdado pode atribuir linhas sem CODIGO ao item anterior.
+    # Para reposicao confiavel, venda so entra quando o produto vem explicito na linha.
+    return False
 
 
 def erp_product_id(org: str, code: str) -> str:
@@ -1303,6 +1293,8 @@ def materialize_erp_product_sale(
         return "no_sale"
     if not code:
         return "missing_product_code"
+    if scalar_text(normalized.get("_meta.product_code_inherited")) == "1":
+        return "inferred_product_code"
     sold_at = iso_sale_date(normalized.get("venda.data_venda"))
     if not sold_at:
         return "invalid_date"
@@ -2137,6 +2129,7 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     product_sales_imported = 0
     product_sales_duplicates = 0
     product_sales_missing_product_code = 0
+    product_sales_inferred_product_code = 0
     product_sales_invalid_date = 0
     service_sales_imported = 0
     service_sales_duplicates = 0
@@ -2241,7 +2234,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             service_context = apply_erp_service_context(record, service_context)
             normalized = record.get("normalized") or {}
             product_code = scalar_text(normalized.get("produto.codigo_produto"))
-            if product_code:
+            inferred_product_code = scalar_text(normalized.get("_meta.product_code_inherited")) == "1"
+            if product_code and not inferred_product_code:
                 product_code_values.add(product_code)
             if any(
                 scalar_text(normalized.get(key))
@@ -2354,6 +2348,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
                 product_sales_duplicates += 1
             elif product_sale_status == "missing_product_code":
                 product_sales_missing_product_code += 1
+            elif product_sale_status == "inferred_product_code":
+                product_sales_inferred_product_code += 1
             elif product_sale_status == "invalid_date":
                 product_sales_invalid_date += 1
             service_sale_status = materialize_erp_service_sale(
@@ -2535,6 +2531,15 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             """,
             (batch_id, source_file_id, f"{product_sales_missing_product_code} linhas de venda nao tinham codigo de produto suficiente para materializar."),
         )
+    if product_sales_inferred_product_code:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'warning', 'erp_product_sale_inferred_product_code', ?)
+            """,
+            (batch_id, source_file_id, f"{product_sales_inferred_product_code} linhas de venda tinham codigo de produto apenas herdado e foram ignoradas para evitar atribuir venda ao item errado."),
+        )
     if product_sales_invalid_date:
         conn.execute(
             """
@@ -2623,6 +2628,7 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
         "product_sales_products_imported": len(product_sale_codes),
         "product_sales_duplicates": product_sales_duplicates,
         "product_sales_missing_product_code": product_sales_missing_product_code,
+        "product_sales_inferred_product_code": product_sales_inferred_product_code,
         "product_sales_invalid_date": product_sales_invalid_date,
         "service_sales_imported": service_sales_imported,
         "service_sales_services_imported": len(service_sale_names),

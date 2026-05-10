@@ -496,6 +496,7 @@ def smoke_erp_context_materialization() -> None:
         context = apply_erp_product_context(first, context)
         context = apply_erp_product_context(second, context)
         check(second["normalized"]["produto.codigo_produto"] == "P901", "Contexto de produto nao preencheu linha subsequente.")
+        check(second["normalized"]["_meta.product_code_inherited"] == "1", "Contexto de produto nao marcou codigo herdado.")
         check(
             materialize_erp_price_snapshot(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inserted",
             "Preco ERP com contexto nao foi materializado.",
@@ -505,8 +506,8 @@ def smoke_erp_context_materialization() -> None:
             "Estoque ERP com contexto nao foi materializado.",
         )
         check(
-            materialize_erp_product_sale(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inserted",
-            "Venda ERP com contexto nao foi materializada.",
+            materialize_erp_product_sale(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inferred_product_code",
+            "Venda ERP com codigo herdado deveria ser bloqueada.",
         )
     finally:
         conn.close()
