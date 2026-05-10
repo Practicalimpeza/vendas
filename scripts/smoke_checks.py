@@ -50,6 +50,7 @@ from erp_import_flow import (  # noqa: E402
     materialize_erp_product_sale,
     materialize_erp_product_settings,
     parse_biff_sheet,
+    parse_biff_sst,
 )
 from nexo_skills_runtime import api_nexo_skills  # noqa: E402
 from pricing import api_pricing, update_product_pricing  # noqa: E402
@@ -463,6 +464,14 @@ def smoke_erp_context_materialization() -> None:
 
 
 def smoke_erp_biff_formula_text() -> None:
+    def sst_text(value: str) -> bytes:
+        encoded = value.encode("cp1252")
+        return struct.pack("<H", len(encoded)) + b"\x00" + encoded
+
+    sst = struct.pack("<II", 2, 2) + sst_text("P904") + sst_text("Produto SST")
+    shared = parse_biff_sst(sst[:14] + sst[14:])
+    check(shared == ["P904", "Produto SST"], "Parser XLS nao leu textos de SST continuada.")
+
     formula_body = struct.pack("<HHH", 1, 0, 0) + (b"\x00" * 6 + b"\xff\xff") + b"\x00" * 6
     string_body = struct.pack("<H", 4) + b"\x00" + b"P902"
     rich_text_body = struct.pack("<HHH", 2, 0, 0) + struct.pack("<H", 4) + b"\x00" + b"P903"

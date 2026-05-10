@@ -504,6 +504,8 @@ def parse_xls_biff(data: bytes) -> tuple[list[dict], dict]:
     if not workbook:
         raise ValueError(f"Nao encontrei o stream Workbook/Book dentro do .xls. Streams encontrados: {stream_diagnostics(streams)}.")
     shared_strings = []
+    shared_string_chunks = []
+    collecting_shared_strings = False
     boundsheets = []
     pos = 0
     while pos + 4 <= len(workbook):
@@ -511,14 +513,24 @@ def parse_xls_biff(data: bytes) -> tuple[list[dict], dict]:
         body = workbook[pos + 4 : pos + 4 + size]
         pos += 4 + size
         if record_id == 0x00FC:
-            shared_strings = parse_biff_sst(body)
-        elif record_id == 0x0085 and len(body) >= 8:
+            shared_string_chunks = [body]
+            collecting_shared_strings = True
+            continue
+        if record_id == 0x003C and collecting_shared_strings:
+            shared_string_chunks.append(body)
+            continue
+        collecting_shared_strings = False
+        if shared_string_chunks and not shared_strings:
+            shared_strings = parse_biff_sst(b"".join(shared_string_chunks))
+        if record_id == 0x0085 and len(body) >= 8:
             sheet_pos = struct.unpack_from("<I", body, 0)[0]
             name_len = body[6]
             flags = body[7]
             raw_name = body[8 : 8 + name_len * (2 if flags & 0x01 else 1)]
             name = raw_name.decode("utf-16le" if flags & 0x01 else "cp1252", errors="ignore")
             boundsheets.append((name or f"Aba {len(boundsheets) + 1}", sheet_pos))
+    if shared_string_chunks and not shared_strings:
+        shared_strings = parse_biff_sst(b"".join(shared_string_chunks))
     sheets = []
     for name, sheet_pos in boundsheets[:5]:
         rows_data = parse_biff_sheet(workbook, sheet_pos, shared_strings)
