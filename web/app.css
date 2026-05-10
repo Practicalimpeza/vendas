@@ -7834,6 +7834,10 @@ th.sortable-th[data-sort-dir="desc"]::after {
   color: #846412;
 }
 
+.qrow-mix.hidden {
+  display: none;
+}
+
 .qrow-mix-action {
   border: 1px solid #e0c3c3;
   border-radius: 4px;

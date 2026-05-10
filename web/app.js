@@ -14,6 +14,7 @@ const state = {
   quoteStep: "supplier",
   quoteSaveTimers: new Map(),
   postSaveRefreshTasks: {},
+  postSaveRefreshOptions: {},
   postSaveRefreshTimer: null,
   quoteSupplierChip: "all",
   quoteSupplierChipPinned: false,
@@ -1896,12 +1897,19 @@ function queueRefreshAfterSave(tasks = {}, options = {}) {
   Object.entries(tasks).forEach(([key, enabled]) => {
     if (enabled) state.postSaveRefreshTasks[key] = true;
   });
+  if (options.preserveQuoteScroll) state.postSaveRefreshOptions.preserveQuoteScroll = true;
   if (state.postSaveRefreshTimer) clearTimeout(state.postSaveRefreshTimer);
   state.postSaveRefreshTimer = setTimeout(() => {
     const pending = { ...state.postSaveRefreshTasks };
+    const pendingOptions = { ...state.postSaveRefreshOptions };
     state.postSaveRefreshTasks = {};
+    state.postSaveRefreshOptions = {};
     state.postSaveRefreshTimer = null;
-    refreshAfterSave(pending, { defer: true, delay: options.deferDelay || 0 });
+    refreshAfterSave(pending, {
+      defer: true,
+      delay: options.deferDelay || 0,
+      preserveQuoteScroll: pendingOptions.preserveQuoteScroll,
+    });
   }, options.delay ?? 900);
 }
 
@@ -1921,7 +1929,7 @@ function refreshAfterSave(tasks = {}, options = {}) {
       );
     }
     if (tasks.replenishment) work.push(refreshReplenishment());
-    if (tasks.quotes) work.push(refreshQuotes());
+    if (tasks.quotes) work.push(refreshQuotes({ preserveScroll: options.preserveQuoteScroll }));
     if (tasks.actions) work.push(refreshActions());
     if (tasks.maturity) {
       work.push(
@@ -3902,6 +3910,44 @@ function updateQuoteAssemblyOverview() {
   }
 }
 
+function captureQuoteScrollState() {
+  const detail = document.querySelector("#quoteDetail");
+  if (!detail || detail.classList.contains("hidden")) return null;
+  const wrap = detail.querySelector(".quote-items-wrap");
+  const rows = Array.from(detail.querySelectorAll(".qrow"));
+  const topRow = rows.find((row) => row.getBoundingClientRect().bottom > 96);
+  return {
+    windowX: window.scrollX,
+    windowY: window.scrollY,
+    wrapTop: wrap ? wrap.scrollTop : 0,
+    wrapLeft: wrap ? wrap.scrollLeft : 0,
+    anchorProductId: topRow?.dataset.productId || "",
+    anchorTop: topRow ? topRow.getBoundingClientRect().top : null,
+  };
+}
+
+function restoreQuoteScrollState(scrollState) {
+  if (!scrollState) return;
+  const restore = () => {
+    const detail = document.querySelector("#quoteDetail");
+    const wrap = detail?.querySelector(".quote-items-wrap");
+    if (wrap) {
+      wrap.scrollTop = scrollState.wrapTop || 0;
+      wrap.scrollLeft = scrollState.wrapLeft || 0;
+    }
+    let restoredByAnchor = false;
+    if (scrollState.anchorProductId && scrollState.anchorTop !== null) {
+      const row = detail?.querySelector(`[data-product-id="${CSS.escape(scrollState.anchorProductId)}"]`);
+      if (row) {
+        window.scrollBy(0, row.getBoundingClientRect().top - scrollState.anchorTop);
+        restoredByAnchor = true;
+      }
+    }
+    if (!restoredByAnchor) window.scrollTo(scrollState.windowX || 0, scrollState.windowY || 0);
+  };
+  window.requestAnimationFrame(() => window.requestAnimationFrame(restore));
+}
+
 function setQuoteStep(step) {
   const hasSupplier = Boolean(state.selectedQuoteSupplierId && state.quoteWorkbench);
   const selected = quoteSelectedTotals();
@@ -4142,9 +4188,7 @@ function quoteProductRows(rows) {
       const reasonChip = reason.cls
         ? `<span class="qrow-reason ${escapeAttr(reason.cls)}" title="${escapeAttr(reason.tip)}">${escapeHtml(reason.label)}</span>`
         : "";
-      const mixChip = row.mix_status !== "in_mix"
-        ? `<span class="qrow-mix" title="${escapeAttr(mixStatusText(row.mix_status))}">${escapeHtml(mixStatusText(row.mix_status))}</span>`
-        : "";
+      const mixChip = `<span class="qrow-mix ${row.mix_status === "in_mix" ? "hidden" : ""}" title="${escapeAttr(mixStatusText(row.mix_status))}">${escapeHtml(mixStatusText(row.mix_status))}</span>`;
       const mixAction = discontinuedActionFor(row);
       return `
         <tr class="${classes}" data-product-id="${escapeAttr(row.product_id)}" data-organization-id="${escapeAttr(row.organization_id)}" data-supplier-id="${escapeAttr(state.selectedQuoteSupplierId)}" data-suggested-quantity="${escapeAttr(row.suggested_quantity)}" data-package-size="${Number(pkg || 0)}" data-product-row="true">
@@ -4368,21 +4412,26 @@ async function loadQuoteSupplierWorkbench(supplierId, options = {}) {
   }
 }
 
-async function refreshQuotes() {
-  state.quoteSuppliers = await apiRows(
-    "/api/supplier-workbench/suppliers",
-    SUPPLIER_WORKBENCH_SUPPLIER_KEYS,
-    "supplier_workbench_suppliers.v1",
-  );
-  await refreshPurchaseOrders();
-  if (!state.quoteSupplierChipPinned) {
-    state.quoteSupplierChip = defaultQuoteSupplierChip(state.quoteSuppliers);
+async function refreshQuotes(options = {}) {
+  const quoteScrollState = options.preserveScroll ? captureQuoteScrollState() : null;
+  try {
+    state.quoteSuppliers = await apiRows(
+      "/api/supplier-workbench/suppliers",
+      SUPPLIER_WORKBENCH_SUPPLIER_KEYS,
+      "supplier_workbench_suppliers.v1",
+    );
+    await refreshPurchaseOrders();
+    if (!state.quoteSupplierChipPinned) {
+      state.quoteSupplierChip = defaultQuoteSupplierChip(state.quoteSuppliers);
+    }
+    if (!state.selectedQuoteSupplierId || !state.quoteSuppliers.some((row) => row.supplier_id === state.selectedQuoteSupplierId)) {
+      state.selectedQuoteSupplierId = state.quoteSuppliers[0]?.supplier_id || "";
+    }
+    renderQuotes();
+    await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId, { silent: true });
+  } finally {
+    restoreQuoteScrollState(quoteScrollState);
   }
-  if (!state.selectedQuoteSupplierId || !state.quoteSuppliers.some((row) => row.supplier_id === state.selectedQuoteSupplierId)) {
-    state.selectedQuoteSupplierId = state.quoteSuppliers[0]?.supplier_id || "";
-  }
-  renderQuotes();
-  await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId, { silent: true });
 }
 
 function findWorkbenchRow(productId) {
@@ -4408,11 +4457,13 @@ function updateWorkbenchTotalsFromRows() {
 function syncQuoteRow(rowEl, row) {
   rowEl.classList.toggle("included", Boolean(row.in_quote));
   rowEl.classList.toggle("out-of-mix", ["drop", "out_of_mix"].includes(row.mix_status));
+  const discontinued = isDiscontinuedMix(row);
   const toggle = rowEl.querySelector(".qrow-toggle");
   if (toggle) {
     toggle.classList.toggle("on", Boolean(row.in_quote));
     toggle.setAttribute("aria-pressed", row.in_quote ? "true" : "false");
-    toggle.title = row.in_quote ? "Remover da cotacao" : "Adicionar na cotacao";
+    toggle.disabled = discontinued;
+    toggle.title = discontinued ? "Produto descontinuado" : row.in_quote ? "Remover da cotacao" : "Adicionar na cotacao";
     toggle.textContent = row.in_quote ? "Cotando" : "Adicionar";
   }
   const totalCell = rowEl.querySelector(".col-tot");
@@ -4462,7 +4513,15 @@ function syncQuoteRow(rowEl, row) {
     mixAction.dataset.mixDecision = action.decision;
     mixAction.textContent = action.label;
     mixAction.title = action.title;
-    mixAction.classList.toggle("restore", isDiscontinuedMix(row));
+    mixAction.classList.toggle("restore", discontinued);
+    mixAction.disabled = false;
+  }
+  const mixChip = rowEl.querySelector(".qrow-mix");
+  if (mixChip) {
+    const label = mixStatusText(row.mix_status);
+    mixChip.textContent = label;
+    mixChip.title = label;
+    mixChip.classList.toggle("hidden", row.mix_status === "in_mix");
   }
 }
 
@@ -4582,6 +4641,8 @@ async function updateWorkbenchMixDecision(button) {
   const status = rowEl?.querySelector(".row-save-state");
   const decision = button.dataset.mixDecision || "drop";
   if (!rowEl || !row || !status) return;
+  const productId = row.product_id;
+  const quoteScrollState = captureQuoteScrollState();
   button.disabled = true;
   status.textContent = decision === "drop" ? "Descontinuando" : "Reativando";
   try {
@@ -4610,8 +4671,14 @@ async function updateWorkbenchMixDecision(button) {
     syncQuoteRow(rowEl, row);
     updateWorkbenchTotalsFromRows();
     applyWorkbenchView();
-    status.textContent = decision === "drop" ? "Fora do pedido" : "Reativado";
-    refreshAfterSave({ replenishment: true, quotes: true, actions: true, maturity: true });
+    restoreQuoteScrollState(quoteScrollState);
+    const nextStatus = document.querySelector(`#quoteDetail [data-product-id="${CSS.escape(productId)}"] .row-save-state`)
+      || document.querySelector("#quoteWorkbenchStatus");
+    if (nextStatus) nextStatus.textContent = decision === "drop" ? "Fora do pedido" : "Reativado";
+    refreshAfterSave(
+      { replenishment: true, quotes: true, actions: true, maturity: true },
+      { coalesce: true, delay: 900, preserveQuoteScroll: true },
+    );
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;
