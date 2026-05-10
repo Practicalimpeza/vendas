@@ -3690,6 +3690,16 @@ function quoteItemUpsertPayload(row, quantity, supplierId = state.selectedQuoteS
   };
 }
 
+function saveProductPurchaseSettings(row, settings = {}) {
+  const payload = {
+    organization_id: row.organization_id,
+    product_id: row.product_id,
+  };
+  if (settings.packageSize !== undefined) payload.package_size = settings.packageSize;
+  if (settings.targetCoverageDays !== undefined) payload.target_coverage_days = settings.targetCoverageDays;
+  return apiPost("/api/products/purchase-settings", payload);
+}
+
 function quotePackageCount(row, quantity = Number(row?.quote_quantity || 0)) {
   const packageSize = Number(row?.purchase_package_size || row?.package_size || 0);
   if (packageSize <= 1 || Number(quantity || 0) <= 0) return 0;
@@ -4145,6 +4155,9 @@ function quoteProductRows(rows) {
       const lineTotal = inQuote ? Number(row.quote_quantity || 0) * quoteOrderUnitCost(row) : 0;
       const quoteQty = Number(row.quote_quantity || 0);
       const quoteBoxes = hasPackage && quoteQty > 0 ? Math.ceil(quoteQty / pkg) : 0;
+      const packageSummary = quoteBoxes
+        ? `${number(quoteBoxes)} ${purchaseUnit.toLowerCase()} / ${number(quoteQty)} un`
+        : `Un/cx ${number(pkg || 1)}`;
       const quantityDelta = suggested > 0 && inQuote ? quoteQty - suggested : 0;
       const quantityDeltaLabel = Math.abs(quantityDelta) > 0.0001
         ? `${quantityDelta > 0 ? "+" : ""}${number(quantityDelta)} vs sug.`
@@ -4233,12 +4246,18 @@ function quoteProductRows(rows) {
               ${hasPackage ? `<button class="qrow-step" type="button" data-step="-${pkg}" title="-1 caixa (${number(pkg)} un)">-</button><button class="qrow-step" type="button" data-step="${pkg}" title="+1 caixa (${number(pkg)} un)">+</button>` : ""}
             </div>
             <div class="qrow-order-fields">
-              <select class="inline-input quote-unit-select" aria-label="Unidade de compra">
-                ${["UN", "CX", "FD", "SC"].map((unit) => `<option value="${unit}" ${unit === String(purchaseUnit).toUpperCase() ? "selected" : ""}>${unit}</option>`).join("")}
-              </select>
-              <input class="inline-input quote-package-input" type="text" inputmode="decimal" value="${inputValue(pkg || 1)}" aria-label="Unidades por embalagem" title="Unidades por embalagem" />
+              <label class="qrow-order-field">
+                <span>Compra</span>
+                <select class="inline-input quote-unit-select" aria-label="Unidade de compra">
+                  ${["UN", "CX", "FD", "SC"].map((unit) => `<option value="${unit}" ${unit === String(purchaseUnit).toUpperCase() ? "selected" : ""}>${unit}</option>`).join("")}
+                </select>
+              </label>
+              <label class="qrow-order-field package-field">
+                <span>Un/cx</span>
+                <input class="inline-input quote-package-input" type="text" inputmode="decimal" value="${inputValue(pkg || 1)}" aria-label="Itens por caixa" title="Itens por caixa" />
+              </label>
             </div>
-            ${hasPackage ? `<span class="qrow-pack">${quoteBoxes ? `${number(quoteBoxes)} ${escapeHtml(purchaseUnit.toLowerCase())} / ${number(quoteQty)} un` : `${escapeHtml(purchaseUnit)} ${number(pkg)} un`}</span>` : `<span class="qrow-pack">${escapeHtml(purchaseUnit)}</span>`}
+            <span class="qrow-pack">${escapeHtml(packageSummary)}</span>
             ${suggested > 0 ? `<span class="qrow-delta ${inQuote ? "" : "hidden"} ${Math.abs(quantityDelta) > 0.0001 ? "changed" : ""}">${escapeHtml(quantityDeltaLabel)}</span>` : ""}
             <span class="save-state row-save-state" aria-live="polite"></span>
           </td>
@@ -4476,9 +4495,9 @@ function syncQuoteRow(rowEl, row) {
   const purchaseUnit = row.purchase_unit || row.unit || "UN";
   const quantity = Number(row.quote_quantity || 0);
   if (pack) {
-    pack.textContent = packageSize > 1
-      ? quantity > 0 ? `${number(Math.ceil(quantity / packageSize))} ${purchaseUnit.toLowerCase()} / ${number(quantity)} un` : `${purchaseUnit} ${number(packageSize)} un`
-      : purchaseUnit;
+    pack.textContent = packageSize > 1 && quantity > 0
+      ? `${number(Math.ceil(quantity / packageSize))} ${purchaseUnit.toLowerCase()} / ${number(quantity)} un`
+      : `Un/cx ${number(packageSize || 1)}`;
   }
   rowEl.dataset.packageSize = String(packageSize || 0);
   rowEl.querySelectorAll(".qrow-step").forEach((button) => {
@@ -4550,6 +4569,7 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
   const nextUnit = String(purchaseUnit || "UN").toUpperCase();
   const currentPackageSize = Number(row.purchase_package_size || row.package_size || 1) || 1;
   const currentCoverageTargetDays = row.quote_coverage_target_days ? Number(row.quote_coverage_target_days) : null;
+  const packageChanged = Math.abs(currentPackageSize - purchasePackageSize) > 0.0001;
   const unchanged =
     Boolean(row.in_quote) === nextInQuote
     && Number(row.quote_quantity || 0) === quantity
@@ -4578,6 +4598,9 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
   updateWorkbenchTotalsFromRows();
   status.textContent = "Salvando";
   try {
+    if (packageChanged) {
+      await saveProductPurchaseSettings(row, { packageSize: purchasePackageSize });
+    }
     const result = await apiPost("/api/quote-item/upsert", {
       organization_id: rowEl.dataset.organizationId,
       supplier_id: rowEl.dataset.supplierId,
@@ -4597,7 +4620,10 @@ async function saveWorkbenchQuantity(rowEl, quantity) {
     syncQuoteRow(rowEl, row);
     updateWorkbenchTotalsFromRows();
     status.textContent = "Salvo";
-    refreshAfterSave({ actions: true, maturity: true }, { coalesce: true, delay: 900 });
+    refreshAfterSave(
+      { replenishment: packageChanged, quotes: packageChanged, actions: true, maturity: true },
+      { coalesce: true, delay: 900, preserveQuoteScroll: packageChanged },
+    );
   } catch (error) {
     Object.assign(row, previousRow);
     syncQuoteRow(rowEl, row);
@@ -5421,14 +5447,15 @@ async function openQuoteProductDrawer(productId) {
   if (!workbench) return;
   const row = (workbench.rows || []).find((r) => r.product_id === productId);
   if (!row) return;
-  const overlay = document.querySelector("#quoteProductDrawer");
-  if (!overlay) return;
-  document.querySelector("#drawerProductName").textContent = row.name || "Produto";
-  const body = document.querySelector("#drawerProductBody");
-  body.innerHTML = `<div class="quote-info-loading">Carregando informacoes do produto...</div>`;
-  overlay.classList.remove("hidden");
-  overlay.querySelector(".drawer-close").onclick = () => overlay.classList.add("hidden");
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add("hidden"); };
+  document.querySelector("#quoteProductDrawer")?.classList.add("hidden");
+  openModal(
+    row.name || "Item do pedido",
+    `<div class="quote-info-loading">Carregando informacoes do produto...</div>`,
+    null,
+    { modalClass: "quote-product-modal" },
+  );
+  const body = document.querySelector("#modalBody");
+  if (!body) return;
   let detail = {};
   try {
     detail = await api(`/api/product?id=${encodeURIComponent(productId)}`);
@@ -5448,11 +5475,11 @@ async function openQuoteProductDrawer(productId) {
   const targetCoverage = Number(row.quote_coverage_target_days || row.target_coverage_days || 45);
   const afterCoverage = quoteAfterCoverage(row);
   const cover45Qty = quoteQuantityForCoverage(row, 45);
-  const plusPackageQty = currentQty + packageSize;
   const noteValue = row.quote_notes || "";
   const quantityLabel = currentQty > 0
     ? packageSize > 1 ? `${number(Math.ceil(currentQty / packageSize))} ${purchaseUnit.toLowerCase()} / ${number(currentQty)} un` : `${number(currentQty)} ${purchaseUnit}`
     : "Nao marcado";
+  if (document.querySelector("#modalOverlay")?.hidden) return;
   body.innerHTML = `
     ${detail.load_error ? `<div class="modal-preview warn">${escapeHtml(detail.load_error)}</div>` : ""}
     <div class="quote-decision-hero">
@@ -5468,6 +5495,24 @@ async function openQuoteProductDrawer(productId) {
         <button class="secondary-button drawer-cover-45" type="button" ${cover45Qty > 0 ? "" : "disabled"}>Cobrir 45d</button>
       </div>
     </div>
+    <section class="quote-info-card quote-info-wide quote-package-editor">
+      <div>
+        <h3>Caixa e compra</h3>
+        <p>${packageSize > 1 ? `1 ${escapeHtml(purchaseUnit.toLowerCase())} = ${number(packageSize)} unidades` : "Embalagem ainda tratada como unidade avulsa"}</p>
+      </div>
+      <label class="modal-field compact">
+        <span>Unidade de compra</span>
+        <select class="inline-input quote-modal-unit-select" aria-label="Unidade de compra">
+          ${["UN", "CX", "FD", "SC"].map((unit) => `<option value="${unit}" ${unit === String(purchaseUnit).toUpperCase() ? "selected" : ""}>${unit}</option>`).join("")}
+        </select>
+      </label>
+      <label class="modal-field compact">
+        <span>Itens por caixa</span>
+        <input class="inline-input quote-modal-package-input" type="text" inputmode="decimal" value="${inputValue(packageSize)}" aria-label="Itens por caixa" />
+      </label>
+      <button class="action-button drawer-save-package" type="button">Salvar caixa</button>
+      <span class="save-state drawer-package-state" aria-live="polite"></span>
+    </section>
     <section class="quote-info-card quote-info-wide quote-coverage-compare">
       <h3>Antes e depois</h3>
       <div class="quote-coverage-strip">
@@ -5560,6 +5605,32 @@ async function openQuoteProductDrawer(productId) {
     const rowEl = document.querySelector(`#quoteDetail [data-product-id="${CSS.escape(productId)}"]`);
     if (rowEl) toggleWorkbenchRow(rowEl);
   });
+  body.querySelector(".drawer-save-package")?.addEventListener("click", async () => {
+    const stateEl = body.querySelector(".drawer-package-state");
+    const nextPackageSize = parseInputNumber(body.querySelector(".quote-modal-package-input")?.value || "0");
+    const nextUnit = String(body.querySelector(".quote-modal-unit-select")?.value || row.purchase_unit || row.unit || "UN").toUpperCase();
+    if (nextPackageSize <= 0) {
+      if (stateEl) stateEl.textContent = "Informe um valor maior que zero";
+      return;
+    }
+    const rowEl = document.querySelector(`#quoteDetail [data-product-id="${CSS.escape(productId)}"]`);
+    const quantity = Number(row.quote_quantity || 0);
+    if (stateEl) stateEl.textContent = "Salvando";
+    if (rowEl) {
+      const packageInput = rowEl.querySelector(".quote-package-input");
+      const unitSelect = rowEl.querySelector(".quote-unit-select");
+      if (packageInput) packageInput.value = String(nextPackageSize).replace(".", ",");
+      if (unitSelect) unitSelect.value = nextUnit;
+      await saveWorkbenchQuantity(rowEl, quantity);
+    } else {
+      row.purchase_unit = nextUnit;
+      row.purchase_package_size = nextPackageSize;
+      row.package_size = nextPackageSize;
+      await saveProductPurchaseSettings(row, { packageSize: nextPackageSize });
+      refreshAfterSave({ replenishment: true, quotes: true }, { coalesce: true, delay: 900, preserveQuoteScroll: true });
+    }
+    if (stateEl) stateEl.textContent = "Caixa salva";
+  });
   body.querySelector(".drawer-use-suggested")?.addEventListener("click", () => {
     const rowEl = document.querySelector(`#quoteDetail [data-product-id="${CSS.escape(productId)}"]`);
     const input = rowEl?.querySelector(".quote-quantity-input");
@@ -5579,9 +5650,11 @@ async function openQuoteProductDrawer(productId) {
   body.querySelector(".drawer-plus-package")?.addEventListener("click", () => {
     const rowEl = document.querySelector(`#quoteDetail [data-product-id="${CSS.escape(productId)}"]`);
     const input = rowEl?.querySelector(".quote-quantity-input");
+    const currentPackageSize = parseInputNumber(body.querySelector(".quote-modal-package-input")?.value || packageSize) || packageSize;
     if (input) {
-      input.value = String(plusPackageQty).replace(".", ",");
-      saveWorkbenchQuantity(rowEl, plusPackageQty);
+      const nextQuantity = Number(row.quote_quantity || 0) + currentPackageSize;
+      input.value = String(nextQuantity).replace(".", ",");
+      saveWorkbenchQuantity(rowEl, nextQuantity);
     }
   });
   body.querySelector(".drawer-cover-45")?.addEventListener("click", () => {
@@ -8188,6 +8261,13 @@ async function boot() {
     if (event.target.closest(".quote-clear-items")) { clearWorkbenchQuoteItems(); return; }
     const filterPill = event.target.closest(".qf-pill");
     if (filterPill) { filterWorkbenchRows(filterPill.dataset.filter); return; }
+    const detailButton = event.target.closest(".qrow-detail");
+    if (detailButton) {
+      event.stopPropagation();
+      const row = detailButton.closest("[data-product-row]");
+      if (row?.dataset.productId) openQuoteProductDrawer(row.dataset.productId);
+      return;
+    }
     const quickBtn = event.target.closest(".link-sug, .qrow-step");
     if (quickBtn) { event.stopPropagation(); applyQuickQuantity(quickBtn); return; }
     const coverageBtn = event.target.closest(".qrow-coverage-apply");

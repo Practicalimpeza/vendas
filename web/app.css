@@ -6072,6 +6072,15 @@ th.sortable-th[data-sort-dir="desc"]::after {
   min-width: 980px;
 }
 
+.modal.quote-product-modal {
+  width: min(1120px, calc(100vw - 32px));
+  max-height: min(820px, calc(100vh - 32px));
+}
+
+.modal.quote-product-modal .modal-body {
+  gap: 10px;
+}
+
 .product-decision {
   display: grid;
   gap: 14px;
@@ -7993,10 +8002,15 @@ th.sortable-th[data-sort-dir="desc"]::after {
 .qrow-step:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
 
 .qrow-pack {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #eef6f3;
+  color: #14533f;
   font-size: 10.5px;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
@@ -8016,12 +8030,25 @@ th.sortable-th[data-sort-dir="desc"]::after {
   border-radius: 4px;
 }
 
+.qrow-order-field {
+  display: grid;
+  gap: 2px;
+}
+
+.qrow-order-field span {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 850;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .quote-unit-select {
   width: 52px;
 }
 
 .quote-package-input {
-  width: 48px !important;
+  width: 58px !important;
   text-align: right;
 }
 
@@ -8135,6 +8162,39 @@ th.sortable-th[data-sort-dir="desc"]::after {
   margin: 0 0 12px;
 }
 
+.quote-package-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 120px 130px auto minmax(72px, auto);
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+  background: #fbfcfb;
+}
+
+.quote-package-editor h3 {
+  margin-bottom: 3px;
+}
+
+.quote-package-editor p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.quote-package-editor .modal-field {
+  margin: 0;
+}
+
+.quote-package-editor .inline-input {
+  height: 34px;
+}
+
+.quote-package-editor .save-state {
+  align-self: center;
+  min-height: auto;
+}
+
 .quote-coverage-compare {
   margin-bottom: 10px;
   background: #f8fbf9;
@@ -8237,6 +8297,23 @@ th.sortable-th[data-sort-dir="desc"]::after {
   font-size: 10.5px;
   font-style: normal;
   margin-top: 1px;
+}
+
+@media (max-width: 820px) {
+  .modal.quote-product-modal {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .quote-decision-hero,
+  .quote-package-editor,
+  .quote-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-decision-actions {
+    justify-content: flex-start;
+  }
 }
 
 .row-save-state {

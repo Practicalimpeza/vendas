@@ -4,7 +4,7 @@ import json
 import sqlite3
 
 from commercial import api_commercial_intelligence
-from db_helpers import date_where, one, resolve_period, rows, scalar_text
+from db_helpers import date_where, one, parse_decimal, parse_int, resolve_period, rows, scalar_text
 from quotes import api_quote_drafts
 from replenishment import clamp
 
@@ -782,3 +782,80 @@ def update_product_supplier_reference(conn: sqlite3.Connection, payload: dict) -
     )
     conn.commit()
     return {"ok": True, "supplier_reference": value}
+
+
+def update_product_purchase_settings(conn: sqlite3.Connection, payload: dict) -> dict:
+    organization_id = scalar_text(payload.get("organization_id"))
+    product_id = scalar_text(payload.get("product_id"))
+    package_size = parse_decimal(payload.get("package_size"), None)
+    target_coverage_days_provided = "target_coverage_days" in payload
+    target_coverage_days = parse_int(payload.get("target_coverage_days"), None)
+    if not organization_id or not product_id:
+        raise ValueError("organization_id e product_id sao obrigatorios.")
+    if package_size is None or package_size <= 0:
+        raise ValueError("Itens por caixa deve ser maior que zero.")
+    if target_coverage_days_provided and (target_coverage_days is None or target_coverage_days <= 0):
+        raise ValueError("Cobertura alvo deve ser maior que zero.")
+    product = one(
+        conn,
+        "SELECT id FROM products WHERE organization_id = ? AND id = ?",
+        (organization_id, product_id),
+    )
+    if not product:
+        raise ValueError("Produto nao encontrado.")
+    before = one(
+        conn,
+        """
+        SELECT package_size, target_coverage_days
+        FROM product_settings
+        WHERE organization_id = ? AND product_id = ?
+        """,
+        (organization_id, product_id),
+    )
+    if target_coverage_days_provided:
+        conn.execute(
+            """
+            INSERT INTO product_settings
+                (organization_id, product_id, package_size, target_coverage_days)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(organization_id, product_id) DO UPDATE SET
+                package_size = excluded.package_size,
+                target_coverage_days = excluded.target_coverage_days
+            """,
+            (organization_id, product_id, float(package_size), int(target_coverage_days)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO product_settings
+                (organization_id, product_id, package_size)
+            VALUES (?, ?, ?)
+            ON CONFLICT(organization_id, product_id) DO UPDATE SET
+                package_size = excluded.package_size
+            """,
+            (organization_id, product_id, float(package_size)),
+        )
+    after = one(
+        conn,
+        """
+        SELECT package_size, target_coverage_days
+        FROM product_settings
+        WHERE organization_id = ? AND product_id = ?
+        """,
+        (organization_id, product_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO audit_log
+            (organization_id, action, target_type, target_id, before_json, after_json)
+        VALUES (?, 'product_purchase_settings_update', 'product', ?, ?, ?)
+        """,
+        (
+            organization_id,
+            product_id,
+            json.dumps(before or {}, ensure_ascii=False),
+            json.dumps(after or {}, ensure_ascii=False),
+        ),
+    )
+    conn.commit()
+    return {"ok": True, "settings": dict(after)}

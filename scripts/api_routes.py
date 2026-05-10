@@ -16,6 +16,7 @@ from product_views import (
     api_product_detail,
     api_summary,
     api_top_products,
+    update_product_purchase_settings,
     update_product_supplier_reference,
 )
 from quotes import (
@@ -93,6 +94,7 @@ def post_api_payload(route: str, conn: sqlite3.Connection, payload: dict) -> obj
         "/api/suppliers/profile": update_supplier_profile,
         "/api/products/mix-decision": update_product_mix_decision,
         "/api/products/mix-decision-bulk": update_products_mix_decision_bulk,
+        "/api/products/purchase-settings": update_product_purchase_settings,
         "/api/products/supplier-reference": update_product_supplier_reference,
         "/api/company-profile": update_company_profile,
         "/api/pricing/product": update_product_pricing,
