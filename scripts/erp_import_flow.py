@@ -9,7 +9,7 @@ import re
 import sqlite3
 import struct
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 from xml.etree import ElementTree
@@ -23,7 +23,7 @@ from db_helpers import (
     scalar_text,
 )
 from supplier_ops import seed_brand_suppliers
-from text_utils import clean_phone, make_supplier_id, normalize
+from text_utils import canonical_customer_key, clean_phone, make_supplier_id, normalize
 
 
 ERP_FIELD_CATALOG = [
@@ -751,6 +751,37 @@ def normalize_erp_record(row: list[str], columns: list[dict]) -> dict:
     return {"raw": raw, "normalized": normalized}
 
 
+def apply_erp_product_context(record: dict, context: dict) -> dict:
+    normalized = record.get("normalized") or {}
+    current_code = scalar_text(normalized.get("produto.codigo_produto"))
+    current_name = scalar_text(normalized.get("produto.nome_produto"))
+    if current_code:
+        if current_code != scalar_text(context.get("code")):
+            context = {"code": current_code, "name": current_name}
+        elif current_name:
+            context["name"] = current_name
+        return context
+    previous_code = scalar_text(context.get("code"))
+    if not previous_code:
+        return context
+    normalized["produto.codigo_produto"] = previous_code
+    if current_name:
+        context["name"] = current_name
+    elif scalar_text(context.get("name")):
+        normalized["produto.nome_produto"] = scalar_text(context.get("name"))
+    return context
+
+
+def apply_erp_service_context(record: dict, context: dict) -> dict:
+    normalized = record.get("normalized") or {}
+    current_name = scalar_text(normalized.get("servico.nome_servico"))
+    if current_name:
+        context = {"name": current_name}
+    elif scalar_text(context.get("name")):
+        normalized["servico.nome_servico"] = scalar_text(context.get("name"))
+    return context
+
+
 def erp_product_id(org: str, code: str) -> str:
     return f"{org}:product:{code}"
 
@@ -814,6 +845,129 @@ def iso_or_today(value: object) -> str:
     return date.today().isoformat()
 
 
+def iso_sale_date(value: object) -> str:
+    text = scalar_text(value)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return text
+    if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", text):
+        day, month, year = text.split("/")
+        year = f"20{year}" if len(year) == 2 else year
+        try:
+            return date(int(year), int(month), int(day)).isoformat()
+        except ValueError:
+            return ""
+    serial = parse_decimal(text, None)
+    if serial and 1 <= serial <= 90000:
+        try:
+            return (date(1899, 12, 30) + timedelta(days=int(serial))).isoformat()
+        except OverflowError:
+            return ""
+    return ""
+
+
+def erp_customer_id(org: str, code: str, name: str) -> str:
+    key = scalar_text(code) or canonical_customer_key(name) or normalize(name) or "sem_cliente"
+    return f"{org}:customer:{key}"
+
+
+def upsert_erp_customer(conn: sqlite3.Connection, org: str, batch_id: str, code: str, name: str) -> str | None:
+    clean_name = scalar_text(name)
+    if not clean_name:
+        return None
+    clean_code = scalar_text(code)
+    customer_id = erp_customer_id(org, clean_code, clean_name)
+    canonical = canonical_customer_key(clean_name) or normalize(clean_name) or "sem_cliente"
+    conn.execute(
+        """
+        INSERT INTO customers
+            (id, organization_id, source_code, name, normalized_name, canonical_name,
+             first_seen_import_batch_id, last_seen_import_batch_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(organization_id, source_code, normalized_name) DO UPDATE SET
+            name = excluded.name,
+            canonical_name = excluded.canonical_name,
+            last_seen_import_batch_id = excluded.last_seen_import_batch_id
+        """,
+        (customer_id, org, clean_code, clean_name, normalize(clean_name), canonical, batch_id, batch_id),
+    )
+    return customer_id
+
+
+def erp_service_id(org: str, name: str) -> str:
+    return f"{org}:service:{normalize(name) or 'sem_servico'}"
+
+
+def upsert_erp_service(conn: sqlite3.Connection, org: str, batch_id: str, name: str) -> str | None:
+    clean_name = scalar_text(name)
+    if not clean_name:
+        return None
+    service_id = erp_service_id(org, clean_name)
+    conn.execute(
+        """
+        INSERT INTO services
+            (id, organization_id, name, normalized_name, first_seen_import_batch_id, last_seen_import_batch_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(organization_id, normalized_name) DO UPDATE SET
+            name = excluded.name,
+            last_seen_import_batch_id = excluded.last_seen_import_batch_id
+        """,
+        (service_id, org, clean_name, normalize(clean_name), batch_id, batch_id),
+    )
+    return service_id
+
+
+def materialize_erp_price_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    org: str,
+    batch_id: str,
+    store_id: str,
+    record: dict,
+    row_number: int,
+) -> str:
+    normalized = record.get("normalized") or {}
+    raw_price = normalized.get("preco.preco_venda")
+    if scalar_text(raw_price) == "":
+        return "no_price"
+    price = parse_decimal(raw_price, None)
+    if price is None:
+        return "invalid_price"
+    code = scalar_text(normalized.get("produto.codigo_produto"))
+    if not code:
+        return "missing_product_code"
+    product_id = upsert_erp_product_from_record(
+        conn,
+        org=org,
+        batch_id=batch_id,
+        code=code,
+        name=scalar_text(normalized.get("produto.nome_produto")),
+        payload={"source": "erp_planilha", "source_line": row_number, "raw": record.get("raw") or {}},
+    )
+    snapshot_date = date.today().isoformat()
+    if conn.execute(
+        """
+        SELECT 1 FROM price_snapshots
+        WHERE organization_id = ?
+          AND COALESCE(store_id, '') = COALESCE(?, '')
+          AND product_id = ?
+          AND snapshot_date = ?
+          AND sale_price = ?
+        LIMIT 1
+        """,
+        (org, store_id, product_id, snapshot_date, price),
+    ).fetchone():
+        return "duplicate"
+    conn.execute(
+        """
+        INSERT INTO price_snapshots
+            (import_batch_id, organization_id, store_id, product_id, snapshot_date, sale_price, source_line)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (batch_id, org, store_id or None, product_id, snapshot_date, price, row_number),
+    )
+    return "inserted"
+
+
 def materialize_erp_cost_snapshot(
     conn: sqlite3.Connection,
     *,
@@ -857,6 +1011,20 @@ def materialize_erp_cost_snapshot(
         name=scalar_text(normalized.get("produto.nome_produto")),
         payload={"source": "erp_planilha", "source_line": row_number, "raw": record.get("raw") or {}},
     )
+    snapshot_date = iso_or_today(normalized.get("custo.snapshot_date"))
+    if conn.execute(
+        """
+        SELECT 1 FROM cost_snapshots
+        WHERE import_batch_id = ?
+          AND organization_id = ?
+          AND product_id = ?
+          AND snapshot_date = ?
+          AND source_line = ?
+        LIMIT 1
+        """,
+        (batch_id, org, product_id, snapshot_date, row_number),
+    ).fetchone():
+        return "duplicate"
     conn.execute(
         """
         INSERT INTO cost_snapshots
@@ -868,7 +1036,7 @@ def materialize_erp_cost_snapshot(
             batch_id,
             org,
             product_id,
-            iso_or_today(normalized.get("custo.snapshot_date")),
+            snapshot_date,
             cost_values["purchase_cost"],
             cost_values["freight_cost"],
             cost_values["icms_cost"],
@@ -933,6 +1101,176 @@ def materialize_erp_inventory_snapshot(
         DO UPDATE SET quantity_on_hand = excluded.quantity_on_hand, source_line = excluded.source_line
         """,
         (batch_id, org, target_store, product_id, snapshot_date, quantity, row_number),
+    )
+    return "inserted"
+
+
+def materialize_erp_product_sale(
+    conn: sqlite3.Connection,
+    *,
+    org: str,
+    batch_id: str,
+    store_id: str,
+    record: dict,
+    row_number: int,
+    existing_max_date: str = "",
+) -> str:
+    normalized = record.get("normalized") or {}
+    has_sale = any(
+        scalar_text(normalized.get(key))
+        for key in ("venda.data_venda", "venda.quantidade_vendida", "venda.valor_venda", "venda.valor_liquido")
+    )
+    if not has_sale:
+        return "no_sale"
+    code = scalar_text(normalized.get("produto.codigo_produto"))
+    if not code and "servico.nome_servico" in normalized:
+        return "no_sale"
+    if not code:
+        return "missing_product_code"
+    sold_at = iso_sale_date(normalized.get("venda.data_venda"))
+    if not sold_at:
+        return "invalid_date"
+    if existing_max_date and sold_at <= existing_max_date:
+        return "duplicate"
+    quantity = parse_decimal(normalized.get("venda.quantidade_vendida"), 0.0) or 0.0
+    gross_amount = parse_decimal(normalized.get("venda.valor_venda"), 0.0) or 0.0
+    product_id = upsert_erp_product_from_record(
+        conn,
+        org=org,
+        batch_id=batch_id,
+        code=code,
+        name=scalar_text(normalized.get("produto.nome_produto")),
+        payload={"source": "erp_planilha", "source_line": row_number, "raw": record.get("raw") or {}},
+    )
+    customer_id = upsert_erp_customer(
+        conn,
+        org,
+        batch_id,
+        scalar_text(normalized.get("cliente.codigo_cliente")),
+        scalar_text(normalized.get("cliente.nome_cliente")),
+    )
+    payload_json = json.dumps(record.get("raw") or {}, ensure_ascii=False)
+    if conn.execute(
+        """
+        SELECT 1 FROM product_sales
+        WHERE organization_id = ?
+          AND store_id = ?
+          AND product_id = ?
+          AND sold_at = ?
+          AND (
+              source_payload_json = ?
+              OR source_line = ?
+              OR (
+                  quantity = ?
+                  AND gross_amount = ?
+                  AND COALESCE(customer_id, '') = COALESCE(?, '')
+              )
+          )
+        LIMIT 1
+        """,
+        (org, store_id, product_id, sold_at, payload_json, row_number, quantity, gross_amount, customer_id),
+    ).fetchone():
+        return "duplicate"
+    conn.execute(
+        """
+        INSERT INTO product_sales
+            (import_batch_id, organization_id, store_id, product_id, customer_id, sold_at,
+             quantity, gross_amount, movement_type, source_line, source_payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            batch_id,
+            org,
+            store_id,
+            product_id,
+            customer_id,
+            sold_at,
+            quantity,
+            gross_amount,
+            scalar_text(normalized.get("venda.numero_documento")),
+            row_number,
+            payload_json,
+        ),
+    )
+    return "inserted"
+
+
+def materialize_erp_service_sale(
+    conn: sqlite3.Connection,
+    *,
+    org: str,
+    batch_id: str,
+    store_id: str,
+    record: dict,
+    row_number: int,
+    existing_max_date: str = "",
+) -> str:
+    normalized = record.get("normalized") or {}
+    has_sale = any(
+        scalar_text(normalized.get(key))
+        for key in ("venda.data_venda", "venda.quantidade_vendida", "venda.valor_venda", "venda.valor_liquido")
+    )
+    if not has_sale or not scalar_text(normalized.get("servico.nome_servico")):
+        return "no_service_sale"
+    emitted_at = iso_sale_date(normalized.get("venda.data_venda"))
+    if not emitted_at:
+        return "invalid_date"
+    if existing_max_date and emitted_at <= existing_max_date:
+        return "duplicate"
+    quantity = parse_decimal(normalized.get("venda.quantidade_vendida"), 0.0) or 0.0
+    gross_amount = parse_decimal(normalized.get("venda.valor_venda"), 0.0) or 0.0
+    net_amount = parse_decimal(normalized.get("venda.valor_liquido"), gross_amount)
+    service_id = upsert_erp_service(conn, org, batch_id, scalar_text(normalized.get("servico.nome_servico")))
+    customer_id = upsert_erp_customer(
+        conn,
+        org,
+        batch_id,
+        scalar_text(normalized.get("cliente.codigo_cliente")),
+        scalar_text(normalized.get("cliente.nome_cliente")),
+    )
+    payload_json = json.dumps(record.get("raw") or {}, ensure_ascii=False)
+    if conn.execute(
+        """
+        SELECT 1 FROM service_sales
+        WHERE organization_id = ?
+          AND store_id = ?
+          AND COALESCE(service_id, '') = COALESCE(?, '')
+          AND emitted_at = ?
+          AND (
+              source_payload_json = ?
+              OR source_line = ?
+              OR (
+                  quantity = ?
+                  AND gross_amount = ?
+                  AND COALESCE(customer_id, '') = COALESCE(?, '')
+              )
+          )
+        LIMIT 1
+        """,
+        (org, store_id, service_id, emitted_at, payload_json, row_number, quantity, gross_amount, customer_id),
+    ).fetchone():
+        return "duplicate"
+    conn.execute(
+        """
+        INSERT INTO service_sales
+            (import_batch_id, organization_id, store_id, service_id, customer_id, emitted_at,
+             order_number, quantity, gross_amount, tax_amount, net_amount, source_line, source_payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+        """,
+        (
+            batch_id,
+            org,
+            store_id,
+            service_id,
+            customer_id,
+            emitted_at,
+            scalar_text(normalized.get("venda.numero_documento")),
+            quantity,
+            gross_amount,
+            net_amount if net_amount is not None else gross_amount,
+            row_number,
+            payload_json,
+        ),
     )
     return "inserted"
 
@@ -1613,9 +1951,19 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     empty_mapping_rows = 0
     cost_snapshots_imported = 0
     cost_rows_missing_product_code = 0
+    price_snapshots_imported = 0
+    price_rows_missing_product_code = 0
+    price_rows_invalid_value = 0
     inventory_snapshots_imported = 0
     inventory_rows_missing_product_code = 0
     inventory_rows_invalid_value = 0
+    product_sales_imported = 0
+    product_sales_duplicates = 0
+    product_sales_missing_product_code = 0
+    product_sales_invalid_date = 0
+    service_sales_imported = 0
+    service_sales_duplicates = 0
+    service_sales_invalid_date = 0
     identifiers_imported = 0
     identifier_rows_missing_product_code = 0
     product_settings_imported = 0
@@ -1637,6 +1985,16 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     )
     if not store_id:
         store_id = ensure_default_store(conn, organization_id)
+    product_sales_existing_max_date = one(
+        conn,
+        "SELECT MAX(substr(sold_at, 1, 10)) AS max_date FROM product_sales WHERE organization_id = ?",
+        (organization_id,),
+    ).get("max_date") or ""
+    service_sales_existing_max_date = one(
+        conn,
+        "SELECT MAX(substr(emitted_at, 1, 10)) AS max_date FROM service_sales WHERE organization_id = ?",
+        (organization_id,),
+    ).get("max_date") or ""
     conn.execute(
         """
         INSERT INTO import_batches
@@ -1672,6 +2030,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             mapping["signature"] = erp_sheet_signature([{"header": header} for header in headers])
         mapping_lookup = {int(column["index"]): column for column in mapping["columns"]}
         selected_columns = [mapping_lookup[index] for index in sorted(mapping_lookup)]
+        product_context = {}
+        service_context = {}
         saved_mapping_summary.append(
             {
                 "sheet_name": mapping["sheet_name"],
@@ -1690,6 +2050,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
         for row_number, row in enumerate(data_rows, start=header_line + 1):
             total_rows += 1
             record = normalize_erp_record(row, selected_columns)
+            product_context = apply_erp_product_context(record, product_context)
+            service_context = apply_erp_service_context(record, service_context)
             if record["normalized"]:
                 mapped_rows += 1
             else:
@@ -1733,6 +2095,20 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
                 cost_snapshots_imported += 1
             elif cost_status == "missing_product_code":
                 cost_rows_missing_product_code += 1
+            price_status = materialize_erp_price_snapshot(
+                conn,
+                org=organization_id,
+                batch_id=batch_id,
+                store_id=store_id,
+                record=record,
+                row_number=row_number,
+            )
+            if price_status == "inserted":
+                price_snapshots_imported += 1
+            elif price_status == "missing_product_code":
+                price_rows_missing_product_code += 1
+            elif price_status == "invalid_price":
+                price_rows_invalid_value += 1
             inventory_status = materialize_erp_inventory_snapshot(
                 conn,
                 org=organization_id,
@@ -1747,6 +2123,38 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
                 inventory_rows_missing_product_code += 1
             elif inventory_status == "invalid_stock":
                 inventory_rows_invalid_value += 1
+            product_sale_status = materialize_erp_product_sale(
+                conn,
+                org=organization_id,
+                batch_id=batch_id,
+                store_id=store_id,
+                record=record,
+                row_number=row_number,
+                existing_max_date=product_sales_existing_max_date,
+            )
+            if product_sale_status == "inserted":
+                product_sales_imported += 1
+            elif product_sale_status == "duplicate":
+                product_sales_duplicates += 1
+            elif product_sale_status == "missing_product_code":
+                product_sales_missing_product_code += 1
+            elif product_sale_status == "invalid_date":
+                product_sales_invalid_date += 1
+            service_sale_status = materialize_erp_service_sale(
+                conn,
+                org=organization_id,
+                batch_id=batch_id,
+                store_id=store_id,
+                record=record,
+                row_number=row_number,
+                existing_max_date=service_sales_existing_max_date,
+            )
+            if service_sale_status == "inserted":
+                service_sales_imported += 1
+            elif service_sale_status == "duplicate":
+                service_sales_duplicates += 1
+            elif service_sale_status == "invalid_date":
+                service_sales_invalid_date += 1
             identifier_result = materialize_erp_identifiers(
                 conn,
                 org=organization_id,
@@ -1796,6 +2204,33 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             """,
             (batch_id, source_file_id, f"{cost_rows_missing_product_code} linhas tinham custo, mas nao tinham codigo de produto mapeado."),
         )
+    if price_snapshots_imported:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'info', 'erp_prices_imported', ?)
+            """,
+            (batch_id, source_file_id, f"{price_snapshots_imported} precos importados para o catalogo."),
+        )
+    if price_rows_missing_product_code:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'warning', 'erp_price_without_product_code', ?)
+            """,
+            (batch_id, source_file_id, f"{price_rows_missing_product_code} linhas tinham preco, mas nao tinham codigo de produto mapeado."),
+        )
+    if price_rows_invalid_value:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'warning', 'erp_price_invalid_value', ?)
+            """,
+            (batch_id, source_file_id, f"{price_rows_invalid_value} linhas tinham preco invalido e foram ignoradas."),
+        )
     if inventory_rows_missing_product_code:
         conn.execute(
             """
@@ -1813,6 +2248,51 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             VALUES (?, ?, 'warning', 'erp_stock_invalid_value', ?)
             """,
             (batch_id, source_file_id, f"{inventory_rows_invalid_value} linhas tinham valor de estoque invalido e foram ignoradas."),
+        )
+    if product_sales_imported:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'info', 'erp_product_sales_imported', ?)
+            """,
+            (batch_id, source_file_id, f"{product_sales_imported} vendas de produtos importadas."),
+        )
+    if product_sales_missing_product_code:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'warning', 'erp_product_sale_without_product_code', ?)
+            """,
+            (batch_id, source_file_id, f"{product_sales_missing_product_code} linhas de venda nao tinham codigo de produto suficiente para materializar."),
+        )
+    if product_sales_invalid_date:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'warning', 'erp_product_sale_invalid_date', ?)
+            """,
+            (batch_id, source_file_id, f"{product_sales_invalid_date} linhas de venda tinham data invalida e foram ignoradas."),
+        )
+    if service_sales_imported:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'info', 'erp_service_sales_imported', ?)
+            """,
+            (batch_id, source_file_id, f"{service_sales_imported} vendas de servicos importadas."),
+        )
+    if service_sales_invalid_date:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'warning', 'erp_service_sale_invalid_date', ?)
+            """,
+            (batch_id, source_file_id, f"{service_sales_invalid_date} linhas de servico tinham data invalida e foram ignoradas."),
         )
     if identifier_rows_missing_product_code:
         conn.execute(
@@ -1859,9 +2339,19 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
         "unmapped_rows": empty_mapping_rows,
         "cost_snapshots_imported": cost_snapshots_imported,
         "cost_rows_missing_product_code": cost_rows_missing_product_code,
+        "price_snapshots_imported": price_snapshots_imported,
+        "price_rows_missing_product_code": price_rows_missing_product_code,
+        "price_rows_invalid_value": price_rows_invalid_value,
         "inventory_snapshots_imported": inventory_snapshots_imported,
         "inventory_rows_missing_product_code": inventory_rows_missing_product_code,
         "inventory_rows_invalid_value": inventory_rows_invalid_value,
+        "product_sales_imported": product_sales_imported,
+        "product_sales_duplicates": product_sales_duplicates,
+        "product_sales_missing_product_code": product_sales_missing_product_code,
+        "product_sales_invalid_date": product_sales_invalid_date,
+        "service_sales_imported": service_sales_imported,
+        "service_sales_duplicates": service_sales_duplicates,
+        "service_sales_invalid_date": service_sales_invalid_date,
         "identifiers_imported": identifiers_imported,
         "identifier_rows_missing_product_code": identifier_rows_missing_product_code,
         "product_settings_imported": product_settings_imported,

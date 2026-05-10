@@ -41,7 +41,14 @@ from api_contracts import (  # noqa: E402
 )
 from action_center import api_actions_today  # noqa: E402
 from commercial import api_commercial_intelligence, api_customers, api_services  # noqa: E402
-from erp_import_flow import api_imports, materialize_erp_product_settings  # noqa: E402
+from erp_import_flow import (  # noqa: E402
+    api_imports,
+    apply_erp_product_context,
+    materialize_erp_inventory_snapshot,
+    materialize_erp_price_snapshot,
+    materialize_erp_product_sale,
+    materialize_erp_product_settings,
+)
 from nexo_skills_runtime import api_nexo_skills  # noqa: E402
 from pricing import api_pricing, update_product_pricing  # noqa: E402
 from product_views import api_summary, api_top_products  # noqa: E402
@@ -393,6 +400,62 @@ def smoke_imported_settings_guardrails() -> None:
             (ORG_ID, f"{ORG_ID}:product:P900"),
         ).fetchone()
         check(setting and setting["preferred_supplier_id"], "Fornecedor preferencial importado nao foi gravado.")
+    finally:
+        conn.close()
+
+
+def smoke_erp_context_materialization() -> None:
+    conn = open_memory_db()
+    try:
+        conn.execute("INSERT INTO organizations (id, name) VALUES (?, ?)", (ORG_ID, "Loja Smoke"))
+        conn.execute("INSERT INTO stores (id, organization_id, name) VALUES (?, ?, ?)", (STORE_ID, ORG_ID, "Principal"))
+        conn.execute(
+            """
+            INSERT INTO import_batches (id, organization_id, store_id, source_system, status, import_mode)
+            VALUES (?, ?, ?, 'erp_planilha', 'running', 'smoke')
+            """,
+            ("batch_context_smoke", ORG_ID, STORE_ID),
+        )
+        context = {}
+        first = {
+            "normalized": {
+                "produto.codigo_produto": "P901",
+                "produto.nome_produto": "Produto Contexto",
+                "preco.preco_venda": "10,00",
+                "estoque.estoque_atual": "5",
+                "venda.data_venda": "2026-05-01",
+                "venda.quantidade_vendida": "1",
+                "venda.valor_venda": "10,00",
+            },
+            "raw": {},
+        }
+        second = {
+            "normalized": {
+                "produto.codigo_produto": "",
+                "produto.nome_produto": "",
+                "preco.preco_venda": "12,00",
+                "estoque.estoque_atual": "4",
+                "venda.data_venda": "2026-05-02",
+                "venda.quantidade_vendida": "2",
+                "venda.valor_venda": "24,00",
+            },
+            "raw": {},
+        }
+        context = apply_erp_product_context(first, context)
+        context = apply_erp_product_context(second, context)
+        check(second["normalized"]["produto.codigo_produto"] == "P901", "Contexto de produto nao preencheu linha subsequente.")
+        check(
+            materialize_erp_price_snapshot(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inserted",
+            "Preco ERP com contexto nao foi materializado.",
+        )
+        check(
+            materialize_erp_inventory_snapshot(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inserted",
+            "Estoque ERP com contexto nao foi materializado.",
+        )
+        check(
+            materialize_erp_product_sale(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inserted",
+            "Venda ERP com contexto nao foi materializada.",
+        )
     finally:
         conn.close()
 
@@ -997,6 +1060,7 @@ def run() -> None:
     smoke_static_assets()
     smoke_skills()
     smoke_imported_settings_guardrails()
+    smoke_erp_context_materialization()
     smoke_latest_purchase_cost_by_snapshot_date()
     conn = open_memory_db()
     try:
@@ -1020,6 +1084,7 @@ def main() -> int:
         "assets/contratos frontend",
         "skills",
         "configuracao importada",
+        "materializacao ERP contextual",
         "custo por data",
         "resumo por periodo",
         "reposicao",
