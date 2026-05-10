@@ -8,6 +8,8 @@ import json
 import re
 import sqlite3
 import struct
+import subprocess
+import tempfile
 import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -540,6 +542,108 @@ def parse_xls_biff(data: bytes) -> tuple[list[dict], dict]:
     return sheets, {"format": "xls_biff", "sheet_count": len(sheets), "parser": "python_biff"}
 
 
+def parse_xls_with_excel_com(data: bytes) -> tuple[list[dict], dict]:
+    script = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$path = $args[0]
+$out = $args[1]
+function Convert-CellValue($value) {
+    if ($null -eq $value) { return "" }
+    if ($value -is [double] -or $value -is [single] -or $value -is [decimal]) {
+        $number = [double]$value
+        if ([Math]::Abs($number - [Math]::Round($number)) -lt 0.0000001) {
+            return [string][int64][Math]::Round($number)
+        }
+        return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0}", $number)
+    }
+    return [string]$value
+}
+$excel = $null
+$workbook = $null
+try {
+    $excel = New-Object -ComObject Excel.Application
+    $excel.Visible = $false
+    $excel.DisplayAlerts = $false
+    try { $excel.AutomationSecurity = 3 } catch {}
+    $workbook = $excel.Workbooks.Open($path, 0, $true)
+    $sheets = New-Object System.Collections.Generic.List[object]
+    $sheetLimit = [Math]::Min($workbook.Worksheets.Count, 5)
+    for ($s = 1; $s -le $sheetLimit; $s++) {
+        $sheet = $workbook.Worksheets.Item($s)
+        $used = $sheet.UsedRange
+        $rowCount = [Math]::Min([int]$used.Rows.Count, 100000)
+        $colCount = [int]$used.Columns.Count
+        $values = $used.Value2
+        $sheetRows = New-Object System.Collections.Generic.List[object]
+        for ($r = 1; $r -le $rowCount; $r++) {
+            $rowValues = New-Object object[] $colCount
+            for ($c = 1; $c -le $colCount; $c++) {
+                $cellValue = $null
+                if ($values -is [System.Array]) {
+                    $cellValue = $values.GetValue($r, $c)
+                } elseif ($r -eq 1 -and $c -eq 1) {
+                    $cellValue = $values
+                }
+                $rowValues[$c - 1] = Convert-CellValue $cellValue
+            }
+            $sheetRows.Add($rowValues)
+        }
+        $sheets.Add([pscustomobject]@{ name = [string]$sheet.Name; rows = $sheetRows.ToArray() })
+    }
+    $sheets.ToArray() | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath $out -Encoding UTF8
+} finally {
+    if ($workbook -ne $null) { $workbook.Close($false) | Out-Null }
+    if ($excel -ne $null) { $excel.Quit() | Out-Null }
+    if ($workbook -ne $null) { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) }
+    if ($excel -ne $null) { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) }
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+}
+"""
+    with tempfile.TemporaryDirectory(prefix="nexo_xls_") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        workbook_path = tmp_path / "entrada.xls"
+        output_path = tmp_path / "saida.json"
+        script_path = tmp_path / "ler_xls.ps1"
+        workbook_path.write_bytes(data)
+        script_path.write_text(script, encoding="utf-8")
+        completed = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+                str(workbook_path),
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise ValueError(f"Excel nao conseguiu ler o .xls. {detail[:300]}")
+        parsed = json.loads(output_path.read_text(encoding="utf-8-sig"))
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    sheets = [
+        {
+            "name": scalar_text(sheet.get("name")) or f"Aba {index + 1}",
+            "rows": [[scalar_text(cell) for cell in row] for row in (sheet.get("rows") or [])],
+        }
+        for index, sheet in enumerate(parsed or [])
+    ]
+    if not sheets:
+        raise ValueError("Excel abriu o .xls, mas nenhuma aba util foi encontrada.")
+    return sheets, {"format": "xls_excel_com", "sheet_count": len(sheets), "parser": "excel_com"}
+
+
 def parse_xls_planilha(content_base64: str) -> tuple[list[dict], dict]:
     data = base64.b64decode(content_base64)
     stripped = data[:512].lstrip().lower()
@@ -569,12 +673,19 @@ def parse_xls_planilha(content_base64: str) -> tuple[list[dict], dict]:
         if sheets:
             return sheets, {"format": "xls_xml", "sheet_count": len(sheets)}
 
+    excel_error = None
     try:
-        return parse_xls_biff(data)
+        return parse_xls_with_excel_com(data)
+    except Exception as error:
+        excel_error = error
+    try:
+        sheets, metadata = parse_xls_biff(data)
+        metadata["excel_com_error"] = str(excel_error)[:300] if excel_error else ""
+        return sheets, metadata
     except Exception as biff_error:
         raise ValueError(
             "Nao foi possivel ler este .xls diretamente. Salve/exporte esta planilha como .xlsx ou .csv e tente novamente. "
-            f"Detalhe tecnico: {str(biff_error)[:300]}"
+            f"Detalhe tecnico: Excel: {str(excel_error)[:220] if excel_error else 'indisponivel'} | BIFF: {str(biff_error)[:220]}"
         ) from biff_error
 
 
@@ -801,6 +912,24 @@ def apply_erp_service_context(record: dict, context: dict) -> dict:
     elif scalar_text(context.get("name")):
         normalized["servico.nome_servico"] = scalar_text(context.get("name"))
     return context
+
+
+def should_apply_erp_product_context(normalized: dict) -> bool:
+    has_sale = any(
+        scalar_text(normalized.get(key))
+        for key in ("venda.data_venda", "venda.quantidade_vendida", "venda.valor_venda", "venda.valor_liquido")
+    )
+    has_static_product_fact = any(
+        scalar_text(normalized.get(key))
+        for key in (
+            "estoque.estoque_atual",
+            "preco.preco_venda",
+            "custo.purchase_cost",
+            "custo.total_cost",
+            "custo.custo",
+        )
+    )
+    return has_sale and not has_static_product_fact and "servico.nome_servico" not in normalized
 
 
 def erp_product_id(org: str, code: str) -> str:
@@ -2092,7 +2221,10 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
         for row_number, row in enumerate(data_rows, start=header_line + 1):
             total_rows += 1
             record = normalize_erp_record(row, selected_columns)
-            product_context = apply_erp_product_context(record, product_context)
+            if should_apply_erp_product_context(record.get("normalized") or {}):
+                product_context = apply_erp_product_context(record, product_context)
+            else:
+                product_context = {}
             service_context = apply_erp_service_context(record, service_context)
             normalized = record.get("normalized") or {}
             product_code = scalar_text(normalized.get("produto.codigo_produto"))
@@ -2259,6 +2391,25 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             manual_values_preserved += int(settings_status["manual_values_preserved"])
             if settings_status["status"] == "missing_product_code":
                 settings_rows_missing_product_code += 1
+    static_product_rows = (
+        inventory_snapshots_imported
+        + inventory_snapshots_updated
+        + price_snapshots_imported
+        + cost_snapshots_imported
+    )
+    low_static_product_coverage = (
+        static_product_rows > 0
+        and product_dependent_rows >= 100
+        and len(product_code_values) < max(20, int(product_dependent_rows * 0.5))
+    )
+    if low_static_product_coverage:
+        raise ValueError(
+            "Importacao bloqueada: a planilha tem "
+            f"{product_dependent_rows} linha(s) de produto/estoque/preco/custo, "
+            f"mas so {len(product_code_values)} codigo(s) de produto distintos foram identificados. "
+            "Isso indica leitura incompleta do .xls ou exportacao agrupada. "
+            "Exporte como .xlsx/.csv ou revise o arquivo antes de gravar."
+        )
     conn.execute(
         """
         UPDATE source_files
