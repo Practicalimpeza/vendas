@@ -258,7 +258,7 @@ def parse_xlsx_planilha(content_base64: str) -> tuple[list[dict], dict]:
         for sheet_number, sheet_path in enumerate(sheet_paths[:5], start=1):
             root = ElementTree.fromstring(workbook.read(sheet_path))
             parsed_rows = []
-            for row_node in root.findall(".//{*}sheetData/{*}row")[:600]:
+            for row_node in root.findall(".//{*}sheetData/{*}row")[:100000]:
                 cells = []
                 for cell in row_node.findall("{*}c"):
                     idx = column_index(cell.attrib.get("r", "A"))
@@ -551,7 +551,7 @@ def parse_xls_planilha(content_base64: str) -> tuple[list[dict], dict]:
         for sheet_number, worksheet in enumerate(root.findall(".//{*}Worksheet")[:5], start=1):
             name = worksheet.attrib.get("{urn:schemas-microsoft-com:office:spreadsheet}Name") or f"Aba {sheet_number}"
             parsed_rows = []
-            for row in worksheet.findall(".//{*}Row")[:600]:
+            for row in worksheet.findall(".//{*}Row")[:100000]:
                 parsed_rows.append([(cell.findtext(".//{*}Data") or "").strip() for cell in row.findall("{*}Cell")])
             sheets.append({"name": name, "rows": parsed_rows})
         if sheets:
@@ -625,7 +625,7 @@ def load_latest_erp_mappings(conn: sqlite3.Connection) -> dict:
 
 
 def analyze_erp_sheet(sheet: dict) -> dict:
-    headers, data_rows, header_line = normalize_table_rows(sheet["rows"])
+    headers, data_rows, header_line = normalize_table_rows(sheet["rows"], limit=100000)
     columns = []
     for index, header in enumerate(headers):
         samples = []
@@ -1101,6 +1101,19 @@ def materialize_erp_inventory_snapshot(
         payload={"source": "erp_planilha", "source_line": row_number, "raw": record.get("raw") or {}},
     )
     snapshot_date = iso_or_today(normalized.get("estoque.data_movimento"))
+    existed = conn.execute(
+        """
+        SELECT 1
+        FROM inventory_snapshots
+        WHERE organization_id = ?
+          AND store_id = ?
+          AND product_id = ?
+          AND snapshot_date = ?
+          AND import_batch_id = ?
+        LIMIT 1
+        """,
+        (org, target_store, product_id, snapshot_date, batch_id),
+    ).fetchone()
     conn.execute(
         """
         INSERT INTO inventory_snapshots
@@ -1111,7 +1124,7 @@ def materialize_erp_inventory_snapshot(
         """,
         (batch_id, org, target_store, product_id, snapshot_date, quantity, row_number),
     )
-    return "inserted"
+    return "updated" if existed else "inserted"
 
 
 def materialize_erp_product_sale(
@@ -1964,6 +1977,7 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     price_rows_missing_product_code = 0
     price_rows_invalid_value = 0
     inventory_snapshots_imported = 0
+    inventory_snapshots_updated = 0
     inventory_rows_missing_product_code = 0
     inventory_rows_invalid_value = 0
     product_sales_imported = 0
@@ -1985,6 +1999,13 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     manual_conflicts_resolved = 0
     manual_values_preserved = 0
     saved_mapping_summary = []
+    product_dependent_rows = 0
+    product_code_values = set()
+    price_product_codes = set()
+    cost_product_codes = set()
+    inventory_product_codes = set()
+    product_sale_codes = set()
+    service_sale_names = set()
     conn.execute(
         """
         INSERT OR IGNORE INTO organizations (id, name)
@@ -2061,6 +2082,23 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             record = normalize_erp_record(row, selected_columns)
             product_context = apply_erp_product_context(record, product_context)
             service_context = apply_erp_service_context(record, service_context)
+            normalized = record.get("normalized") or {}
+            product_code = scalar_text(normalized.get("produto.codigo_produto"))
+            if product_code:
+                product_code_values.add(product_code)
+            if any(
+                scalar_text(normalized.get(key))
+                for key in (
+                    "estoque.estoque_atual",
+                    "preco.preco_venda",
+                    "custo.purchase_cost",
+                    "custo.total_cost",
+                    "custo.custo",
+                    "venda.quantidade_vendida",
+                    "venda.valor_venda",
+                )
+            ) and "servico.nome_servico" not in normalized:
+                product_dependent_rows += 1
             if record["normalized"]:
                 mapped_rows += 1
             else:
@@ -2102,6 +2140,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             )
             if cost_status == "inserted":
                 cost_snapshots_imported += 1
+                if product_code:
+                    cost_product_codes.add(product_code)
             elif cost_status == "missing_product_code":
                 cost_rows_missing_product_code += 1
             price_status = materialize_erp_price_snapshot(
@@ -2114,6 +2154,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             )
             if price_status == "inserted":
                 price_snapshots_imported += 1
+                if product_code:
+                    price_product_codes.add(product_code)
             elif price_status == "missing_product_code":
                 price_rows_missing_product_code += 1
             elif price_status == "invalid_price":
@@ -2128,6 +2170,12 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             )
             if inventory_status == "inserted":
                 inventory_snapshots_imported += 1
+                if product_code:
+                    inventory_product_codes.add(product_code)
+            elif inventory_status == "updated":
+                inventory_snapshots_updated += 1
+                if product_code:
+                    inventory_product_codes.add(product_code)
             elif inventory_status == "missing_product_code":
                 inventory_rows_missing_product_code += 1
             elif inventory_status == "invalid_stock":
@@ -2143,6 +2191,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             )
             if product_sale_status == "inserted":
                 product_sales_imported += 1
+                if product_code:
+                    product_sale_codes.add(product_code)
             elif product_sale_status == "duplicate":
                 product_sales_duplicates += 1
             elif product_sale_status == "missing_product_code":
@@ -2160,6 +2210,9 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             )
             if service_sale_status == "inserted":
                 service_sales_imported += 1
+                service_name = scalar_text(normalized.get("servico.nome_servico"))
+                if service_name:
+                    service_sale_names.add(service_name)
             elif service_sale_status == "duplicate":
                 service_sales_duplicates += 1
             elif service_sale_status == "invalid_date":
@@ -2194,6 +2247,14 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             manual_values_preserved += int(settings_status["manual_values_preserved"])
             if settings_status["status"] == "missing_product_code":
                 settings_rows_missing_product_code += 1
+    conn.execute(
+        """
+        UPDATE source_files
+        SET row_count = ?
+        WHERE id = ?
+        """,
+        (total_rows, source_file_id),
+    )
     manual_conflicts_pending = list({conflict["key"]: conflict for conflict in manual_conflicts_pending}.values())
     if empty_mapping_rows:
         conn.execute(
@@ -2203,6 +2264,19 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             VALUES (?, ?, 'warning', 'erp_unmapped_rows', ?)
             """,
             (batch_id, source_file_id, f"{empty_mapping_rows} linhas ficaram sem campo canonico mapeado."),
+        )
+    if product_dependent_rows and len(product_code_values) < max(20, int(product_dependent_rows * 0.5)):
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'warning', 'erp_low_product_code_coverage', ?)
+            """,
+            (
+                batch_id,
+                source_file_id,
+                f"A planilha tem {product_dependent_rows} linhas dependentes de produto, mas apenas {len(product_code_values)} codigo(s) de produto distintos foram identificados.",
+            ),
         )
     if cost_rows_missing_product_code:
         conn.execute(
@@ -2257,6 +2331,15 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             VALUES (?, ?, 'warning', 'erp_stock_invalid_value', ?)
             """,
             (batch_id, source_file_id, f"{inventory_rows_invalid_value} linhas tinham valor de estoque invalido e foram ignoradas."),
+        )
+    if inventory_snapshots_updated:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'info', 'erp_stock_rows_updated', ?)
+            """,
+            (batch_id, source_file_id, f"{inventory_snapshots_updated} linha(s) atualizaram snapshots de estoque ja criados no mesmo lote."),
         )
     if product_sales_imported:
         conn.execute(
@@ -2346,19 +2429,27 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
         "rows": total_rows,
         "mapped_rows": mapped_rows,
         "unmapped_rows": empty_mapping_rows,
+        "product_dependent_rows": product_dependent_rows,
+        "product_codes_detected": len(product_code_values),
         "cost_snapshots_imported": cost_snapshots_imported,
+        "cost_products_imported": len(cost_product_codes),
         "cost_rows_missing_product_code": cost_rows_missing_product_code,
         "price_snapshots_imported": price_snapshots_imported,
+        "price_products_imported": len(price_product_codes),
         "price_rows_missing_product_code": price_rows_missing_product_code,
         "price_rows_invalid_value": price_rows_invalid_value,
         "inventory_snapshots_imported": inventory_snapshots_imported,
+        "inventory_snapshots_updated": inventory_snapshots_updated,
+        "inventory_products_imported": len(inventory_product_codes),
         "inventory_rows_missing_product_code": inventory_rows_missing_product_code,
         "inventory_rows_invalid_value": inventory_rows_invalid_value,
         "product_sales_imported": product_sales_imported,
+        "product_sales_products_imported": len(product_sale_codes),
         "product_sales_duplicates": product_sales_duplicates,
         "product_sales_missing_product_code": product_sales_missing_product_code,
         "product_sales_invalid_date": product_sales_invalid_date,
         "service_sales_imported": service_sales_imported,
+        "service_sales_services_imported": len(service_sale_names),
         "service_sales_duplicates": service_sales_duplicates,
         "service_sales_invalid_date": service_sales_invalid_date,
         "identifiers_imported": identifiers_imported,
@@ -2727,6 +2818,36 @@ def import_quality_report(conn: sqlite3.Connection) -> dict:
                 "body": f"{unmapped_rows} de {rows_total} linha(s) ficaram sem campo canonico mapeado.",
             }
         )
+    duplicate_rows = int(summary_json.get("product_sales_duplicates") or 0) + int(summary_json.get("service_sales_duplicates") or 0)
+    imported_rows = (
+        int(summary_json.get("product_sales_imported") or 0)
+        + int(summary_json.get("service_sales_imported") or 0)
+        + int(summary_json.get("inventory_snapshots_imported") or 0)
+        + int(summary_json.get("cost_snapshots_imported") or 0)
+        + int(summary_json.get("price_snapshots_imported") or 0)
+    )
+    if rows_total and duplicate_rows >= max(1, rows_total - 1) and imported_rows == 0:
+        score -= 15
+        checks.append(
+            {
+                "id": "no_new_rows",
+                "status": "attention",
+                "title": "Arquivo sem dados novos",
+                "body": f"{duplicate_rows} linha(s) ja estavam cobertas por importacoes anteriores.",
+            }
+        )
+    product_dependent_rows = int(summary_json.get("product_dependent_rows") or 0)
+    product_codes_detected = int(summary_json.get("product_codes_detected") or 0)
+    if product_dependent_rows and product_codes_detected < max(20, int(product_dependent_rows * 0.5)):
+        score -= 25
+        checks.append(
+            {
+                "id": "low_product_code_coverage",
+                "status": "attention",
+                "title": "Poucos codigos de produto identificados",
+                "body": f"{product_dependent_rows} linha(s) dependiam de produto, mas so {product_codes_detected} codigo(s) distintos foram identificados.",
+            }
+        )
     if changes_pending:
         score -= min(10, changes_pending)
         checks.append(
@@ -2836,6 +2957,88 @@ def import_refresh_targets(conn: sqlite3.Connection) -> list[dict]:
     return targets
 
 
+def import_batch_stats(conn: sqlite3.Connection, batch_ids: list[str]) -> dict[str, dict]:
+    if not batch_ids:
+        return {}
+    placeholders = ",".join("?" for _ in batch_ids)
+    stats = {batch_id: {} for batch_id in batch_ids}
+    product_code_expr = "NULLIF(TRIM(COALESCE(json_extract(normalized_payload_json, '$.\"produto.codigo_produto\"'), '')), '')"
+    service_name_expr = "NULLIF(TRIM(COALESCE(json_extract(normalized_payload_json, '$.\"servico.nome_servico\"'), '')), '')"
+    for row in rows(
+        conn,
+        f"""
+        SELECT
+            import_batch_id,
+            COUNT(*) AS source_rows,
+            COUNT({product_code_expr}) AS source_product_code_rows,
+            COUNT(DISTINCT {product_code_expr}) AS source_product_codes,
+            COUNT({service_name_expr}) AS source_service_name_rows,
+            COUNT(DISTINCT {service_name_expr}) AS source_service_names
+        FROM source_records
+        WHERE import_batch_id IN ({placeholders})
+        GROUP BY import_batch_id
+        """,
+        tuple(batch_ids),
+    ):
+        stats.setdefault(row["import_batch_id"], {}).update({key: int(row.get(key) or 0) for key in row if key != "import_batch_id"})
+
+    grouped_queries = [
+        (
+            "inventory",
+            """
+            SELECT import_batch_id, COUNT(*) AS rows, COUNT(DISTINCT product_id) AS products, MAX(snapshot_date) AS max_date
+            FROM inventory_snapshots
+            WHERE import_batch_id IN ({placeholders})
+            GROUP BY import_batch_id
+            """,
+        ),
+        (
+            "price",
+            """
+            SELECT import_batch_id, COUNT(*) AS rows, COUNT(DISTINCT product_id) AS products, MAX(snapshot_date) AS max_date
+            FROM price_snapshots
+            WHERE import_batch_id IN ({placeholders})
+            GROUP BY import_batch_id
+            """,
+        ),
+        (
+            "cost",
+            """
+            SELECT import_batch_id, COUNT(*) AS rows, COUNT(DISTINCT product_id) AS products, MAX(snapshot_date) AS max_date
+            FROM cost_snapshots
+            WHERE import_batch_id IN ({placeholders})
+            GROUP BY import_batch_id
+            """,
+        ),
+        (
+            "product_sales",
+            """
+            SELECT import_batch_id, COUNT(*) AS rows, COUNT(DISTINCT product_id) AS products, MAX(sold_at) AS max_date
+            FROM product_sales
+            WHERE import_batch_id IN ({placeholders})
+            GROUP BY import_batch_id
+            """,
+        ),
+        (
+            "service_sales",
+            """
+            SELECT import_batch_id, COUNT(*) AS rows, COUNT(DISTINCT service_id) AS services, MAX(emitted_at) AS max_date
+            FROM service_sales
+            WHERE import_batch_id IN ({placeholders})
+            GROUP BY import_batch_id
+            """,
+        ),
+    ]
+    for prefix, sql in grouped_queries:
+        for row in rows(conn, sql.format(placeholders=placeholders), tuple(batch_ids)):
+            target = stats.setdefault(row["import_batch_id"], {})
+            for key, value in row.items():
+                if key == "import_batch_id":
+                    continue
+                target[f"{prefix}_{key}"] = int(value or 0) if key != "max_date" else (value or "")
+    return stats
+
+
 def api_imports(conn: sqlite3.Connection) -> dict:
     batches = rows(conn, "SELECT id, source_system, status, source_period_start, source_period_end, started_at, finished_at, summary_json FROM import_batches ORDER BY started_at DESC LIMIT 20")
     if batches:
@@ -2861,8 +3064,10 @@ def api_imports(conn: sqlite3.Connection) -> dict:
                     "encoding": file_row.get("encoding") or "",
                 }
             )
+        stats_by_batch = import_batch_stats(conn, batch_ids)
         for batch in batches:
             batch["files"] = files_by_batch.get(batch["id"], [])
+            batch["stats"] = stats_by_batch.get(batch["id"], {})
     return {
         "contract": "imports.v1",
         "batches": batches,

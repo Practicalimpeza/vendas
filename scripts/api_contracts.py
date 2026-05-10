@@ -425,7 +425,7 @@ def assert_purchase_order_detail_contract(payload: dict) -> None:
 def assert_imports_contract(payload: dict) -> None:
     require_keys(payload, {"contract", "batches", "issues", "changes", "refresh_targets", "readiness", "quality"}, "imports.v1")
     check(payload["contract"] == "imports.v1", "Contrato de /api/imports mudou sem nova versao.")
-    require_row_keys(payload["batches"], {"id", "source_system", "status", "started_at", "finished_at", "summary_json"}, "imports.v1.batches")
+    require_row_keys(payload["batches"], {"id", "source_system", "status", "started_at", "finished_at", "summary_json", "files", "stats"}, "imports.v1.batches")
     require_row_keys(payload["issues"], {"severity", "code", "message", "source_line"}, "imports.v1.issues")
     require_row_keys(payload["changes"], {"entity_type", "source_code", "field_name", "previous_value", "new_value", "review_status", "created_at"}, "imports.v1.changes")
     require_keys(payload["readiness"], {"coverage", "plan"}, "imports.v1.readiness")

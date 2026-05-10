@@ -243,18 +243,54 @@ function importBatchMeta(batch) {
 
 function importBatchCounts(batch) {
   const summary = importBatchSummary(batch);
+  const stats = batch.stats || {};
   const counts = [];
-  const inv = Number(summary.inventory_snapshots_imported || 0);
-  const cost = Number(summary.cost_snapshots_imported || 0);
+  const invRows = Number(stats.inventory_rows || summary.inventory_snapshots_imported || 0);
+  const invProducts = Number(stats.inventory_products || summary.inventory_products_imported || 0);
+  const priceRows = Number(stats.price_rows || summary.price_snapshots_imported || 0);
+  const priceProducts = Number(stats.price_products || summary.price_products_imported || 0);
+  const costRows = Number(stats.cost_rows || summary.cost_snapshots_imported || 0);
+  const costProducts = Number(stats.cost_products || summary.cost_products_imported || 0);
+  const productSalesRows = Number(stats.product_sales_rows || summary.product_sales_imported || 0);
+  const productSalesProducts = Number(stats.product_sales_products || summary.product_sales_products_imported || 0);
+  const serviceSalesRows = Number(stats.service_sales_rows || summary.service_sales_imported || 0);
+  const serviceSalesServices = Number(stats.service_sales_services || summary.service_sales_services_imported || 0);
   const ids = Number(summary.identifiers_imported || 0);
   const settings = Number(summary.product_settings_imported || 0);
   const suppliers = Number(summary.supplier_profiles_imported || 0);
-  if (inv) counts.push(`${number(inv)} estoque`);
-  if (cost) counts.push(`${number(cost)} custos`);
+  const sourceProducts = Number(stats.source_product_codes || summary.product_codes_detected || 0);
+  const sourceProductRows = Number(stats.source_product_code_rows || 0);
+  if (sourceProducts) counts.push(`${number(sourceProducts)} produtos identificados${sourceProductRows && sourceProductRows !== sourceProducts ? ` em ${number(sourceProductRows)} linhas` : ""}`);
+  if (invProducts || invRows) counts.push(`${number(invProducts || invRows)} produtos com estoque${invRows && invProducts && invRows !== invProducts ? ` (${number(invRows)} snapshots)` : ""}`);
+  if (priceProducts || priceRows) counts.push(`${number(priceProducts || priceRows)} produtos com preco`);
+  if (costProducts || costRows) counts.push(`${number(costProducts || costRows)} produtos com custo`);
+  if (productSalesRows) counts.push(`${number(productSalesRows)} vendas de produto${productSalesProducts ? ` (${number(productSalesProducts)} produtos)` : ""}`);
+  if (serviceSalesRows) counts.push(`${number(serviceSalesRows)} vendas de servico${serviceSalesServices ? ` (${number(serviceSalesServices)} servicos)` : ""}`);
+  if (summary.product_sales_duplicates) counts.push(`${number(summary.product_sales_duplicates)} vendas de produto ja existentes`);
+  if (summary.service_sales_duplicates) counts.push(`${number(summary.service_sales_duplicates)} vendas de servico ja existentes`);
   if (ids) counts.push(`${number(ids)} identificadores`);
   if (settings) counts.push(`${number(settings)} configs`);
   if (suppliers) counts.push(`${number(suppliers)} fornecedores`);
   return counts.join(" · ");
+}
+
+function erpImportImpactText(summary = {}) {
+  const parts = [];
+  const productCodes = Number(summary.product_codes_detected || 0);
+  const invProducts = Number(summary.inventory_products_imported || 0);
+  const priceProducts = Number(summary.price_products_imported || 0);
+  const costProducts = Number(summary.cost_products_imported || 0);
+  const productSales = Number(summary.product_sales_imported || 0);
+  const serviceSales = Number(summary.service_sales_imported || 0);
+  if (productCodes) parts.push(`${number(productCodes)} produtos identificados`);
+  if (invProducts) parts.push(`${number(invProducts)} produtos com estoque`);
+  if (priceProducts) parts.push(`${number(priceProducts)} produtos com preco`);
+  if (costProducts) parts.push(`${number(costProducts)} produtos com custo`);
+  if (productSales) parts.push(`${number(productSales)} vendas de produto novas`);
+  if (serviceSales) parts.push(`${number(serviceSales)} vendas de servico novas`);
+  if (summary.product_sales_duplicates) parts.push(`${number(summary.product_sales_duplicates)} vendas de produto ja existiam`);
+  if (summary.service_sales_duplicates) parts.push(`${number(summary.service_sales_duplicates)} vendas de servico ja existiam`);
+  return parts.join(", ");
 }
 
 function trimCode(value) {
@@ -6897,7 +6933,8 @@ async function confirmErpImportMapping() {
     const supplierCount = Number(result.summary.supplier_profiles_imported || 0);
     const preservedCount = Number(result.summary.manual_values_preserved || 0);
     const resolvedCount = Number(result.summary.manual_conflicts_resolved || 0);
-    status.textContent = `Lote ${result.batch_id} gravado: ${number(result.summary.mapped_rows)} linhas catalogadas${supplierCount ? `, ${number(supplierCount)} fornecedor(es) atualizados` : ""}${costCount ? `, ${number(costCount)} custos atualizados` : ""}${identifierCount ? `, ${number(identifierCount)} identificadores salvos` : ""}${settingsCount ? `, ${number(settingsCount)} configuracoes importadas` : ""}${resolvedCount ? `, ${number(resolvedCount)} divergencias decididas` : ""}${preservedCount ? ` (${number(preservedCount)} manuais preservados)` : ""}. Este mapeamento sera sugerido nas proximas planilhas com a mesma estrutura.`;
+    const impact = erpImportImpactText(result.summary || {});
+    status.textContent = `Lote ${result.batch_id} gravado: ${number(result.summary.mapped_rows)} linhas lidas${impact ? `; impacto: ${impact}` : ""}${supplierCount ? `, ${number(supplierCount)} fornecedor(es) atualizados` : ""}${identifierCount ? `, ${number(identifierCount)} identificadores salvos` : ""}${settingsCount ? `, ${number(settingsCount)} configuracoes importadas` : ""}${resolvedCount ? `, ${number(resolvedCount)} divergencias decididas` : ""}${preservedCount ? ` (${number(preservedCount)} manuais preservados)` : ""}. Este mapeamento sera sugerido nas proximas planilhas com a mesma estrutura.`;
   } catch (error) {
     status.textContent = error.message || "Nao foi possivel gravar o lote.";
   } finally {
@@ -7538,7 +7575,8 @@ async function commitRefreshTarget() {
     state.refreshFile = null;
     state.refreshAnalysis = null;
     preview.innerHTML = "";
-    status.textContent = `Lote gravado: ${number(result.summary?.mapped_rows || 0)} linhas catalogadas${result.summary?.supplier_profiles_imported ? `, ${number(result.summary.supplier_profiles_imported)} fornecedor(es) atualizados` : ""}.`;
+    const impact = erpImportImpactText(result.summary || {});
+    status.textContent = `Lote gravado: ${number(result.summary?.mapped_rows || 0)} linhas lidas${impact ? `; impacto: ${impact}` : ""}${result.summary?.supplier_profiles_imported ? `, ${number(result.summary.supplier_profiles_imported)} fornecedor(es) atualizados` : ""}.`;
   } catch (error) {
     status.textContent = error.message || "Nao foi possivel gravar o lote.";
     if (button) button.disabled = false;
