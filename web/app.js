@@ -3104,6 +3104,7 @@ function quoteSupplierInspector(row) {
     <div class="quote-supplier-actions">
       <button class="action-button" type="button" data-quote-supplier-action="${escapeAttr(row.supplier_id)}">${escapeHtml(status.rank === "open" ? "Retomar cotacao" : "Montar pedido")}</button>
       ${latestQuoteId ? `<button class="secondary-button" type="button" data-quote-discard="${escapeAttr(latestQuoteId)}" data-quote-discard-supplier="${escapeAttr(row.supplier_id)}">Descartar cotacao</button>` : ""}
+      <span class="save-state quote-discard-state" data-quote-discard-state aria-live="polite"></span>
     </div>
   `;
 }
@@ -4924,8 +4925,8 @@ async function markCurrentQuoteSent() {
   await refreshCurrentQuoteWorkbench();
 }
 
-async function discardQuote(quote, supplierId = state.selectedQuoteSupplierId) {
-  const status = document.querySelector("#quoteWorkbenchStatus") || document.querySelector("#quoteFinal .quote-final-note");
+async function discardQuote(quote, supplierId = state.selectedQuoteSupplierId, feedbackEl = null, buttonEl = null) {
+  const status = feedbackEl || document.querySelector("#quoteWorkbenchStatus") || document.querySelector("#quoteFinal .quote-final-note");
   if (!quote?.id) {
     if (status) status.textContent = "Nao ha cotacao aberta para descartar.";
     return;
@@ -4935,11 +4936,19 @@ async function discardQuote(quote, supplierId = state.selectedQuoteSupplierId) {
     return;
   }
   if (!window.confirm("Descartar esta cotacao aberta? Os itens marcados serao removidos da mesa.")) return;
+  if (buttonEl) buttonEl.disabled = true;
   if (status) status.textContent = "Descartando cotacao";
-  await apiPost("/api/quotes/status", { id: quote.id, status: "cancelled" });
-  if (supplierId) await loadQuoteSupplierWorkbench(supplierId, { keepStep: true, silent: true });
-  await refreshQuotes();
-  await refreshAfterSave({ quotes: true, actions: true, maturity: true }, { defer: true, delay: 150 });
+  try {
+    await apiPost("/api/quotes/status", { id: quote.id, status: "cancelled" });
+    if (status) status.textContent = "Cotacao descartada";
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (supplierId) await loadQuoteSupplierWorkbench(supplierId, { keepStep: true, silent: true });
+    await refreshQuotes();
+    await refreshAfterSave({ quotes: true, actions: true, maturity: true }, { defer: true, delay: 150 });
+  } catch (error) {
+    if (status) status.textContent = error.message || "Nao foi possivel descartar.";
+    if (buttonEl) buttonEl.disabled = false;
+  }
 }
 
 async function discardCurrentQuote() {
@@ -5174,7 +5183,7 @@ async function openPurchaseCloseModal() {
   );
 }
 
-function runQuoteCommand(command) {
+function runQuoteCommand(command, sourceEl = null) {
   if (!command) return;
   if (command === "supplier") {
     setQuoteStep("supplier");
@@ -5205,7 +5214,7 @@ function runQuoteCommand(command) {
     return;
   }
   if (command === "discard") {
-    discardCurrentQuote();
+    discardQuote(state.quoteWorkbench?.current_quote, state.selectedQuoteSupplierId, null, sourceEl);
     return;
   }
   if (command === "send") markCurrentQuoteSent();
@@ -7856,7 +7865,8 @@ async function boot() {
   document.querySelector("#quoteSupplierInspector").addEventListener("click", async (event) => {
     const discard = event.target.closest("[data-quote-discard]");
     if (discard?.dataset.quoteDiscard) {
-      await discardQuote({ id: discard.dataset.quoteDiscard, status: "draft" }, discard.dataset.quoteDiscardSupplier || state.quoteSupplierPreviewId);
+      const feedback = discard.closest(".quote-supplier-actions")?.querySelector("[data-quote-discard-state]");
+      await discardQuote({ id: discard.dataset.quoteDiscard, status: "draft" }, discard.dataset.quoteDiscardSupplier || state.quoteSupplierPreviewId, feedback, discard);
       return;
     }
     const button = event.target.closest("[data-quote-supplier-action]");
@@ -7904,7 +7914,7 @@ async function boot() {
     }
     const command = event.target.closest("[data-quote-command]");
     if (command) {
-      runQuoteCommand(command.dataset.quoteCommand);
+      runQuoteCommand(command.dataset.quoteCommand, command);
       return;
     }
     const tab = event.target.closest("[data-quote-step]");

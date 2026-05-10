@@ -7084,6 +7084,11 @@ th.sortable-th[data-sort-dir="desc"]::after {
   gap: 8px;
 }
 
+.quote-discard-state {
+  flex: 1 0 100%;
+  margin-top: 0;
+}
+
 .quote-supplier-inspector-empty {
   display: grid;
   gap: 7px;
