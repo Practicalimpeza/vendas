@@ -364,6 +364,55 @@ def smoke_replenishment(conn: sqlite3.Connection) -> None:
     check(result["summary"]["buy_now"] >= 1, "Resumo de reposicao nao contou compra sugerida.")
 
 
+def smoke_replenishment_sparse_guardrail() -> None:
+    conn = open_memory_db()
+    try:
+        seed_fixture(conn)
+        product_id = "product_sparse_burst"
+        conn.execute(
+            """
+            INSERT INTO products (id, organization_id, source_code, name, normalized_name, unit, brand_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (product_id, ORG_ID, "P999", "Produto Rajada", "produto_rajada", "UN", BRAND_ID),
+        )
+        conn.execute(
+            """
+            INSERT INTO product_settings
+                (organization_id, product_id, preferred_supplier_id, package_size, target_coverage_days)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, product_id, SUPPLIER_ID, 1, 45),
+        )
+        for sold_at, quantity in [("2025-07-15", 1), ("2026-01-09", 200), ("2026-01-10", 200)]:
+            conn.execute(
+                """
+                INSERT INTO product_sales
+                    (organization_id, store_id, product_id, sold_at, quantity, gross_amount)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (ORG_ID, STORE_ID, product_id, sold_at, quantity, quantity * 10),
+            )
+        conn.execute(
+            """
+            INSERT INTO inventory_snapshots
+                (organization_id, store_id, product_id, snapshot_date, quantity_on_hand)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, STORE_ID, product_id, "2026-01-11", 0),
+        )
+        result = api_replenishment(conn, period={"period_days": "all", "date_from": "", "date_to": "", "label": "Todo periodo"})
+        by_product = {row["product_id"]: row for row in result["rows"]}
+        row = by_product[product_id]
+        check(row["demand_signal"] in {"sparse", "burst"}, "Reposicao nao marcou historico esparso/rajada.")
+        check(row["forecast_guardrail"] is True, "Reposicao nao aplicou trava de alvo para rajada esparsa.")
+        check(row["target_coverage_days"] <= 30, "Rajada esparsa nao deveria usar cobertura longa automatica.")
+        check(row["order_up_to"] <= 400, "Alvo de pedido ignorou limite por evidencia de demanda.")
+        check(row["suggested_quantity"] <= 400, "Sugestao de pedido ignorou limite por evidencia de demanda.")
+    finally:
+        conn.close()
+
+
 def smoke_imported_settings_guardrails() -> None:
     conn = open_memory_db()
     try:
@@ -1097,6 +1146,7 @@ def run() -> None:
         seed_fixture(conn)
         smoke_summary_period_contract(conn)
         smoke_replenishment(conn)
+        smoke_replenishment_sparse_guardrail()
         smoke_pricing(conn)
         smoke_customer_import_contracts(conn)
         smoke_quotes(conn)
@@ -1119,6 +1169,7 @@ def main() -> int:
         "custo por data",
         "resumo por periodo",
         "reposicao",
+        "guardrail reposicao",
         "precificacao",
         "clientes/importacao contratos",
         "cotacao",

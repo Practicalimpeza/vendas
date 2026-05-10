@@ -369,6 +369,10 @@ def api_replenishment(conn: sqlite3.Connection, limit: int = 300, period: dict |
                     "trend_index": 1,
                     "variability": 0,
                     "intermittent": False,
+                    "demand_signal": "none",
+                    "sale_days_180": 0,
+                    "sale_lines_180": 0,
+                    "forecast_guardrail": False,
                     "revenue": round(revenue, 2),
                     "reason": reason,
                     "supplier_id": product["effective_supplier_id"] or "",
@@ -386,11 +390,15 @@ def api_replenishment(conn: sqlite3.Connection, limit: int = 300, period: dict |
                 }
             )
             continue
-        sale_days_180 = len({
-            sale["sold_at"]
+        horizon_180 = min(180, observed_days)
+        start_180 = ref - timedelta(days=horizon_180 - 1)
+        sales_180 = [
+            sale
             for sale in product_sales
-            if date.fromisoformat(str(sale["sold_at"])[:10]) >= ref - timedelta(days=min(180, observed_days) - 1)
-        })
+            if date.fromisoformat(str(sale["sold_at"])[:10]) >= start_180
+        ]
+        sale_days_180 = len({str(sale["sold_at"])[:10] for sale in sales_180})
+        sale_lines_180 = len(sales_180)
 
         d30 = qty_30 / max(min(30, observed_days), 1)
         d60 = qty_60 / max(min(60, observed_days), 1)
@@ -401,6 +409,17 @@ def api_replenishment(conn: sqlite3.Connection, limit: int = 300, period: dict |
         trend_index = d90 / d365 if d365 > 0 else (1.4 if d90 > 0 else 1.0)
         trend_factor = clamp(0.85 + (trend_index * 0.15), 0.75, 1.25)
         forecast_daily = max(weighted * trend_factor, dall * 0.65)
+
+        sparse_limit_days = max(6, math.ceil(horizon_180 * 0.08))
+        sparse_demand = qty_180 > 0 and sale_days_180 <= sparse_limit_days
+        recent_burst = sparse_demand and qty_30 >= max(qty_180 * 0.60, max_single_sale * 3.0, package_size * 6.0)
+        demand_signal = "burst" if recent_burst else "sparse" if sparse_demand else "regular"
+        forecast_guardrail = False
+        if sparse_demand:
+            sparse_forecast_cap = max(d180 * (1.25 if recent_burst else 1.10), d365 * 1.35, max_single_sale / 30.0)
+            if forecast_daily > sparse_forecast_cap > 0:
+                forecast_daily = sparse_forecast_cap
+                forecast_guardrail = True
 
         intermittent = sale_days_180 <= 4 and qty_180 > 0
         if intermittent:
@@ -424,15 +443,27 @@ def api_replenishment(conn: sqlite3.Connection, limit: int = 300, period: dict |
         configured_target = int(product["configured_target_days"] or target_by_abc)
         target_coverage_days = configured_target if configured_target != 45 or abc_class == "A" else target_by_abc
         target_coverage_days = int(clamp(target_coverage_days + int(supplier_profile["target_adjustment_days"]), 14, 120))
+        if sparse_demand:
+            target_coverage_days = min(target_coverage_days, 30)
+            forecast_guardrail = True
         service_z = {"A": 1.65, "B": 1.28, "C": 0.84}[abc_class]
-        safety_stock = service_z * std_daily * math.sqrt(max(lead_time_days + review_cycle_days, 1))
+        std_cap_multiplier = 0.85 if sparse_demand else 1.50
+        effective_std_daily = min(std_daily, forecast_daily * std_cap_multiplier) if forecast_daily > 0 else 0.0
+        safety_stock = service_z * effective_std_daily * math.sqrt(max(lead_time_days + review_cycle_days, 1))
         if intermittent:
             safety_stock *= 0.55
 
         reorder_point = (forecast_daily * (lead_time_days + review_cycle_days)) + safety_stock + minimum_stock
         order_up_to = (forecast_daily * (lead_time_days + review_cycle_days + target_coverage_days)) + safety_stock + minimum_stock
+        if sparse_demand:
+            evidence_cap_units = max(package_size, max_single_sale * 2.0, qty_90 * 0.55, qty_180 * 0.40)
+            if order_up_to > evidence_cap_units:
+                order_up_to = evidence_cap_units
+                forecast_guardrail = True
+            reorder_point = min(reorder_point, order_up_to)
         if maximum_stock > 0:
             order_up_to = min(order_up_to, maximum_stock)
+            reorder_point = min(reorder_point, order_up_to)
         raw_need = max(order_up_to - projected_stock_units, 0)
 
         coverage_days = None if forecast_daily <= 0 else stock_units / forecast_daily
@@ -484,6 +515,8 @@ def api_replenishment(conn: sqlite3.Connection, limit: int = 300, period: dict |
         elif projected_coverage_days is not None and projected_coverage_days <= target_coverage_days:
             status = "watch"
             reason = "Cobertura abaixo da meta, mas ainda acima do ponto de pedido."
+        if forecast_guardrail and status in {"urgent", "buy_now", "watch"}:
+            reason = f"{reason} Alvo limitado por historico esparso ou rajada recente."
 
         unit_cost = costs.get(product["id"], 0.0)
         sale_price = prices.get(product["id"], 0.0)
@@ -540,6 +573,10 @@ def api_replenishment(conn: sqlite3.Connection, limit: int = 300, period: dict |
                 "trend_index": round(trend_index, 2),
                 "variability": round(variability, 2),
                 "intermittent": intermittent,
+                "demand_signal": demand_signal,
+                "sale_days_180": sale_days_180,
+                "sale_lines_180": sale_lines_180,
+                "forecast_guardrail": forecast_guardrail,
                 "revenue": round(revenue, 2),
                 "reason": reason,
                 "supplier_id": product["effective_supplier_id"] or "",

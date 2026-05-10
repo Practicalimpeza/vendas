@@ -2403,6 +2403,18 @@ async function updateAction(button, status) {
   }
 }
 
+function demandSignalText(row) {
+  const labels = {
+    burst: "rajada recente",
+    sparse: "historico esparso",
+    regular: "regular",
+    none: "sem giro",
+  };
+  const label = labels[row.demand_signal] || "regular";
+  const days = Number(row.sale_days_180 || 0);
+  return days ? `${label} - ${number(days)} dia(s) com venda/180d` : label;
+}
+
 function stockRows(rows) {
   return rows
     .map((row) => {
@@ -2442,7 +2454,7 @@ function stockRows(rows) {
           <td class="num">${money(row.estimated_value)}</td>
           <td>
             ${escapeHtml(row.reason)}
-            <span class="muted-line">seguranca ${number(row.safety_stock)} - pacote ${number(row.package_size)} - tendencia ${number(row.trend_index)}</span>
+            <span class="muted-line">seguranca ${number(row.safety_stock)} - pacote ${number(row.package_size)} - tendencia ${number(row.trend_index)} - demanda ${escapeHtml(demandSignalText(row))}</span>
             ${mixActions}
           </td>
         </tr>
