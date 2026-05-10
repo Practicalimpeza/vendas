@@ -443,7 +443,7 @@ def parse_biff_sheet(workbook: bytes, start: int, shared_strings: list[str]) -> 
                     break
                 biff_cell_set(cells, row, col, rk_number(struct.unpack_from("<I", body, offset + 2)[0]))
                 offset += 6
-        elif record_id == 0x0204 and len(body) >= 8:
+        elif record_id in {0x00D6, 0x0204} and len(body) >= 8:
             row, col = struct.unpack_from("<HH", body, 0)
             text, _ = biff_text(body, 6)
             biff_cell_set(cells, row, col, text)

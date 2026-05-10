@@ -465,15 +465,19 @@ def smoke_erp_context_materialization() -> None:
 def smoke_erp_biff_formula_text() -> None:
     formula_body = struct.pack("<HHH", 1, 0, 0) + (b"\x00" * 6 + b"\xff\xff") + b"\x00" * 6
     string_body = struct.pack("<H", 4) + b"\x00" + b"P902"
+    rich_text_body = struct.pack("<HHH", 2, 0, 0) + struct.pack("<H", 4) + b"\x00" + b"P903"
     workbook = (
         struct.pack("<HH", 0x0006, len(formula_body))
         + formula_body
         + struct.pack("<HH", 0x0207, len(string_body))
         + string_body
+        + struct.pack("<HH", 0x00D6, len(rich_text_body))
+        + rich_text_body
         + struct.pack("<HH", 0x000A, 0)
     )
     rows = parse_biff_sheet(workbook, 0, [])
     check(rows[1][0] == "P902", "Parser XLS nao leu texto calculado de formula BIFF.")
+    check(rows[2][0] == "P903", "Parser XLS nao leu texto rico BIFF.")
 
 
 def smoke_latest_purchase_cost_by_snapshot_date() -> None:
