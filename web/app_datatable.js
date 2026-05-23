@@ -415,7 +415,7 @@ function createDataTable(mount, config) {
         const caret = col.sortable || col.filterable
           ? `<button class="nexo-dt-th-caret" type="button" data-dt-colmenu aria-label="Opções de ${escapeAttr(col.label)}"><i data-lucide="chevron-down"></i></button>`
           : "";
-        return `<th class="${cls}" data-dt-col="${escapeAttr(col.id)}" aria-sort="${aria}"${tip}><span class="nexo-dt-th-label"${col.sortable ? ' data-dt-sortlabel tabindex="0"' : ""}>${escapeHtml(col.label)}${badge}</span>${caret}</th>`;
+        return `<th class="${cls}" data-dt-col="${escapeAttr(col.id)}" aria-sort="${aria}"${tip}><div class="nexo-dt-th-inner"><span class="nexo-dt-th-label"${col.sortable ? ' data-dt-sortlabel tabindex="0"' : ""}>${escapeHtml(col.label)}${badge}</span>${caret}</div></th>`;
       })
       .join("");
   }
