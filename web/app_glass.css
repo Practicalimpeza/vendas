@@ -1,0 +1,244 @@
+/* ===================================================================
+   Nexo — Liquid Glass (camada de design)
+   Adaptativo: conteúdo em vidro claro, sidebar/topbar escura.
+   Sutil/elegante. Acento neutro (verde só em ações e seleção).
+   Carregado por último: sobrepõe app.css/app_datatable.css.
+   =================================================================== */
+:root {
+  /* superfícies de vidro claro */
+  --glass: rgba(255, 255, 255, 0.6);
+  --glass-strong: rgba(255, 255, 255, 0.74);
+  --glass-soft: rgba(255, 255, 255, 0.46);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-hairline: rgba(17, 28, 22, 0.08);
+  --glass-blur: blur(12px) saturate(135%);
+  --glass-blur-strong: blur(26px) saturate(150%);
+  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --glass-shadow: 0 1px 2px rgba(17, 28, 22, 0.05), 0 16px 38px rgba(17, 28, 22, 0.1);
+  --glass-shadow-lg: 0 32px 84px rgba(17, 28, 22, 0.24);
+  --glass-radius: 16px;
+  /* realce neutro (cristal) para hover/superfícies; verde fica para ações */
+  --neutral-hover: rgba(17, 28, 22, 0.045);
+  --neutral-soft: rgba(255, 255, 255, 0.5);
+  --shadow: var(--glass-shadow);
+}
+
+/* fundo: wallpaper vibrante para o vidro refratar (sobre o que já existe) */
+body::before {
+  opacity: 0.6;
+}
+
+/* ---------------------------------------------------- superfícies-base */
+.panel,
+.startup-card {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-sheen), var(--glass-shadow);
+}
+.panel-head {
+  border-bottom: 1px solid var(--glass-hairline);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent);
+}
+
+/* KPIs: muitos e pequenos — vidro translúcido sem blur (mais leve) */
+.kpi {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: 13px;
+  box-shadow: var(--glass-sheen), 0 8px 22px rgba(17, 28, 22, 0.06);
+}
+.kpi::before {
+  opacity: 0.7;
+}
+
+/* cartões internos: tinta translúcida, sem blur próprio (evita vidro sobre vidro) */
+.info-card,
+.refresh-target-card {
+  background: var(--neutral-soft);
+  border: 1px solid var(--glass-hairline);
+  border-radius: 12px;
+}
+
+/* contexto da topbar = vidro claro */
+.topbar-context {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: var(--glass-sheen), 0 8px 22px rgba(17, 28, 22, 0.06);
+}
+
+/* ----------------------------------------------------------- modais */
+.modal-overlay {
+  background: rgba(16, 26, 21, 0.34);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  backdrop-filter: blur(6px) saturate(120%);
+}
+.modal {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--glass-sheen), var(--glass-shadow-lg);
+}
+.modal-head {
+  border-bottom: 1px solid var(--glass-hairline);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), transparent);
+}
+.modal-close {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+}
+
+/* ----------------------------------------------------------- botões */
+.action-button {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 42%),
+    var(--green);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 22px rgba(25, 115, 77, 0.26);
+  color: #fff;
+}
+.action-button:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 10px 26px rgba(25, 115, 77, 0.32);
+}
+.secondary-button {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-sheen), 0 4px 12px rgba(17, 28, 22, 0.06);
+}
+.secondary-button:hover {
+  border-color: rgba(25, 115, 77, 0.4);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+/* ----------------------------------------------------------- inputs */
+.search,
+.inline-input,
+select.search {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--glass-border);
+}
+.search:focus,
+.inline-input:focus,
+select.search:focus {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--green);
+}
+
+/* ----------------------------------------------------- DataTable vidro */
+/* dentro de um .panel: sem moldura/vidro próprios para não duplicar */
+.panel > .nexo-dt,
+.nexo-dt {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.nexo-dt-toolbar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.12));
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-hairline);
+}
+.nexo-dt-chips {
+  background: rgba(255, 255, 255, 0.34);
+  border-bottom: 1px solid var(--glass-hairline);
+}
+.nexo-dt-btn,
+.nexo-dt-mode,
+.nexo-dt-search input {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: var(--glass-border);
+}
+.nexo-dt-btn:hover,
+.nexo-dt-mode button:hover {
+  background: var(--neutral-hover);
+  border-color: rgba(25, 115, 77, 0.4);
+}
+/* primário e estados ativos mantêm o verde */
+.nexo-dt-btn.primary {
+  background: var(--green);
+  border-color: var(--green);
+}
+.nexo-dt-btn.active,
+.nexo-dt-mode button.active {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green);
+}
+/* cabeçalho sticky: tinta gelada opaca (sem blur, evita reblur no scroll) */
+.nexo-dt thead th {
+  background: rgba(246, 249, 247, 0.94);
+  border-bottom: 1px solid var(--glass-hairline);
+}
+.nexo-dt thead th.sortable:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+.nexo-dt tbody td {
+  border-bottom: 1px solid rgba(17, 28, 22, 0.05);
+}
+/* hover de linha: realce neutro com acento verde fino à esquerda */
+.nexo-dt-row:hover {
+  background: var(--neutral-hover);
+}
+.nexo-dt-freeze tbody td:first-child,
+.nexo-dt-actions-cell {
+  background: rgba(252, 253, 252, 0.96);
+}
+.nexo-dt-freeze thead th:first-child {
+  background: rgba(246, 249, 247, 0.97);
+}
+.nexo-dt-row:hover .nexo-dt-actions-cell,
+.nexo-dt-freeze .nexo-dt-row:hover td:first-child {
+  background: rgba(255, 255, 255, 0.7);
+}
+.nexo-dt-facet:hover,
+.nexo-dt-colbox:hover {
+  background: var(--neutral-hover);
+}
+/* popovers/menus de vidro */
+.nexo-dt-pop {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-sheen), var(--glass-shadow-lg);
+}
+.nexo-dt-stat {
+  background: var(--neutral-soft);
+  border-color: var(--glass-hairline);
+}
+/* cartões da DataTable: tinta translúcida (sem blur, muitos elementos) */
+.nexo-dt-card {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-sheen), 0 8px 22px rgba(17, 28, 22, 0.07);
+}
+
+/* ----------------------------------------------------- topbar escura? */
+/* topbar fica transparente sobre o wallpaper; o dock (sidebar) já é vidro escuro */
+
+/* desligar efeitos para quem prefere menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  .nexo-dt-in {
+    animation: none;
+  }
+}
+
+/* fallback: sem suporte a backdrop-filter, usar superfícies mais opacas */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .panel,
+  .modal,
+  .topbar-context,
+  .nexo-dt-toolbar,
+  .nexo-dt thead th,
+  .nexo-dt-pop {
+    background: rgba(255, 255, 255, 0.96);
+  }
+}
