@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="NexoVarejo">
+  <rect width="96" height="96" rx="20" fill="#10251b"/>
+  <path d="M23 72V24h12l25 28V24h13v48H62L36 43v29H23z" fill="#eef8f2"/>
+  <path d="M62 72 43 24h14l11 31 11-31h14L74 72H62z" fill="#55b383"/>
+</svg>

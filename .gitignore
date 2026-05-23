@@ -24,6 +24,9 @@ outputs/
 *.sqlite3
 *.log
 
+# White-label overrides locais
+/config/local/
+
 # OS / editors
 .DS_Store
 Thumbs.db

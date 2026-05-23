@@ -40,7 +40,7 @@ mas tudo aqui ajuda a desenhar o produto.
 - Valor financeiro parado.
 - Estoque critico por produto A.
 - Estoque divergente entre snapshots.
-- Simulacao de compra ate cobertura alvo.
+- Simulacao de compra ate o horizonte calculado.
 
 ## Compras e reposicao
 
@@ -110,7 +110,7 @@ mas tudo aqui ajuda a desenhar o produto.
 - Intervalo de confianca para demanda.
 - Simulacao de falta ate a proxima compra.
 - Simulacao de capital necessario para repor.
-- Impacto de aumentar ou reduzir cobertura alvo.
+- Impacto de alterar ciclo, embalagem ou minimo operacional.
 - Projecao de receita por carteira ativa.
 - Probabilidade de recompra por cliente e categoria.
 
@@ -138,4 +138,3 @@ mas tudo aqui ajuda a desenhar o produto.
 - Aprovar pedido sugerido.
 - Registrar chegada de pedido.
 - Corrigir cadastro de produto.
-

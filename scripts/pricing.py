@@ -1,8 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import sqlite3
 
+from app_config import app_name
 from db_helpers import date_where, one, parse_decimal, resolve_period, rows, scalar_text
 
 PRICING_MIN_MARGIN = {
@@ -18,7 +19,7 @@ def product_role_label(role: str) -> str:
         "ancora": "Ancora",
         "commodity": "Commodity",
         "normal": "Normal",
-        "marca_propria": "Marca propria",
+        "marca_propria": "Marca própria",
     }.get(role, "Normal")
 
 
@@ -33,14 +34,14 @@ def classify_pricing_signal(row: dict) -> dict:
     suggested_price_delta = round(target_price - sale_price, 2) if target_price > 0 and sale_price > 0 else 0.0
     if sale_price <= 0:
         code = "sem_preco"
-        label = "Sem preco"
+        label = "Sem preço"
         severity = "danger"
-        reason = "Nao ha preco de venda importado do ERP para calcular margem."
+        reason = "Não há preço de venda importado do ERP para calcular margem."
     elif cost_price <= 0:
         code = "sem_custo"
         label = "Sem custo"
         severity = "danger"
-        reason = "Sem custo, o Nexo nao consegue validar margem."
+        reason = f"Sem custo, o {app_name()} não consegue validar margem."
     else:
         margin = (sale_price - cost_price) / sale_price * 100.0
         row["margin_pct"] = round(margin, 1)
@@ -48,22 +49,22 @@ def classify_pricing_signal(row: dict) -> dict:
             code = "margem_negativa"
             label = "Margem negativa"
             severity = "danger"
-            reason = "Preco importado do ERP esta abaixo do custo conhecido. Revisao deve ser feita no ERP."
+            reason = "Preço importado do ERP está abaixo do custo conhecido. Confira custo e preço antes de decidir no ERP."
         elif margin < min_margin:
             code = "margem_baixa"
             label = "Margem baixa"
             severity = "warn"
-            reason = f"Margem abaixo do alvo para {product_role_label(role)} ({min_margin:.0f}%). Sugestao: revisar preco no ERP."
+            reason = f"Margem abaixo da referência mínima para {product_role_label(role)} ({min_margin:.0f}%). Use como evidência para conferência, não como preço sugerido."
         elif revenue >= 2000 and quantity >= 5 and margin > min_margin + 18:
             code = "oportunidade"
             label = "Oportunidade"
             severity = "good"
-            reason = "Produto relevante com folga de margem; o Nexo sugere avaliar posicionamento, sem alterar o ERP."
+            reason = f"Produto relevante sem sinal crítico de margem. Pode valer olhar posicionamento, sem alterar o ERP automaticamente."
         else:
             code = "ok"
             label = "Ok"
             severity = "muted"
-            reason = "Margem dentro da faixa esperada para o papel do produto."
+            reason = "Margem sem sinal crítico para o papel do produto."
     row.update(
         {
             "signal": code,
@@ -76,7 +77,7 @@ def classify_pricing_signal(row: dict) -> dict:
             "target_price": target_price,
             "suggested_price_delta": suggested_price_delta,
             "price_source": "erp_import",
-            "nexo_action": "Sugerir revisao no ERP" if code in {"margem_negativa", "margem_baixa", "sem_preco"} else "Monitorar",
+            "nexo_action": "Conferir evidência" if code in {"margem_negativa", "margem_baixa", "sem_preco", "sem_custo"} else "Monitorar",
         }
     )
     return row
@@ -200,3 +201,4 @@ def update_product_pricing(conn: sqlite3.Connection, payload: dict) -> dict:
         ),
     )
     return {"ok": True}
+

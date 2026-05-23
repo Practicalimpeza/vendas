@@ -10,6 +10,7 @@ essa resposta em memoria operacional.
 
 - Preco unitario cotado.
 - Embalagem ou divisor informado pelo fornecedor.
+- Referencia/codigo do produto no fornecedor (`supplier_reference`).
 - Prazo de entrega em dias.
 - Disponibilidade: disponivel, parcial, indisponivel ou sem cotacao.
 - Observacao livre: validade, condicao comercial, substituicao ou restricao.
@@ -17,9 +18,10 @@ essa resposta em memoria operacional.
 ## Aprendizado gerado
 
 Quando a resposta tem fornecedor vinculado, produto e algum dado operacional
-util, o Nexo atualiza `supplier_product_rules` com custo, embalagem, prazo e
-referencia do fornecedor. Se o produto ainda nao tinha embalagem configurada,
-o Nexo tambem preenche `product_settings.package_size`.
+util, o Nexo atualiza `supplier_product_rules` com embalagem, prazo e
+referencia do fornecedor. A referencia informada na resposta tambem atualiza
+`product_identifiers` como `supplier_reference`. Se o produto ainda nao tinha
+embalagem configurada, o Nexo tambem preenche `product_settings.package_size`.
 
 Esses dados sao canonicos do Nexo, porque nascem de uma acao operacional do
 gestor dentro do sistema. Eles nao alteram nome, codigo interno, estoque ou

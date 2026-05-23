@@ -1,0 +1,15 @@
+{
+  "schema": "pulso.white_label.v1",
+  "public": {
+    "app_name": "Cliente Exemplo",
+    "app_subtitle": "Mesa de operacao",
+    "logo_path": ""
+  },
+  "defaults": {
+    "organization_id": "cliente_exemplo",
+    "company_name": "Cliente Exemplo",
+    "imported_company_name": "Cliente Exemplo",
+    "store_name": "Loja principal",
+    "country": "Brasil"
+  }
+}

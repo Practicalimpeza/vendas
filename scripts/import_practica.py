@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import csv
@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+from db_helpers import app_controlled_fields, normalize_code
 from text_utils import canonical_customer_key
 from schema_upgrades import ensure_schema_upgrades
 
@@ -59,7 +60,8 @@ def hash_file(path: Path) -> str:
 
 
 def product_id(org: str, code: str) -> str:
-    return f"{org}:product:{code}"
+    normalized = normalize_code(code) or code.strip()
+    return f"{org}:product:{normalized}"
 
 
 def brand_id(org: str, name: str) -> str:
@@ -226,12 +228,13 @@ def upsert_product(
     brand: str = "",
     payload: dict | None = None,
 ) -> str:
-    pid = product_id(org, code)
+    canonical_code = normalize_code(code) or code.strip()
+    pid = product_id(org, canonical_code)
     existing = conn.execute("SELECT name, unit, brand_id FROM products WHERE id = ?", (pid,)).fetchone()
     bid = upsert_brand(conn, org, brand)
     if existing:
-        source_change(conn, org=org, batch_id=batch_id, entity_type="product", entity_id=pid, source_code=code, field_name="name", previous=existing["name"], new=name)
-        source_change(conn, org=org, batch_id=batch_id, entity_type="product", entity_id=pid, source_code=code, field_name="unit", previous=existing["unit"], new=unit or "UN")
+        source_change(conn, org=org, batch_id=batch_id, entity_type="product", entity_id=pid, source_code=canonical_code, field_name="name", previous=existing["name"], new=name)
+        source_change(conn, org=org, batch_id=batch_id, entity_type="product", entity_id=pid, source_code=canonical_code, field_name="unit", previous=existing["unit"], new=unit or "UN")
         if existing["brand_id"] != bid:
             source_change(
                 conn,
@@ -239,7 +242,7 @@ def upsert_product(
                 batch_id=batch_id,
                 entity_type="product",
                 entity_id=pid,
-                source_code=code,
+                source_code=canonical_code,
                 field_name="brand_id",
                 previous=existing["brand_id"] or "",
                 new=bid or "",
@@ -252,15 +255,59 @@ def upsert_product(
              first_seen_import_batch_id, last_seen_import_batch_id, source_payload_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, source_code) DO UPDATE SET
-            name = excluded.name,
-            normalized_name = excluded.normalized_name,
-            unit = excluded.unit,
-            brand_id = excluded.brand_id,
+            name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = products.organization_id
+                      AND c.entity_type = 'product'
+                      AND c.entity_id = products.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.name
+                ELSE products.name
+            END,
+            normalized_name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = products.organization_id
+                      AND c.entity_type = 'product'
+                      AND c.entity_id = products.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.normalized_name
+                ELSE products.normalized_name
+            END,
+            unit = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = products.organization_id
+                      AND c.entity_type = 'product'
+                      AND c.entity_id = products.id
+                      AND c.field_name = 'unit'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.unit
+                ELSE products.unit
+            END,
+            brand_id = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = products.organization_id
+                      AND c.entity_type = 'product'
+                      AND c.entity_id = products.id
+                      AND c.field_name = 'brand_id'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.brand_id
+                ELSE products.brand_id
+            END,
             last_seen_import_batch_id = excluded.last_seen_import_batch_id,
             source_payload_json = excluded.source_payload_json,
             updated_at = CURRENT_TIMESTAMP
         """,
-        (pid, org, code, name, normalize(name), unit or "UN", bid, batch_id, batch_id, json.dumps(payload or {}, ensure_ascii=False)),
+        (pid, org, canonical_code, name, normalize(name), unit or "UN", bid, batch_id, batch_id, json.dumps(payload or {}, ensure_ascii=False)),
     )
     conn.execute("INSERT OR IGNORE INTO product_settings (organization_id, product_id) VALUES (?, ?)", (org, pid))
     return pid
@@ -272,14 +319,65 @@ def upsert_customer(conn: sqlite3.Connection, org: str, batch_id: str, code: str
         return None
     cid = customer_id(org, code, clean)
     canonical = canonical_customer_key(clean) or normalize(clean) or "sem_cliente"
+    if code:
+        existing = conn.execute(
+            "SELECT id FROM customers WHERE organization_id = ? AND source_code = ? ORDER BY id LIMIT 1",
+            (org, code),
+        ).fetchone()
+        if existing:
+            controlled_fields = app_controlled_fields(conn, org, "customer", existing["id"])
+            if "name" in controlled_fields:
+                conn.execute(
+                    """
+                    UPDATE customers
+                    SET last_seen_import_batch_id = ?
+                    WHERE organization_id = ? AND id = ?
+                    """,
+                    (batch_id, org, existing["id"]),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE customers
+                    SET name = ?,
+                        normalized_name = ?,
+                        canonical_name = ?,
+                        last_seen_import_batch_id = ?
+                    WHERE organization_id = ? AND id = ?
+                    """,
+                    (clean, normalize(clean), canonical, batch_id, org, existing["id"]),
+                )
+            return existing["id"]
     conn.execute(
         """
         INSERT INTO customers
             (id, organization_id, source_code, name, normalized_name, canonical_name, first_seen_import_batch_id, last_seen_import_batch_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, source_code, normalized_name) DO UPDATE SET
-            name = excluded.name,
-            canonical_name = excluded.canonical_name,
+            name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = customers.organization_id
+                      AND c.entity_type = 'customer'
+                      AND c.entity_id = customers.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.name
+                ELSE customers.name
+            END,
+            canonical_name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = customers.organization_id
+                      AND c.entity_type = 'customer'
+                      AND c.entity_id = customers.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.canonical_name
+                ELSE customers.canonical_name
+            END,
             last_seen_import_batch_id = excluded.last_seen_import_batch_id
         """,
         (cid, org, code, clean, normalize(clean), canonical, batch_id, batch_id),
@@ -538,7 +636,7 @@ def create_operational_tasks(conn: sqlite3.Connection, org: str, store: str, bat
     tasks = [
         ("supplier_rules", "Cadastrar fornecedores preferenciais para marcas/produtos"),
         ("package_sizes", "Definir embalagem de compra dos produtos A"),
-        ("coverage_targets", "Definir cobertura alvo por categoria ou produto"),
+        ("review_cycles", "Revisar ciclos de compra e embalagens dos fornecedores"),
         ("generic_customer", "Separar cliente CONSUMIDOR das analises relacionais"),
     ]
     for task_type, title in tasks:
@@ -557,7 +655,7 @@ def create_operational_tasks(conn: sqlite3.Connection, org: str, store: str, bat
 
 
 def clear_deprecated_imported_supplier_references(conn: sqlite3.Connection, org: str) -> None:
-    # O CSV de custo trazia "referencia" inconsistente; a referencia valida e manual no Nexo.
+    # O CSV de custo trazia "referencia" inconsistente; a referencia valida e manual na Practica Gestão.
     conn.execute(
         """
         DELETE FROM product_identifiers
@@ -573,7 +671,7 @@ def import_all(source_dir: Path, db_path: Path, org: str, store: str) -> None:
     conn = begin_db(db_path)
     batch_id = f"{org}:batch:{datetime.now().strftime('%Y%m%d%H%M%S')}:{uuid4().hex[:8]}"
     with conn:
-        conn.execute("INSERT OR IGNORE INTO organizations (id, name) VALUES (?, ?)", (org, "Empresa teste"))
+        conn.execute("INSERT OR IGNORE INTO organizations (id, name) VALUES (?, ?)", (org, "Cliente exemplo"))
         conn.execute("INSERT OR IGNORE INTO stores (id, organization_id, name) VALUES (?, ?, ?)", (store, org, "Loja principal"))
         previous_batch = conn.execute(
             """

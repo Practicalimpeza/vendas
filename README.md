@@ -1,94 +1,97 @@
-# NexoVarejo
+# Sistema white-label
 
-NexoVarejo e uma plataforma de gestao analitica para pequenos e medios varejistas
-no Brasil. Ela nao substitui o ERP operacional do cliente no primeiro momento:
-ela recebe exportacoes desses ERPs, padroniza os dados em um modelo SQL canonico
-e entrega uma mesa de trabalho para o gestor decidir sobre estoque, compras,
-fornecedores, clientes, vendas, servicos, margem e desempenho.
+A aplicacao e uma plataforma de gestao analitica para pequenos e medios
+varejistas brasileiros. Ela nao substitui o ERP operacional do cliente: recebe
+exportacoes e planilhas auxiliares, padroniza os dados em um modelo SQL
+canonico e entrega uma mesa de trabalho para decidir sobre estoque, compras,
+fornecedores, clientes, margem, acoes e relacionamento.
 
-## Norte do produto
+## Momento atual
 
-- Ser a camada de inteligencia e decisao acima de ERPs heterogeneos.
-- Padronizar dados de origem diferentes em um contrato canonico unico.
-- Explicar o presente: o que vende, o que para, o que falta, o que sobra, quem
-  compra, quem sumiu e onde a margem escapa.
-- Sugerir proximas acoes: reposicao, compras por fornecedor, negociacao,
-  reativacao de clientes, ajuste de mix, preco e cobertura de estoque.
-- Funcionar como assinatura SaaS multiempresa, com implantacao assistida por
-  conectores de importacao.
+O projeto esta em transicao de prototipo local para beta assistida. A base ja tem:
 
-## Estrutura atual
+- App local em Python padrao, SQLite e frontend vanilla modularizado.
+- Autenticacao local com bootstrap do primeiro administrador, sessoes,
+  permissoes por modulo e administracao de usuarios.
+- Importacao da base Practica, importacao assistida de planilhas ERP,
+  reconciliacao de qualidade e importacoes auxiliares de relacionamentos.
+- Perfil da empresa, fornecedores, produtos, clientes, servicos, margem,
+  compras, pedidos, recebimento, acoes e memoria operacional.
+- Reposicao v1 e v2, incluindo comparacao de motor e sinais de demanda.
+- WhatsApp CRM como modulo operacional, com webhook, conversas, agentes,
+  filas e envio via Cloud API quando configurado.
+- Contratos de API, `/api/health`, smoke checks e `audit_log` para decisoes e
+  alteracoes relevantes.
+
+O foco agora nao e abrir uma frente grande nova. E consolidar um release
+candidate de beta assistida: fluxo principal demonstravel, docs coerentes,
+smoke verde, checagens manuais e bloqueadores reais separados de melhorias
+futuras.
+
+## Stack
+
+| Camada | Tecnologia | Observacao |
+|---|---|---|
+| Backend | Python 3.11+ | Biblioteca padrao: `http.server`, `sqlite3`, `csv`, `json`, etc. |
+| Banco | SQLite | Arquivo local em `data/`, schema em `schema/canonical.sql`. |
+| Frontend | HTML, CSS e JavaScript vanilla | Sem framework, bundler ou build step. |
+| Bibliotecas vendorizadas | ECharts e Lucide | Em `web/vendor/`, sem instalacao nova. |
+
+Nao adicione dependencias externas sem alinhamento. A simplicidade da stack
+ainda e parte da estrategia de beta.
+
+## Estrutura principal
 
 ```text
-nexovarejo/
-  HANDOFF.md
-  docs/
-    README.md
-    00_visao_produto.md
-    20_estado_atual.md
-    02_modelo_canonico_sql.md
-    03_ingestao_e_padronizacao.md
-    05_roadmap_operacional.md
-    06_implantacao_novos_comercios.md
-    07_motor_reposicao.md
-    13_central_acoes.md
-    15_skills_internas_nexo.md
-    99_guia_de_contexto.md
-  nexo_skills/
-    manifest.json
-    *.json
-  schema/
-    canonical.sql
-  mappings/
-    practica_csv.yml
-  web/vendor/
-    dependencias frontend vendorizadas
-  web/app_core.js
-    utilitarios, contratos e chamadas HTTP do frontend
-  web/app_charts.js
-    helpers de graficos e linhas visuais do frontend
-  web/app_tables.js
-    filtros, ordenacao e observacao de tabelas do frontend
-  web/app_ui.js
-    navegacao, KPIs, cards e modal base do frontend
-  *.csv
-    exportacoes de exemplo da empresa teste
+pulso/
+  HANDOFF.md                 estado vivo para novas sessoes
+  PROJECT_MAP.md             mapa operacional do projeto
+  docs/                      documentos canonicos e aprofundamentos
+  schema/canonical.sql       schema SQLite canonico
+  mappings/practica_csv.yml  mapeamento CSV -> modelo canonico
+  nexo_skills/               regras internas versionadas do Nexo
+  scripts/
+    serve_app.py             camada HTTP, auth gate, webhook e estaticos
+    api_routes.py            mapa de rotas GET/POST de dominio
+    auth.py                  login, sessoes, permissoes e usuarios
+    erp_import_flow.py       importacao assistida de planilhas ERP
+    relationship_imports.py  importacao de vinculos e perfis auxiliares
+    replenishment.py         reposicao v1 e estoque
+    replenishment_v2.py      motor v2, sazonalidade e comparacao
+    quotes.py                cotacoes, pedidos, recebimento e PDF
+    pricing.py               precificacao acionavel
+    commercial.py            clientes, servicos e inteligencia comercial
+    supplier_ops.py          fornecedores, marcas e mix
+    action_center.py         acoes, pulso, timeline e memoria operacional
+    company_profile.py       perfil da empresa
+    whatsapp_crm.py          CRM WhatsApp e webhook
+    schema_upgrades.py       upgrades locais registrados
+    smoke_checks.py          verificacao principal sem CSV real
+  web/
+    index.html               shell da SPA
+    app_core.js              API, contratos e formatadores
+    app_state.js             estado global e metadados de views
+    app_boot.js              bootstrap da SPA
+    app_*.js                 modulos de tela por dominio
+    app.css                  estilos completos
+    vendor/                  ECharts e Lucide vendorizados
 ```
 
-## Dependencias adicionadas
-
-O frontend agora usa bibliotecas vendorizadas em `web/vendor/`, sem build step:
-
-- ECharts 5.5.1 para graficos mais ricos.
-- Lucide 0.468.0 para iconografia consistente.
+Os CSVs na raiz contem dados reais da empresa Practica. Nao leia, edite,
+copie, exponha ou comite derivados desses dados.
 
 ## Ordem recomendada de leitura
 
-1. `HANDOFF.md`
-2. `docs/README.md`
-3. `docs/20_estado_atual.md`
-4. `docs/00_visao_produto.md`
-5. `docs/03_ingestao_e_padronizacao.md`
-6. `docs/05_roadmap_operacional.md`
-7. Documento especifico da area em `docs/`
+1. `AGENTS.md`
+2. `HANDOFF.md`
+3. `PROJECT_MAP.md`
+4. `docs/README.md`
+5. `docs/20_estado_atual.md`
+6. `docs/22_roadmap_produto_final.md`
+7. `docs/23_contratos_api.md`
+8. Documento especifico da area que sera alterada
 
-## Principio tecnico central
-
-Cada ERP ganha um conector proprio. O conector pode conhecer nomes estranhos de
-colunas, cabecalhos deslocados, datas em serial do Excel, rodapes e formatos
-locais. Depois da importacao, o restante do software so conversa com o modelo
-canonico SQL.
-
-Isso evita que a regra de negocio fique presa ao formato de uma planilha.
-
-Dados importados do ERP e dados extrapolados das planilhas sao tratados como
-espelho da origem: vendas, estoque, custos, precos, nomes, clientes, servicos,
-marcas e inferencias so mudam quando uma nova importacao ou regra de importacao
-trouxer a mudanca. Ajustes feitos no NexoVarejo sao apenas configuracoes
-operacionais, como fornecedor preferencial, embalagem, cobertura alvo, bloqueios
-e observacoes internas.
-
-## Rodando o MVP local
+## Rodando localmente
 
 Verifique a base tecnica sem ler os CSVs reais:
 
@@ -96,16 +99,65 @@ Verifique a base tecnica sem ler os CSVs reais:
 python scripts\smoke_checks.py
 ```
 
-Importe os CSVs para SQLite:
+Importe os CSVs para SQLite somente quando necessario e com cuidado sobre os
+dados sensiveis:
 
 ```powershell
-python scripts\import_practica.py --source-dir . --db data\nexovarejo.db
+python scripts\import_practica.py --source-dir . --db data\tenants\practica\database.sqlite3
 ```
 
-Suba o app:
+Abra a entrada adequada:
 
 ```powershell
-python scripts\serve_app.py --db data\nexovarejo.db --port 8010
+"Cliente.pyw"
+"Representante.pyw"
+"Gestao plataforma.pyw"
 ```
 
-Acesse `http://127.0.0.1:8010`.
+`Cliente.pyw` e a entrada do cliente final. `Representante.pyw` abre a central
+local do consultor/distribuidor. `Gestao plataforma.pyw` e a entrada
+administrativa local enquanto o portal central de licencas e cobranca ainda nao
+existe. `Abrir sistema.pyw` e `Pulso.pyw` continuam como aliases do modo
+cliente.
+
+Essas entradas abrem uma janela propria em modo aplicativo quando Edge ou
+Chrome estiverem disponiveis. A interface continua usando o motor web local,
+mas sem barra de endereco, abas ou exposicao de `localhost` para o usuario. Ao
+escolher ou criar uma empresa, o app carrega na mesma janela do iniciador.
+
+Se a associacao de `.pyw` do Windows falhar, use o fallback:
+
+```powershell
+iniciar.bat
+```
+
+Ou abra diretamente um tenant pela linha de comando:
+
+```powershell
+python scripts\serve_app.py --tenant practica --port 8010
+python scripts\serve_app.py --tenant cliente_x --port 8011
+```
+
+Todo cliente, inclusive a Practica, deve usar a estrutura
+`data/tenants/<cliente>/database.sqlite3`,
+`data/tenants/<cliente>/app_config.json` e
+`data/tenants/<cliente>/import_reference.json`.
+
+A camada comercial agora separa **parceiro/consultor** de **empresa cliente**:
+`config/partners/default.json` define a marca/licenca do parceiro ativo, e cada
+tenant em `data/tenants/<cliente>/app_config.json` aponta para esse parceiro em
+`partner.id`. O iniciador local usa essa relacao para funcionar como central de
+clientes do consultor.
+
+Para preparar uma instalacao pre-personalizada, aplique um perfil de
+distribuicao do consultor:
+
+```powershell
+python scripts\partner_distribution.py apply --profile config\distribution\default.json
+```
+
+Esse perfil define parceiro, canal, modo de ativacao e cobranca por cliente
+ativo; dados operacionais do cliente continuam apenas no banco local do tenant.
+
+O fluxo completo de plataforma, consultor, pacote pre-personalizado e cliente
+esta em `docs/24_fluxo_parceiros_distribuicao.md`.

@@ -2,16 +2,37 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from datetime import date
 
+from app_config import app_name, default_organization_slug
 from commercial import api_commercial_intelligence
-from db_helpers import one, rows, scalar_text
+from db_helpers import one, resolve_period, rows, scalar_text
 from nexo_skills_runtime import action_rules, action_rules_version, nexo_skill_name, render_skill_template
 from pricing import api_pricing
-from quotes import api_quote_drafts
-from replenishment import api_replenishment
+from quote_cache import cached_api_payload, replenishment_v2_full_payload
+from quotes import latest_purchase_costs, quote_auto_suggestion
 from supplier_ops import api_brand_suppliers
 from text_utils import normalize
+
+
+_GENERATED_ACTIONS_REFRESHING: set[str] = set()
+_GENERATED_ACTIONS_REFRESH_LOCK = threading.Lock()
+
+
+def _database_path(conn: sqlite3.Connection) -> str:
+    db_info = conn.execute("PRAGMA database_list").fetchone()
+    return (db_info["file"] if isinstance(db_info, sqlite3.Row) else db_info[2]) or ":memory:"
+
+
+def _background_connection(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA cache_size = -32768")
+    conn.execute("PRAGMA temp_store = MEMORY")
+    conn.execute("PRAGMA mmap_size = 268435456")
+    return conn
 
 
 def action_item(
@@ -88,11 +109,72 @@ def skill_action_item(
     )
 
 
+def quote_action_drafts(conn: sqlite3.Connection, period: dict) -> dict:
+    replenishment_rows = replenishment_v2_full_payload(conn, period).get("rows") or []
+    purchase_costs = latest_purchase_costs(conn)
+    grouped: dict[str, dict] = {}
+    for raw_item in replenishment_rows:
+        if not quote_auto_suggestion(raw_item):
+            continue
+        item = dict(raw_item)
+        item["estimated_value"] = round(
+            float(item.get("suggested_quantity") or 0) * purchase_costs.get(item["product_id"], 0.0),
+            2,
+        )
+        supplier_id = item["supplier_id"]
+        group = grouped.setdefault(
+            supplier_id,
+            {
+                "supplier_id": supplier_id,
+                "supplier_name": item["supplier_name"],
+                "item_count": 0,
+                "estimated_value": 0.0,
+                "urgent_count": 0,
+                "mix_decision_items": [],
+            },
+        )
+        group["item_count"] += 1
+        group["estimated_value"] += float(item["estimated_value"] or 0)
+        if item["status"] == "urgent":
+            group["urgent_count"] += 1
+
+    for item in replenishment_rows:
+        supplier_id = item.get("supplier_id") or ""
+        if supplier_id not in grouped:
+            continue
+        if (
+            item.get("status") == "mix_review"
+            and item.get("supplier_configured")
+            and supplier_id
+            and not quote_auto_suggestion(item)
+        ):
+            grouped[supplier_id]["mix_decision_items"].append(item)
+
+    suppliers = []
+    for group in grouped.values():
+        group["estimated_value"] = round(group["estimated_value"], 2)
+        group["mix_decision_items"] = sorted(
+            group["mix_decision_items"],
+            key=lambda row: (-float(row.get("priority") or 0), float(row.get("stock_units") or 0)),
+        )[:40]
+        suppliers.append(group)
+    suppliers.sort(key=lambda row: (-row["urgent_count"], -row["estimated_value"], len(row["mix_decision_items"]), row["supplier_name"]))
+    return {"suppliers": suppliers}
+
+
 def generated_actions(conn: sqlite3.Connection) -> list[dict]:
-    org = one(conn, "SELECT id FROM organizations ORDER BY created_at LIMIT 1").get("id") or "org_teste"
+    org = one(conn, "SELECT id FROM organizations ORDER BY created_at LIMIT 1").get("id") or default_organization_slug()
     today = date.today().isoformat()
+    period = resolve_period(conn, {"period_days": "180"})
+    cache_period_params = {"query": {"period_days": ["180"]}, "period": period}
     actions: list[dict] = []
-    quote_draft = api_quote_drafts(conn)
+    quote_draft = cached_api_payload(
+        conn,
+        "actions:quote_drafts",
+        cache_period_params,
+        lambda: quote_action_drafts(conn, period),
+        ttl_seconds=180,
+    )
     quote_groups = quote_draft.get("suppliers") or []
     quotes_open = rows(
         conn,
@@ -169,21 +251,31 @@ def generated_actions(conn: sqlite3.Connection) -> list[dict]:
                     {"supplier_name": quote["supplier_name"]},
                 )
             )
-        elif quote["status"] == "responded":
-            actions.append(
-                skill_action_item(
-                    org,
-                    "close_purchase_order",
-                    "quote",
-                    quote["id"],
-                    {"supplier_name": quote["supplier_name"], "item_count": quote["item_count"]},
-                    quote.get("total_estimated_amount") or 0,
-                    today,
-                    {"supplier_name": quote["supplier_name"]},
-                )
+    pending_po_summary = rows(
+        conn,
+        """
+        SELECT id, supplier_name, item_count, total_amount
+        FROM purchase_orders
+        WHERE status = 'pending_confirmation'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+    )
+    for po in pending_po_summary:
+        actions.append(
+            skill_action_item(
+                org,
+                "confirm_purchase_order",
+                "purchase_order",
+                po["id"],
+                {"supplier_name": po["supplier_name"], "item_count": po["item_count"]},
+                po.get("total_amount") or 0,
+                today,
+                {"supplier_name": po["supplier_name"]},
             )
+        )
 
-    supplier_rows = api_brand_suppliers(conn)
+    supplier_rows = cached_api_payload(conn, "actions:brand_suppliers", {}, lambda: api_brand_suppliers(conn))
     supplier_seen: set[str] = set()
     missing_minimum: list[dict] = []
     inferred_rules = 0
@@ -229,7 +321,12 @@ def generated_actions(conn: sqlite3.Connection) -> list[dict]:
             )
         )
 
-    commercial = api_commercial_intelligence(conn)
+    commercial = cached_api_payload(
+        conn,
+        "/api/commercial/intelligence",
+        cache_period_params,
+        lambda: api_commercial_intelligence(conn, period),
+    )
     risk = commercial.get("risk_customers") or []
     due = commercial.get("repurchase_opportunities") or []
     drops = [row for row in (commercial.get("product_momentum") or []) if float(row.get("delta_revenue") or 0) < 0]
@@ -334,6 +431,47 @@ def upsert_generated_actions(conn: sqlite3.Connection, actions: list[dict]) -> N
     conn.commit()
 
 
+def generated_actions_are_fresh(conn: sqlite3.Connection, max_age_seconds: int = 3600) -> bool:
+    summary = one(
+        conn,
+        """
+        SELECT COUNT(*) AS total
+        FROM action_items
+        WHERE source_kind = 'generated'
+          AND updated_at >= datetime('now', ?)
+        """,
+        (f"-{int(max_age_seconds)} seconds",),
+    )
+    return int(summary.get("total") or 0) > 0
+
+
+def generated_action_count(conn: sqlite3.Connection) -> int:
+    summary = one(conn, "SELECT COUNT(*) AS total FROM action_items WHERE source_kind = 'generated'")
+    return int(summary.get("total") or 0)
+
+
+def refresh_generated_actions_async(conn: sqlite3.Connection) -> bool:
+    db_path = _database_path(conn)
+    with _GENERATED_ACTIONS_REFRESH_LOCK:
+        if db_path in _GENERATED_ACTIONS_REFRESHING:
+            return False
+        _GENERATED_ACTIONS_REFRESHING.add(db_path)
+
+    def worker() -> None:
+        bg_conn = _background_connection(db_path)
+        try:
+            upsert_generated_actions(bg_conn, generated_actions(bg_conn))
+        except Exception:
+            pass
+        finally:
+            bg_conn.close()
+            with _GENERATED_ACTIONS_REFRESH_LOCK:
+                _GENERATED_ACTIONS_REFRESHING.discard(db_path)
+
+    threading.Thread(target=worker, name="nexo-actions-refresh", daemon=True).start()
+    return True
+
+
 def action_rows(conn: sqlite3.Connection, where: str = "1 = 1", params: tuple = ()) -> list[dict]:
     result = rows(
         conn,
@@ -360,8 +498,57 @@ def action_rows(conn: sqlite3.Connection, where: str = "1 = 1", params: tuple = 
     return result
 
 
+def lightweight_operational_intelligence(open_actions: list[dict], limit: int = 6) -> dict:
+    cards = []
+    for action in open_actions[:limit]:
+        cards.append(
+            intelligence_item(
+                "acao",
+                "danger" if int(action.get("priority") or 0) <= 2 else "warn",
+                action.get("title") or "Acao pendente",
+                action.get("body") or action.get("reason") or "",
+                action.get("impact_label") or "Impacto operacional pendente.",
+                "Abrir a acao e decidir o proximo passo.",
+                action.get("view") or "actions",
+                [action.get("reason") or "Acao ja existente reaproveitada enquanto a inteligencia atualiza."],
+                action.get("target_type") or "",
+                action.get("target_id") or "",
+                100 - int(action.get("priority") or 5),
+                action.get("metadata") or {},
+            )
+        )
+    if not cards:
+        cards.append(
+            intelligence_item(
+                "rotina",
+                "good",
+                "Aguardando atualizacao da inteligencia",
+                "A tela abriu com os dados salvos e a leitura cruzada segue atualizando em segundo plano.",
+                "Evita travar a navegacao enquanto o sistema recalcula compra, preco e comercial.",
+                "Continuar navegando; os sinais atualizam na proxima leitura.",
+                "actions",
+                ["Atualizacao pesada desacoplada da abertura da tela."],
+                score=10,
+            )
+        )
+    return {
+        "summary": {
+            "signals": len(cards),
+            "critical": sum(1 for item in cards if item.get("tone") == "danger"),
+            "watch": sum(1 for item in cards if item.get("tone") == "warn"),
+            "data_gaps": 0,
+        },
+        "cards": cards,
+    }
+
+
 def api_actions_today(conn: sqlite3.Connection) -> dict:
-    upsert_generated_actions(conn, generated_actions(conn))
+    refreshing_actions = False
+    if not generated_actions_are_fresh(conn):
+        if generated_action_count(conn) > 0:
+            refreshing_actions = refresh_generated_actions_async(conn)
+        else:
+            upsert_generated_actions(conn, generated_actions(conn))
     summary = one(
         conn,
         """
@@ -378,13 +565,18 @@ def api_actions_today(conn: sqlite3.Connection) -> dict:
     )
     open_actions = action_rows(conn, "status IN ('open', 'in_progress')")
     done_actions = action_rows(conn, "status IN ('completed', 'ignored')")
+    intelligence = (
+        lightweight_operational_intelligence(open_actions)
+        if refreshing_actions
+        else operational_intelligence(conn)
+    )
     return {
         "contract": "actions_today.v1",
         "summary": summary,
         "actions": open_actions[:12],
         "history": done_actions[:8],
         "pulse": operational_pulse(conn, summary),
-        "intelligence": operational_intelligence(conn),
+        "intelligence": intelligence,
         "timeline": operational_timeline(conn),
     }
 
@@ -420,11 +612,13 @@ def intelligence_item(
 
 
 def operational_intelligence(conn: sqlite3.Connection, limit: int = 6) -> dict:
-    stock_payload = api_replenishment(conn, limit=0)
+    period = resolve_period(conn, {"period_days": "180"})
+    cache_period_params = {"query": {"period_days": ["180"]}, "period": period}
+    stock_payload = replenishment_v2_full_payload(conn, period)
     stock_rows = stock_payload.get("rows") or []
-    pricing_rows = api_pricing(conn).get("rows") or []
+    pricing_rows = cached_api_payload(conn, "/api/pricing", cache_period_params, lambda: api_pricing(conn, period)).get("rows") or []
     pricing_by_product = {row.get("product_id"): row for row in pricing_rows}
-    commercial = api_commercial_intelligence(conn)
+    commercial = cached_api_payload(conn, "/api/commercial/intelligence", cache_period_params, lambda: api_commercial_intelligence(conn, period))
     momentum_by_product = {
         row.get("entity_id"): row
         for row in (commercial.get("product_momentum") or [])
@@ -559,7 +753,7 @@ def operational_intelligence(conn: sqlite3.Connection, limit: int = 6) -> dict:
                 "warn",
                 "A inteligencia de compra esta limitada pelo fornecedor",
                 f"{len(supplier_blockers)} item(ns) com demanda dependem de fornecedor a configurar ou pedido minimo desconhecido.",
-                "Sem esse dado, o Nexo acerta a urgencia do produto, mas erra o tamanho economico do pedido.",
+                f"Sem esse dado, o {app_name()} acerta a urgencia do produto, mas erra o tamanho economico do pedido.",
                 "Configurar fornecedor/pedido minimo antes de transformar sugestao em rotina.",
                 "suppliers",
                 [
@@ -610,21 +804,28 @@ def operational_intelligence(conn: sqlite3.Connection, limit: int = 6) -> dict:
         """,
     )
     quote_map = {row["status"]: row for row in quote_status}
-    if quote_map.get("responded"):
-        responded = quote_map["responded"]
+    pending_orders = one(
+        conn,
+        """
+        SELECT COUNT(*) AS count, ROUND(COALESCE(SUM(total_amount), 0), 2) AS value
+        FROM purchase_orders
+        WHERE status = 'pending_confirmation'
+        """,
+    )
+    if pending_orders and (pending_orders.get("count") or 0) > 0:
         insights.append(
             intelligence_item(
                 "ciclo_compra",
                 "good",
-                "Resposta de fornecedor pronta para virar pedido",
-                f"{responded.get('count')} cotacao(oes) respondida(s) ainda nao foram fechadas.",
-                f"{timeline_money(responded.get('value'))} ja saiu da incerteza de cotacao.",
-                "Fechar pedido ou registrar decisao de nao comprar enquanto a resposta ainda esta fresca.",
-                "quotes",
-                [f"{responded.get('count')} resposta(s) aguardando decisao."],
+                "Pedido aguardando conferencia",
+                f"{pending_orders.get('count')} pedido(s) pendente(s) de confirmacao.",
+                f"{timeline_money(pending_orders.get('value'))} provisionado no aguardo do fornecedor.",
+                "Conferir valores e quantidades contra a resposta do fornecedor antes de confirmar.",
+                "purchase_orders",
+                [f"{pending_orders.get('count')} pedido(s) provisorio(s) na fila."],
                 "quote",
                 "",
-                88 + float(responded.get("value") or 0) / 1000,
+                88 + float(pending_orders.get("value") or 0) / 1000,
             )
         )
 
@@ -885,6 +1086,7 @@ def operational_pulse(conn: sqlite3.Connection, action_summary: dict | None = No
         """
         SELECT
             COUNT(*) AS total,
+            SUM(CASE WHEN status = 'pending_confirmation' THEN 1 ELSE 0 END) AS pending_confirmation,
             SUM(CASE WHEN status IN ('approved', 'sent') THEN 1 ELSE 0 END) AS open,
             ROUND(COALESCE(SUM(CASE WHEN status IN ('approved', 'sent') THEN total_amount ELSE 0 END), 0), 2) AS open_value
         FROM purchase_orders
@@ -972,3 +1174,4 @@ def update_action_status(conn: sqlite3.Connection, payload: dict) -> dict:
     )
     conn.commit()
     return {"ok": True, "action": action_rows(conn, "id = ?", (action_id,))[0]}
+

@@ -37,7 +37,7 @@ Configuracoes operacionais:
 - valor alvo de pedido do fornecedor;
 - dificuldade/cadencia de formar pedido por fornecedor;
 - embalagem de compra;
-- cobertura alvo;
+- horizonte calculado pelo motor;
 - estoque minimo;
 - estoque maximo;
 - bloqueio de compra;
@@ -108,15 +108,35 @@ nao cobre, o motor sugere apenas o complemento.
 Formula conceitual:
 
 ```text
+protecao =
+  prazo_fornecedor + ciclo_revisao_fornecedor
+
+cobertura_pos_entrega =
+  ciclo_revisao_fornecedor
+
+horizonte_compra =
+  prazo_fornecedor + cobertura_pos_entrega
+
 alvo =
-  demanda_prevista_diaria * (prazo_fornecedor + ciclo_revisao_fornecedor + cobertura_alvo)
+  demanda_prevista_diaria * horizonte_compra
   + estoque_seguranca
   + estoque_minimo
 ```
 
-A sugestao compra ate o alvo, abatendo pedidos em aberto e respeitando estoque
-maximo quando configurado. Pedidos em aberto aparecem nos dados da linha para
-explicar a diferenca entre estoque fisico e estoque projetado.
+No motor V2, a cobertura automatica nasce do fornecedor: primeiro o sistema
+calcula em quantos dias o fornecedor forma o pedido minimo e soma esse ciclo ao
+prazo de entrega. O campo legado de dias de cobertura do produto fica neutro no
+modo automatico; o horizonte e calculado pelo motor a partir do fornecedor e do
+ciclo natural do item. A sugestao compra ate o horizonte do fornecedor, abatendo
+pedidos em aberto e respeitando estoque maximo quando configurado. Pedidos em
+aberto aparecem nos dados da linha para explicar a diferenca entre estoque
+fisico e estoque projetado.
+
+O intervalo natural do produto continua importante, mas como decisao de entrada
+na rodada: uma caixa que cobre muitos dias nao deve entrar em todo pedido do
+fornecedor. Quando entra, o arredondamento por embalagem pode fazer a cobertura
+depois da compra ficar maior que o ciclo do fornecedor; isso e esperado e fica
+auditavel pelos campos `package_coverage_days` e `after_purchase_coverage_days`.
 
 ### Arredondamento por embalagem
 
@@ -132,9 +152,9 @@ Se embalagem nao estiver configurada, assume 1 unidade.
 | --- | --- |
 | `Ruptura iminente` | Estoque nao cobre o prazo medio de reposicao. |
 | `Comprar agora` | Estoque abaixo do ponto de pedido. |
-| `Monitorar` | Cobertura abaixo da meta, mas ainda acima do ponto de pedido. |
+| `Monitorar` | Cobertura abaixo do ciclo calculado, mas ainda acima do ponto de pedido. |
 | `Estoque ok` | Sem acao imediata. |
-| `Excesso` | Estoque acima do consumo projetado e da cobertura alvo. |
+| `Excesso` | Estoque acima do consumo projetado e do horizonte calculado. |
 | `Sem demanda` | Nao ha demanda suficiente para comprar no periodo analisado; o produto ainda aparece quando existe estoque, custo ou cadastro. |
 | `Fora do mix` | Produto sem estoque e sem venda recente; escondido da rotina principal por padrao. |
 | `Bloqueado` | Produto bloqueado operacionalmente. |
@@ -218,15 +238,34 @@ Classificacao:
 
 Efeito:
 
-- fornecedor facil reduz cobertura alvo;
-- fornecedor normal usa cobertura base;
-- fornecedor dificil aumenta cobertura alvo;
+- fornecedor define o ciclo de revisao da rodada;
+- fornecedor facil/normal nao deixa tags do produto alongarem a compra
+  automatica;
+- fornecedor dificil aumenta o ciclo porque o minimo demora mais a se formar;
 - fornecedor a configurar nao inventa regra e gera sinal de pendencia.
 
 Esse ajuste evita dois erros comuns:
 
 - comprar demais de fornecedor que entrega rapido e fecha pedido toda semana;
 - comprar pouco de fornecedor que so fecha pedido de tempos em tempos.
+
+## Cesta do fornecedor
+
+Cotacao nao e apenas a soma de itens isolados. Depois de calcular a necessidade
+tecnica por produto, a mesa de compras monta uma cesta por fornecedor:
+
+- itens essenciais entram quando ha ruptura ou ponto de pedido atingido;
+- candidatos seguros podem completar minimo quando ha venda recente, caixa
+  aceitavel, custo conhecido e baixo risco de excesso;
+- candidatos manuais ficam visiveis para decisao do comprador;
+- itens com pedido aberto, excesso, sem demanda ou fora do mix nao devem ser
+  usados para completar minimo automaticamente.
+
+O objetivo e responder a pergunta operacional: "qual e a melhor cotacao para
+este fornecedor hoje?", nao apenas "quanto falta em cada produto?". A cesta
+recomendada respeita pedido minimo/valor alvo quando isso for viavel com itens
+bons; se o fornecedor tem ciclo muito longo ou risco de excesso, a recomendacao
+fica como revisao, acumulacao ou negociacao.
 
 ## Prioridade
 
@@ -235,9 +274,36 @@ A prioridade combina:
 - status;
 - classe ABC;
 - receita historica;
-- distancia ate a cobertura alvo.
+- distancia ate o ponto de pedido e o horizonte calculado.
 
 Assim, um produto A em risco sobe acima de um produto C com pequena falta.
+
+## Explicabilidade
+
+Cada linha do motor deve expor os principais componentes da conta:
+
+- demanda diaria usada e quantil escolhido;
+- prazo do fornecedor;
+- ciclo de revisao do fornecedor;
+- intervalo de recompra do item;
+- horizonte calculado;
+- horizonte final;
+- estoque fisico, pedidos em aberto e estoque projetado;
+- alvo tecnico, necessidade bruta, arredondamento por embalagem e sugestao;
+- decisao de compra e papel na cesta do fornecedor.
+
+## Ruptura com pouca evidência
+
+Quando o produto tem histórico muito curto, poucas datas de venda e estoque
+zerado/negativo, o motor nao pode transformar uma venda isolada em ritmo diario
+normal. Nesses casos a recomendacao vira compra de descoberta:
+
+- a demanda usa uma janela minima conservadora em vez de `venda / idade`;
+- o estoque negativo nao aumenta a quantidade da primeira compra;
+- o alvo fica limitado a uma ou duas embalagens, conforme a maior venda
+  observada e a embalagem do fornecedor;
+- a explicacao deve indicar que a compra e defensiva, nao uma reposicao plena
+  ate o horizonte calculado.
 
 ## Limitacoes atuais
 
@@ -245,6 +311,9 @@ Assim, um produto A em risco sobe acima de um produto C com pequena falta.
 - Ainda nao calcula sazonalidade por mes de forma explicita.
 - Ainda nao sabe rupturas passadas, porque ha apenas snapshot atual de estoque.
 - Ainda nao usa compras/notas de entrada como evidência de lead time real.
+- Ainda nao diferencia explicitamente, no schema, ciclo automatico de ciclo
+  manual. O valor legado `14` continua tratado como fallback para permitir
+  ciclo automatico por valor diario do fornecedor.
 
 ## Evolucoes planejadas
 
@@ -252,5 +321,6 @@ Assim, um produto A em risco sobe acima de um produto C com pequena falta.
 - Enviar cotacao por WhatsApp a partir do telefone do fornecedor.
 - Detectar sazonalidade mensal.
 - Usar lead time real medido por historico de pedidos.
-- Simular compra por fornecedor com pedido minimo e valor alvo.
-- Gerar rascunho de pedido agrupado por fornecedor.
+- Separar no cadastro quando o ciclo foi fixado manualmente pelo operador.
+- Backtesting historico para medir ruptura evitada, excesso criado e capital
+  empatado pela formula.

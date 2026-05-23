@@ -1,0 +1,738 @@
+/* ===================================================================
+   Nexo DataTable — identidade do motor de tabela (v2)
+   menu por coluna · visão geral · colunas/reordenar · presets
+   =================================================================== */
+.nexo-dt {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------- toolbar */
+.nexo-dt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--green-soft), var(--surface) 78%);
+}
+.nexo-dt-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+.nexo-dt-search > i {
+  position: absolute;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.nexo-dt-search input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px 0 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.nexo-dt-search input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(25, 115, 77, 0.14);
+}
+.nexo-dt-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nexo-dt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+.nexo-dt-btn i {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.nexo-dt-btn:hover {
+  border-color: rgba(25, 115, 77, 0.4);
+  background: var(--green-soft);
+}
+.nexo-dt-btn.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+.nexo-dt-btn.active i {
+  color: var(--green);
+}
+.nexo-dt-btn.primary {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+.nexo-dt-btn.primary i {
+  color: #fff;
+}
+.nexo-dt-btn.primary:hover {
+  background: var(--green-strong, #0f5e3c);
+}
+.nexo-dt-btn.small {
+  height: 34px;
+  padding: 0 12px;
+}
+.nexo-dt-count {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.nexo-dt-extra {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------- chips */
+.nexo-dt-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.nexo-dt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(25, 115, 77, 0.3);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nexo-dt-chip b {
+  color: var(--muted);
+  font-weight: 800;
+}
+.nexo-dt-chip i {
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+.nexo-dt-chip:hover {
+  border-color: var(--green);
+}
+.nexo-dt-chip.ghost {
+  border-style: dashed;
+  border-color: var(--line);
+  color: var(--muted);
+}
+.nexo-dt-chip.static {
+  cursor: default;
+}
+
+/* ---------------------------------------------------------- tabela */
+.nexo-dt-scroll {
+  max-height: min(68vh, 780px);
+  overflow: auto;
+}
+.nexo-dt table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 0;
+}
+.nexo-dt thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  padding: 0;
+}
+.nexo-dt-th {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 9px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+.nexo-dt-th.num {
+  justify-content: flex-end;
+  text-align: right;
+}
+.nexo-dt-th-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 2px 2px;
+}
+.nexo-dt-th.sortable .nexo-dt-th-label {
+  cursor: pointer;
+}
+.nexo-dt-th.sortable .nexo-dt-th-label::after {
+  content: "↕";
+  opacity: 0.3;
+  font-size: 11px;
+}
+.nexo-dt-th.sort-asc .nexo-dt-th-label::after {
+  content: "↑";
+  opacity: 1;
+  color: var(--green);
+}
+.nexo-dt-th.sort-desc .nexo-dt-th-label::after {
+  content: "↓";
+  opacity: 1;
+  color: var(--green);
+}
+.nexo-dt-th.sortable .nexo-dt-th-label:hover {
+  color: var(--ink);
+  background: rgba(25, 115, 77, 0.08);
+}
+.nexo-dt-sort-order {
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 800;
+}
+.nexo-dt-th-caret {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.nexo-dt-th-caret i {
+  width: 14px;
+  height: 14px;
+}
+.nexo-dt-th:hover .nexo-dt-th-caret,
+.nexo-dt-th.filtered .nexo-dt-th-caret {
+  opacity: 1;
+}
+.nexo-dt-th-caret:hover {
+  background: rgba(25, 115, 77, 0.12);
+  color: var(--green);
+}
+.nexo-dt-th.filtered .nexo-dt-th-caret {
+  color: var(--green);
+  position: relative;
+}
+.nexo-dt-th.filtered .nexo-dt-th-caret::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.nexo-dt tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  vertical-align: middle;
+}
+.nexo-dt tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.nexo-dt-row {
+  transition: background 0.12s ease;
+}
+.nexo-dt-row:hover {
+  background: var(--green-soft);
+}
+.nexo-dt-row.clickable-row {
+  cursor: pointer;
+}
+.nexo-dt tbody tr:last-child td {
+  border-bottom: 0;
+}
+.nexo-dt-compact tbody td {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+.nexo-dt-compact .nexo-dt-th {
+  padding: 6px 12px;
+}
+.nexo-dt-empty td {
+  padding: 42px 18px !important;
+  text-align: center;
+}
+.nexo-dt-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+.nexo-dt-empty span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------- popovers/menus */
+.nexo-dt-pop {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(17, 28, 22, 0.2);
+  overflow: hidden;
+}
+.nexo-dt-floating {
+  position: fixed;
+  z-index: 60;
+  width: min(320px, calc(100vw - 24px));
+}
+.nexo-dt-overview {
+  width: min(420px, calc(100vw - 24px));
+}
+.nexo-dt-columns {
+  width: min(320px, calc(100vw - 24px));
+}
+.nexo-dt-colmenu-pop {
+  width: min(280px, calc(100vw - 24px));
+}
+.nexo-dt-pop-head {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.nexo-dt-pop-body {
+  padding: 12px 16px;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+}
+.nexo-dt-pop-foot {
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+}
+.nexo-dt-pop-clear {
+  border: 0;
+  background: none;
+  color: var(--green);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nexo-dt-pop-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.nexo-dt-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* menu por coluna */
+.nexo-dt-menu-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 800;
+}
+.nexo-dt-menu-sort {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.nexo-dt-menu-sort button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nexo-dt-menu-sort button i {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+.nexo-dt-menu-sort button:hover {
+  border-color: var(--green);
+}
+.nexo-dt-menu-sort button.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+.nexo-dt-menu-sort button.active i {
+  color: var(--green);
+}
+.nexo-dt-menu-filter {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.nexo-dt-menu-label {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.nexo-dt-menu-foot {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* controles de filtro */
+.nexo-dt-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nexo-dt-range span {
+  color: var(--muted);
+}
+.nexo-dt-range input,
+.nexo-dt-text-filter,
+.nexo-dt-facet-search {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.nexo-dt-range input:focus,
+.nexo-dt-text-filter:focus,
+.nexo-dt-facet-search:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(25, 115, 77, 0.12);
+}
+.nexo-dt-facet-search {
+  margin-bottom: 8px;
+}
+.nexo-dt-facets {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow: auto;
+}
+.nexo-dt-facet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.nexo-dt-facet:hover {
+  background: var(--green-soft);
+}
+.nexo-dt-facet span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nexo-dt-facet b {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* painel Colunas (reordenar) */
+.nexo-dt-density {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.nexo-dt-density button {
+  border: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.nexo-dt-density button.active {
+  background: var(--green);
+  color: #fff;
+}
+.nexo-dt-colboxes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.nexo-dt-colbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 7px;
+  font-size: 13px;
+  background: var(--surface);
+}
+.nexo-dt-colbox label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  cursor: pointer;
+}
+.nexo-dt-colbox:hover {
+  background: var(--green-soft);
+}
+.nexo-dt-colbox.dragging {
+  opacity: 0.5;
+  background: var(--green-soft);
+}
+.nexo-dt-colbox input:disabled {
+  opacity: 0.4;
+}
+.nexo-dt-drag {
+  display: grid;
+  place-items: center;
+  color: var(--soft, #8a978f);
+  cursor: grab;
+}
+.nexo-dt-drag i {
+  width: 15px;
+  height: 15px;
+}
+
+/* painel Visão geral */
+.nexo-dt-ov-section {
+  display: grid;
+  gap: 8px;
+}
+.nexo-dt-ov-section + .nexo-dt-ov-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.nexo-dt-ov-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.nexo-dt-ov-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.nexo-dt-stat {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.nexo-dt-stat span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.nexo-dt-stat strong {
+  font-size: 18px;
+  color: var(--ink);
+}
+.nexo-dt-stat.green strong {
+  color: var(--green);
+}
+.nexo-dt-stat.amber strong {
+  color: var(--amber);
+}
+.nexo-dt-stat.red strong {
+  color: var(--red);
+}
+.nexo-dt-ov-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.nexo-dt-seg {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 13px;
+  cursor: pointer;
+}
+.nexo-dt-seg:hover {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+.nexo-dt-views {
+  display: grid;
+  gap: 6px;
+}
+.nexo-dt-viewitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+button.nexo-dt-viewitem span,
+.nexo-dt-viewapply span {
+  font-size: 13px;
+  font-weight: 700;
+}
+.nexo-dt-viewitem em {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+.nexo-dt-viewitem:hover,
+.nexo-dt-viewitem.user:hover {
+  border-color: var(--green);
+}
+.nexo-dt-viewitem.user {
+  padding: 0;
+  overflow: hidden;
+}
+.nexo-dt-viewapply {
+  flex: 1;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.nexo-dt-viewdel {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 12px;
+  align-self: stretch;
+  cursor: pointer;
+}
+.nexo-dt-viewdel:hover {
+  color: var(--red);
+}
+.nexo-dt-saveview {
+  display: flex;
+  gap: 8px;
+}
+.nexo-dt-saveview input {
+  flex: 1;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.nexo-dt-saveview input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(25, 115, 77, 0.12);
+}
+.nexo-dt-ov-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .nexo-dt-search {
+    flex-basis: 100%;
+  }
+  .nexo-dt-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

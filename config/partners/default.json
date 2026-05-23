@@ -1,0 +1,21 @@
+{
+  "schema": "platform.partner.v1",
+  "partner": {
+    "id": "default",
+    "name": "",
+    "logo_path": "",
+    "accent_color": "#14744b"
+  },
+  "license": {
+    "status": "local",
+    "plan": "sem_assinatura",
+    "activation_url": "",
+    "offline_grace_days": 7,
+    "billing_model": "per_active_client"
+  },
+  "distribution": {
+    "package_id": "local_default",
+    "channel": "manual",
+    "activation_mode": "per_client_activation"
+  }
+}

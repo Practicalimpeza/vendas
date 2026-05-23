@@ -1,12 +1,25 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import sqlite3
+from uuid import uuid4
 
+from app_config import app_name
 from commercial import api_commercial_intelligence
-from db_helpers import date_where, one, parse_decimal, parse_int, resolve_period, rows, scalar_text
+from db_helpers import (
+    date_where,
+    mark_app_controlled_fields,
+    normalize_code,
+    one,
+    parse_decimal,
+    parse_int,
+    resolve_period,
+    rows,
+    scalar_text,
+)
 from quotes import api_quote_drafts
 from replenishment import clamp
+from text_utils import make_supplier_id, normalize
 
 
 def api_summary(conn: sqlite3.Connection, period: dict | None = None) -> dict:
@@ -325,7 +338,7 @@ def api_maturity(conn: sqlite3.Connection) -> dict:
     if quotes:
         improvements.append(
             capability(
-                "O Nexo comecou a aprender com cotações",
+                f"O {app_name()} comecou a aprender com cotações",
                 f"{quotes} cotacao(oes) registradas; {data.get('sent_quotes') or 0} marcada(s) como enviada(s).",
                 "improved",
                 "Abre caminho para comparar sugerido, cotado e comprado.",
@@ -339,7 +352,7 @@ def api_maturity(conn: sqlite3.Connection) -> dict:
                 "Rotina operacional registrada",
                 f"{completed_actions} acao(oes) concluidas na mesa do gestor.",
                 "improved",
-                "O Nexo deixa de ser so leitura e passa a guardar execucao.",
+                f"O {app_name()} deixa de ser so leitura e passa a guardar execucao.",
                 "Abrir hoje",
                 "actions",
             )
@@ -580,6 +593,7 @@ def api_maturity(conn: sqlite3.Connection) -> dict:
 def api_top_products(conn: sqlite3.Connection, period: dict | None = None) -> list[dict]:
     period = period or resolve_period(conn, {"period_days": "all"})
     where_sql, params = date_where("s.sold_at", period, "WHERE")
+    sales_filter = where_sql.replace("WHERE", "AND", 1) if where_sql else ""
     return rows(
         conn,
         f"""
@@ -591,24 +605,112 @@ def api_top_products(conn: sqlite3.Connection, period: dict | None = None) -> li
             COALESCE(b.name, '') AS brand_name,
             COALESCE(sup.id, '') AS supplier_id,
             COALESCE(sup.name, '') AS supplier_name,
-            ROUND(SUM(s.quantity), 2) AS quantity,
-            ROUND(SUM(s.gross_amount), 2) AS revenue,
-            ROUND(SUM(s.gross_amount) * 100.0 / NULLIF((SELECT SUM(gross_amount) FROM product_sales s {where_sql}), 0), 2) AS share
-        FROM product_sales s
-        JOIN products p ON p.id = s.product_id
+            ROUND(COALESCE(SUM(s.quantity), 0), 2) AS quantity,
+            ROUND(COALESCE(SUM(s.gross_amount), 0), 2) AS revenue,
+            ROUND(COALESCE(SUM(s.gross_amount), 0) * 100.0 / NULLIF((SELECT SUM(gross_amount) FROM product_sales s {where_sql}), 0), 2) AS share
+        FROM products p
+        LEFT JOIN product_sales s
+          ON s.product_id = p.id
+         AND s.organization_id = p.organization_id
+         {sales_filter}
         LEFT JOIN brands b ON b.id = p.brand_id
         LEFT JOIN brand_supplier_rules bsr
           ON bsr.organization_id = p.organization_id
          AND bsr.brand_id = p.brand_id
          AND bsr.active = 1
         LEFT JOIN suppliers sup ON sup.id = bsr.supplier_id
-        {where_sql}
+        WHERE p.active = 1
         GROUP BY p.id
-        HAVING revenue > 0
-        ORDER BY revenue DESC
+        ORDER BY revenue DESC, p.name
         """,
         (*params, *params),
     )
+
+
+def _upsert_named_brand(conn: sqlite3.Connection, organization_id: str, name: str) -> str:
+    clean_name = scalar_text(name)
+    if not clean_name:
+        return ""
+    normalized = normalize(clean_name)
+    brand_id = f"{organization_id}:brand:{normalized or uuid4().hex[:8]}"
+    conn.execute(
+        """
+        INSERT INTO brands (id, organization_id, name, normalized_name, source_kind, source_system)
+        VALUES (?, ?, ?, ?, 'manual', 'app')
+        ON CONFLICT(organization_id, normalized_name) DO UPDATE SET
+            name = excluded.name,
+            source_kind = 'manual',
+            source_system = 'app'
+        """,
+        (brand_id, organization_id, clean_name, normalized),
+    )
+    row = conn.execute(
+        "SELECT id FROM brands WHERE organization_id = ? AND normalized_name = ?",
+        (organization_id, normalized),
+    ).fetchone()
+    return row["id"] if row else brand_id
+
+
+def _upsert_named_category(conn: sqlite3.Connection, organization_id: str, name: str) -> str:
+    clean_name = scalar_text(name)
+    if not clean_name:
+        return ""
+    normalized = normalize(clean_name)
+    existing = conn.execute(
+        """
+        SELECT id
+        FROM categories
+        WHERE organization_id = ?
+          AND parent_id IS NULL
+          AND normalized_name = ?
+        """,
+        (organization_id, normalized),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            """
+            UPDATE categories
+            SET name = ?, source_kind = 'manual', source_system = 'app'
+            WHERE id = ?
+            """,
+            (clean_name, existing["id"]),
+        )
+        return existing["id"]
+    category_id = f"{organization_id}:category:{normalized or uuid4().hex[:8]}"
+    conn.execute(
+        """
+        INSERT INTO categories (id, organization_id, name, normalized_name, source_kind, source_system)
+        VALUES (?, ?, ?, ?, 'manual', 'app')
+        """,
+        (category_id, organization_id, clean_name, normalized),
+    )
+    return category_id
+
+
+def _upsert_named_supplier(conn: sqlite3.Connection, organization_id: str, name: str) -> str:
+    clean_name = scalar_text(name)
+    if not clean_name:
+        return ""
+    supplier_id = make_supplier_id(organization_id, clean_name)
+    conn.execute(
+        """
+        INSERT INTO suppliers (id, organization_id, name, normalized_name, order_review_cycle_days)
+        VALUES (?, ?, ?, ?, 14)
+        ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            normalized_name = excluded.normalized_name
+        """,
+        (supplier_id, organization_id, clean_name, normalize(clean_name)),
+    )
+    mark_app_controlled_fields(
+        conn,
+        organization_id=organization_id,
+        entity_type="supplier",
+        entity_id=supplier_id,
+        source_view="product_form",
+        values={"name": clean_name},
+    )
+    return supplier_id
 
 
 def api_product_detail(conn: sqlite3.Connection, product_id: str) -> dict:
@@ -624,9 +726,15 @@ def api_product_detail(conn: sqlite3.Connection, product_id: str) -> dict:
             p.name,
             p.unit,
             p.active,
-            b.name AS brand_name
+            p.brand_id,
+            p.category_id,
+            p.first_seen_import_batch_id,
+            p.last_seen_import_batch_id,
+            b.name AS brand_name,
+            c.name AS category_name
         FROM products p
         LEFT JOIN brands b ON b.id = p.brand_id
+        LEFT JOIN categories c ON c.id = p.category_id
         WHERE p.id = ?
         """,
         (product_id,),
@@ -644,27 +752,30 @@ def api_product_detail(conn: sqlite3.Connection, product_id: str) -> dict:
         (product_id,),
     )
     barcode = next((i["identifier_value"] for i in identifiers if i["identifier_type"] == "barcode"), "")
-    supplier_reference = next(
+    supplier_reference = normalize_code(next(
         (i["identifier_value"] for i in identifiers if i["identifier_type"] == "supplier_reference"),
         "",
-    )
+    ))
     settings = one(
         conn,
         """
         SELECT
-            preferred_supplier_id,
-            package_size,
-            target_coverage_days,
-            minimum_stock,
-            maximum_stock,
-            weight,
-            expires,
-            blocked_for_purchase,
-            ignored_in_purchase_reports,
-            marker,
-            notes
-        FROM product_settings
-        WHERE product_id = ?
+            ps.preferred_supplier_id,
+            COALESCE(s.name, '') AS preferred_supplier_name,
+            ps.package_size,
+            ps.target_coverage_days,
+            COALESCE(ps.target_coverage_mode, 'auto') AS target_coverage_mode,
+            ps.minimum_stock,
+            ps.maximum_stock,
+            ps.weight,
+            ps.expires,
+            ps.blocked_for_purchase,
+            ps.ignored_in_purchase_reports,
+            ps.marker,
+            ps.notes
+        FROM product_settings ps
+        LEFT JOIN suppliers s ON s.id = ps.preferred_supplier_id
+        WHERE ps.product_id = ?
         """,
         (product_id,),
     ) or {}
@@ -695,6 +806,25 @@ def api_product_detail(conn: sqlite3.Connection, product_id: str) -> dict:
         """,
         (product_id,),
     )
+    monthly_rows = rows(
+        conn,
+        """
+        SELECT
+            substr(sold_at, 1, 7) AS month,
+            ROUND(SUM(quantity), 2) AS quantity,
+            ROUND(SUM(gross_amount), 2) AS revenue
+        FROM product_sales
+        WHERE product_id = ?
+          AND quantity > 0
+          AND sold_at IS NOT NULL
+          AND length(sold_at) >= 7
+        GROUP BY substr(sold_at, 1, 7)
+        ORDER BY month DESC
+        LIMIT 12
+        """,
+        (product_id,),
+    )
+    monthly_sales = [dict(r) for r in reversed(monthly_rows)]
     latest = one(
         conn,
         """
@@ -708,6 +838,17 @@ def api_product_detail(conn: sqlite3.Connection, product_id: str) -> dict:
         """,
         (product_id, product_id, product_id),
     ) or {}
+    controlled_fields = rows(
+        conn,
+        """
+        SELECT entity_type, field_name, control_kind, source_view, last_local_value, changed_at
+        FROM entity_field_controls
+        WHERE organization_id = ?
+          AND entity_id = ?
+        ORDER BY entity_type, field_name
+        """,
+        (product["organization_id"], product_id),
+    )
     return {
         "id": product["id"],
         "organization_id": product["organization_id"],
@@ -715,23 +856,217 @@ def api_product_detail(conn: sqlite3.Connection, product_id: str) -> dict:
         "name": product["name"],
         "unit": product["unit"],
         "active": bool(product["active"]),
+        "brand_id": product["brand_id"] or "",
         "brand_name": product["brand_name"] or "",
+        "category_id": product["category_id"] or "",
+        "category_name": product["category_name"] or "",
+        "first_seen_import_batch_id": product["first_seen_import_batch_id"] or "",
+        "last_seen_import_batch_id": product["last_seen_import_batch_id"] or "",
         "barcode": barcode,
         "supplier_reference": supplier_reference,
         "identifiers": [dict(identifier) for identifier in identifiers],
+        "controlled_fields": [dict(field) for field in controlled_fields],
         "settings": dict(settings),
         "sales_summary": dict(sales_summary),
         "recent_decisions": [dict(decision) for decision in recent_decisions],
+        "monthly_sales": monthly_sales,
         "stock": latest.get("stock"),
         "sale_price": latest.get("sale_price"),
         "total_cost": latest.get("total_cost"),
     }
 
 
+def upsert_product_profile(conn: sqlite3.Connection, payload: dict) -> dict:
+    organization_id = scalar_text(payload.get("organization_id"))
+    product_id = scalar_text(payload.get("product_id") or payload.get("id"))
+    source_code = normalize_code(payload.get("source_code"))[:80]
+    name = scalar_text(payload.get("name"))[:240]
+    unit = (scalar_text(payload.get("unit")) or "UN")[:20].upper()
+    brand_name = scalar_text(payload.get("brand_name"))[:160]
+    category_name = scalar_text(payload.get("category_name"))[:160]
+    barcode = scalar_text(payload.get("barcode"))[:160]
+    supplier_reference = normalize_code(payload.get("supplier_reference"))[:120]
+    supplier_name = scalar_text(payload.get("supplier_name"))[:180]
+    package_size = parse_decimal(payload.get("package_size"), None)
+    minimum_stock = parse_decimal(payload.get("minimum_stock"), None)
+    maximum_stock = parse_decimal(payload.get("maximum_stock"), None)
+    weight = parse_decimal(payload.get("weight"), None)
+    expires = 1 if scalar_text(payload.get("expires")).lower() in {"1", "true", "sim", "yes", "on"} else 0
+    blocked_for_purchase = 1 if scalar_text(payload.get("blocked_for_purchase")).lower() in {"1", "true", "sim", "yes", "on"} else 0
+    ignored_in_purchase_reports = 1 if scalar_text(payload.get("ignored_in_purchase_reports")).lower() in {"1", "true", "sim", "yes", "on"} else 0
+    notes = scalar_text(payload.get("notes"))[:500]
+    active = 0 if scalar_text(payload.get("active")).lower() in {"0", "false", "nao", "não", "inativo"} else 1
+    if not organization_id:
+        raise ValueError("organization_id e obrigatorio.")
+    if not name:
+        raise ValueError("Nome do produto e obrigatorio.")
+    if not source_code:
+        source_code = f"APP-{uuid4().hex[:8].upper()}"
+    if not product_id:
+        product_id = f"{organization_id}:product:{source_code}"
+    existing_code = conn.execute(
+        """
+        SELECT id
+        FROM products
+        WHERE organization_id = ?
+          AND source_code = ?
+          AND id <> ?
+        """,
+        (organization_id, source_code, product_id),
+    ).fetchone()
+    if existing_code:
+        raise ValueError("Codigo de produto ja usado em outro cadastro.")
+
+    brand_id = _upsert_named_brand(conn, organization_id, brand_name)
+    category_id = _upsert_named_category(conn, organization_id, category_name)
+    supplier_id = _upsert_named_supplier(conn, organization_id, supplier_name)
+    before = one(conn, "SELECT * FROM products WHERE organization_id = ? AND id = ?", (organization_id, product_id))
+    conn.execute(
+        """
+        INSERT INTO products
+            (id, organization_id, source_code, name, normalized_name, unit, brand_id, category_id,
+             active, source_payload_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(organization_id, source_code) DO UPDATE SET
+            name = excluded.name,
+            normalized_name = excluded.normalized_name,
+            unit = excluded.unit,
+            brand_id = excluded.brand_id,
+            category_id = excluded.category_id,
+            active = excluded.active,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            product_id,
+            organization_id,
+            source_code,
+            name,
+            normalize(name),
+            unit,
+            brand_id,
+            category_id,
+            active,
+            json.dumps({"source": "app"}, ensure_ascii=False),
+        ),
+    )
+    row = conn.execute(
+        "SELECT id FROM products WHERE organization_id = ? AND source_code = ?",
+        (organization_id, source_code),
+    ).fetchone()
+    product_id = row["id"] if row else product_id
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO product_settings
+            (organization_id, product_id, target_coverage_days, target_coverage_mode)
+        VALUES (?, ?, 0, 'auto')
+        """,
+        (organization_id, product_id),
+    )
+    mark_app_controlled_fields(
+        conn,
+        organization_id=organization_id,
+        entity_type="product",
+        entity_id=product_id,
+        source_view="product_profile",
+        values={
+            "source_code": source_code,
+            "name": name,
+            "unit": unit,
+            "brand_id": brand_id,
+            "category_id": category_id,
+            "active": active,
+        },
+    )
+    identifier_values = {}
+    for identifier_type, value in {"barcode": barcode, "supplier_reference": supplier_reference}.items():
+        conn.execute(
+            """
+            DELETE FROM product_identifiers
+            WHERE organization_id = ? AND product_id = ? AND identifier_type = ?
+            """,
+            (organization_id, product_id, identifier_type),
+        )
+        if value:
+            conn.execute(
+                """
+                INSERT INTO product_identifiers
+                    (organization_id, product_id, identifier_type, identifier_value, source_system)
+                VALUES (?, ?, ?, ?, 'manual')
+                """,
+                (organization_id, product_id, identifier_type, value),
+            )
+        identifier_values[identifier_type] = value
+    mark_app_controlled_fields(
+        conn,
+        organization_id=organization_id,
+        entity_type="product_identifier",
+        entity_id=product_id,
+        source_view="product_profile",
+        values=identifier_values,
+    )
+    if supplier_id:
+        settings_values = {"preferred_supplier_id": supplier_id}
+    else:
+        settings_values = {}
+    if package_size is not None:
+        settings_values["package_size"] = max(float(package_size), 0.001)
+    if minimum_stock is not None:
+        settings_values["minimum_stock"] = float(minimum_stock)
+    if maximum_stock is not None:
+        settings_values["maximum_stock"] = float(maximum_stock)
+    if weight is not None:
+        settings_values["weight"] = float(weight)
+    for key, value in {
+        "expires": expires,
+        "blocked_for_purchase": blocked_for_purchase,
+        "ignored_in_purchase_reports": ignored_in_purchase_reports,
+        "notes": notes,
+    }.items():
+        if key in payload:
+            settings_values[key] = value
+    if settings_values:
+        columns = ", ".join(settings_values)
+        placeholders = ", ".join("?" for _ in settings_values)
+        updates = ", ".join(f"{field} = excluded.{field}" for field in settings_values)
+        conn.execute(
+            f"""
+            INSERT INTO product_settings (organization_id, product_id, {columns})
+            VALUES (?, ?, {placeholders})
+            ON CONFLICT(organization_id, product_id) DO UPDATE SET
+                {updates}
+            """,
+            (organization_id, product_id, *settings_values.values()),
+        )
+        mark_app_controlled_fields(
+            conn,
+            organization_id=organization_id,
+            entity_type="product_settings",
+            entity_id=product_id,
+            source_view="product_profile",
+            values=settings_values,
+        )
+    after = one(conn, "SELECT * FROM products WHERE organization_id = ? AND id = ?", (organization_id, product_id))
+    conn.execute(
+        """
+        INSERT INTO audit_log
+            (organization_id, action, target_type, target_id, before_json, after_json)
+        VALUES (?, 'product_profile_upsert', 'product', ?, ?, ?)
+        """,
+        (
+            organization_id,
+            product_id,
+            json.dumps(before or {}, ensure_ascii=False),
+            json.dumps(after or {}, ensure_ascii=False),
+        ),
+    )
+    conn.commit()
+    return {"ok": True, "product": api_product_detail(conn, product_id)}
+
+
 def update_product_supplier_reference(conn: sqlite3.Connection, payload: dict) -> dict:
     organization_id = scalar_text(payload.get("organization_id"))
     product_id = scalar_text(payload.get("product_id"))
-    value = scalar_text(payload.get("value"))[:120]
+    value = normalize_code(payload.get("value"))[:120]
     if not organization_id or not product_id:
         raise ValueError("organization_id e product_id sao obrigatorios.")
     product = one(
@@ -751,6 +1086,20 @@ def update_product_supplier_reference(conn: sqlite3.Connection, payload: dict) -
         (organization_id, product_id),
     )
     before_value = before_row["identifier_value"] if before_row else ""
+    if value:
+        reference_candidates = rows(
+            conn,
+            """
+            SELECT product_id, identifier_value
+            FROM product_identifiers
+            WHERE organization_id = ?
+              AND identifier_type = 'supplier_reference'
+              AND product_id <> ?
+            """,
+            (organization_id, product_id),
+        )
+        if any(normalize_code(row.get("identifier_value")) == value for row in reference_candidates):
+            raise ValueError("Referencia do fornecedor ja vinculada a outro produto.")
     conn.execute(
         """
         DELETE FROM product_identifiers
@@ -767,6 +1116,14 @@ def update_product_supplier_reference(conn: sqlite3.Connection, payload: dict) -
             """,
             (organization_id, product_id, value),
         )
+    mark_app_controlled_fields(
+        conn,
+        organization_id=organization_id,
+        entity_type="product_identifier",
+        entity_id=product_id,
+        source_view="product_detail",
+        values={"supplier_reference": value},
+    )
     conn.execute(
         """
         INSERT INTO audit_log
@@ -788,14 +1145,8 @@ def update_product_purchase_settings(conn: sqlite3.Connection, payload: dict) ->
     organization_id = scalar_text(payload.get("organization_id"))
     product_id = scalar_text(payload.get("product_id"))
     package_size = parse_decimal(payload.get("package_size"), None)
-    target_coverage_days_provided = "target_coverage_days" in payload
-    target_coverage_days = parse_int(payload.get("target_coverage_days"), None)
     if not organization_id or not product_id:
         raise ValueError("organization_id e product_id sao obrigatorios.")
-    if package_size is None or package_size <= 0:
-        raise ValueError("Itens por caixa deve ser maior que zero.")
-    if target_coverage_days_provided and (target_coverage_days is None or target_coverage_days <= 0):
-        raise ValueError("Cobertura alvo deve ser maior que zero.")
     product = one(
         conn,
         "SELECT id FROM products WHERE organization_id = ? AND id = ?",
@@ -806,39 +1157,39 @@ def update_product_purchase_settings(conn: sqlite3.Connection, payload: dict) ->
     before = one(
         conn,
         """
-        SELECT package_size, target_coverage_days
+        SELECT package_size, target_coverage_days, COALESCE(target_coverage_mode, 'auto') AS target_coverage_mode
         FROM product_settings
         WHERE organization_id = ? AND product_id = ?
         """,
         (organization_id, product_id),
     )
-    if target_coverage_days_provided:
-        conn.execute(
-            """
-            INSERT INTO product_settings
-                (organization_id, product_id, package_size, target_coverage_days)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(organization_id, product_id) DO UPDATE SET
-                package_size = excluded.package_size,
-                target_coverage_days = excluded.target_coverage_days
-            """,
-            (organization_id, product_id, float(package_size), int(target_coverage_days)),
-        )
-    else:
-        conn.execute(
-            """
-            INSERT INTO product_settings
-                (organization_id, product_id, package_size)
-            VALUES (?, ?, ?)
-            ON CONFLICT(organization_id, product_id) DO UPDATE SET
-                package_size = excluded.package_size
-            """,
-            (organization_id, product_id, float(package_size)),
-        )
+    if package_size is None:
+        package_size = float((before or {}).get("package_size") or 1)
+    if package_size <= 0:
+        raise ValueError("Itens por caixa deve ser maior que zero.")
+    controlled_values = {"package_size": float(package_size)}
+    conn.execute(
+        """
+        INSERT INTO product_settings
+            (organization_id, product_id, package_size, target_coverage_days, target_coverage_mode)
+        VALUES (?, ?, ?, 0, 'auto')
+        ON CONFLICT(organization_id, product_id) DO UPDATE SET
+            package_size = excluded.package_size
+        """,
+        (organization_id, product_id, float(package_size)),
+    )
+    mark_app_controlled_fields(
+        conn,
+        organization_id=organization_id,
+        entity_type="product_settings",
+        entity_id=product_id,
+        source_view="product_purchase_settings",
+        values=controlled_values,
+    )
     after = one(
         conn,
         """
-        SELECT package_size, target_coverage_days
+        SELECT package_size, target_coverage_days, COALESCE(target_coverage_mode, 'auto') AS target_coverage_mode
         FROM product_settings
         WHERE organization_id = ? AND product_id = ?
         """,

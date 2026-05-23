@@ -25,10 +25,22 @@ def is_loopback_host(host: str) -> bool:
         return False
 
 
-def send_json(handler: Any, payload: object, status: int = 200) -> None:
+def send_json(handler: Any, payload: object, status: int = 200, headers: dict[str, str] | None = None) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
+    for name, value in (headers or {}).items():
+        handler.send_header(name, value)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def send_text(handler: Any, payload: str, status: int = 200) -> None:
+    body = str(payload or "").encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "text/plain; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -41,11 +53,15 @@ def send_api_error(handler: Any, message: str, status: int = 400, code: str = "b
     send_json(handler, payload, status=status)
 
 
-def read_json(handler: Any) -> dict:
+def read_raw_body(handler: Any) -> bytes:
     length = int(handler.headers.get("Content-Length") or "0")
     if length <= 0:
-        return {}
-    body = handler.rfile.read(length).decode("utf-8")
+        return b""
+    return handler.rfile.read(length)
+
+
+def read_json(handler: Any) -> dict:
+    body = read_raw_body(handler).decode("utf-8")
     return json.loads(body or "{}")
 
 
@@ -92,11 +108,28 @@ def send_file(handler: Any, path: Path) -> None:
     if not path.exists() or not path.is_file():
         handler.send_error(404)
         return
-    body = path.read_bytes()
+    stat = path.stat()
+    is_html = path.suffix.lower() in {".html", ".htm"}
     content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    if is_html and content_type == "text/html":
+        content_type = "text/html; charset=utf-8"
+    cache_control = "no-store" if is_html else "public, max-age=3600, must-revalidate"
+    etag = f'W/"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+    if handler.headers.get("If-None-Match") == etag:
+        handler.send_response(304)
+        handler.send_header("ETag", etag)
+        handler.send_header("Cache-Control", cache_control)
+        if is_html:
+            handler.send_header("Content-Language", "pt-BR")
+        handler.end_headers()
+        return
+    body = path.read_bytes()
     handler.send_response(200)
     handler.send_header("Content-Type", content_type)
-    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Cache-Control", cache_control)
+    if is_html:
+        handler.send_header("Content-Language", "pt-BR")
+    handler.send_header("ETag", etag)
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)

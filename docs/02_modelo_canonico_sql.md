@@ -24,7 +24,7 @@ O sistema trabalha com duas camadas complementares:
 | Camada | Dono | Pode ser editado no Nexo? | Exemplos |
 | --- | --- | --- | --- |
 | Canonica de origem | ERP/origem/importador | Nao | vendas, estoque exportado, custo exportado, preco exportado, nome do produto, codigo de origem, marca importada, cliente importado, classificacoes inferidas das planilhas. |
-| Operacional do Nexo | NexoVarejo | Sim | fornecedor preferencial, embalagem de compra, cobertura alvo, bloqueio de compra, observacoes internas, contato de fornecedor, status de pedido. |
+| Operacional do Nexo | NexoVarejo | Sim | fornecedor preferencial, embalagem de compra, ciclos de compra, bloqueio de compra, observacoes internas, contato de fornecedor, status de pedido. |
 
 Uma nova importacao pode atualizar a camada canonica de origem. Ela nao pode ser
 corrigida manualmente dentro do Nexo. Se o nome, preco, custo, estoque, cliente ou
@@ -46,6 +46,13 @@ Nexo.
 Para produtos, o `source_code` dentro da empresa e a identidade primaria vinda do
 ERP. Se uma nova importacao trouxer o mesmo codigo com outro nome, o NexoVarejo
 deve assumir inicialmente que e o mesmo produto com nome atualizado na origem.
+
+Antes de formar o `product_id`, o codigo de produto e normalizado removendo
+zeros a esquerda antes do primeiro numero util. Assim, `00002284` e `2284`
+representam o mesmo produto canonico. Codigos antigos com zeros podem ficar em
+`product_identifiers` como `legacy_source_code` para rastreabilidade, mas todas
+as vendas, custos, estoques, cotacoes, pedidos, acoes e decisoes devem apontar
+para o `product_id` normalizado.
 
 Comportamento esperado:
 
@@ -140,7 +147,7 @@ humana.
 - pedido minimo;
 - valor alvo para condicao comercial/desconto;
 - embalagem minima;
-- cobertura alvo;
+- horizonte calculado;
 - quantidade sugerida;
 - status do pedido.
 

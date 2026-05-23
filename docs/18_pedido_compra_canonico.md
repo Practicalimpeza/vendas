@@ -3,16 +3,20 @@
 ## Objetivo
 
 Transformar uma cotacao respondida em uma decisao operacional fechada: o que
-sera comprado, em qual quantidade, por qual preco e com qual fornecedor.
+sera comprado, em qual quantidade e com qual fornecedor.
 
 ## Fluxo
 
 1. O Nexo sugere reposicao e gera cotacao.
-2. O operador registra resposta do fornecedor.
-3. A tela calcula uma sugestao de fechamento usando preco, disponibilidade e
-   embalagem/divisor.
-4. O operador decide por item: comprar, nao comprar ou revisar.
-5. Ao fechar, o Nexo cria `purchase_orders` e `purchase_order_items`.
+2. O operador envia a lista de itens e quantidades ao fornecedor. Esse envio
+   nao cria pedido nem estoque projetado, mas aparece na fila de Pedidos como
+   pendencia de confirmacao do fornecedor.
+3. O operador registra a resposta do fornecedor: disponibilidade, quantidade
+   confirmada, prazo e observacoes. Preco informado pelo fornecedor nao e parte
+   desse fluxo; o valor sera atualizado quando a entrada chegar pelo ERP.
+4. Com a resposta valida registrada, o Nexo gera e aprova o pedido a partir dos
+   itens confirmados. A partir dai o pedido passa a entrar no estoque projetado.
+5. O proximo passo operacional do pedido aprovado e registrar a chegada.
 
 ## Memoria preservada
 
@@ -20,6 +24,7 @@ O pedido preserva tres camadas:
 
 - Quantidade sugerida pelo motor.
 - Quantidade solicitada na cotacao.
+- Quantidade confirmada pelo fornecedor.
 - Quantidade final comprada.
 
 Isso permite, no futuro, comparar sugestao, resposta, compra real, entrada no
@@ -30,7 +35,7 @@ por item:
 
 - Unidade de compra usada com o fornecedor, como unidade, caixa, fardo ou saco.
 - Quantidade de unidades por embalagem de compra.
-- Cobertura alvo em dias usada para recalcular a quantidade solicitada.
+- Cobertura desejada do item quando existir no rascunho, sem gravar parametro no produto.
 
 Esses ajustes pertencem ao rascunho/pedido do Nexo. Eles ajudam a operar a
 compra sem alterar automaticamente o cadastro importado do ERP.

@@ -1,7 +1,47 @@
-function disposeChartInstance(instance) {
+﻿function disposeChartInstance(instance) {
   if (!instance) return;
   if (typeof instance.dispose === "function") instance.dispose();
   else if (typeof instance.destroy === "function") instance.destroy();
+}
+
+function chartRegistry() {
+  if (!state.chartRenderers) state.chartRenderers = {};
+  if (!state.generalCharts) state.generalCharts = {};
+  return state.chartRenderers;
+}
+
+function chartTargetReady(target) {
+  if (!target || target.offsetParent === null) return false;
+  const rect = target.getBoundingClientRect();
+  return rect.width >= 40 && rect.height >= 40;
+}
+
+function chartTargetVisible(target) {
+  return Boolean(target && target.offsetParent !== null);
+}
+
+function resizeChartSoon(chart) {
+  if (!chart || typeof chart.resize !== "function") return;
+  window.requestAnimationFrame(() => chart.resize());
+  window.setTimeout(() => chart.resize(), 120);
+  window.setTimeout(() => chart.resize(), 450);
+}
+
+function resizeDashboardCharts() {
+  Object.values(state.generalCharts || {}).forEach(resizeChartSoon);
+  resizeChartSoon(state.monthlyChart);
+}
+
+function scheduleChartRecovery() {
+  if (state.chartRecoveryTimer) window.clearTimeout(state.chartRecoveryTimer);
+  state.chartRecoveryTimer = window.setTimeout(() => {
+    state.chartRecoveryTimer = null;
+    if (!window.echarts) return;
+    Object.values(chartRegistry()).forEach((render) => {
+      if (typeof render === "function") render();
+    });
+    resizeDashboardCharts();
+  }, 180);
 }
 
 function chartTextColor() {
@@ -9,14 +49,20 @@ function chartTextColor() {
 }
 
 function renderEChart(targetId, option) {
+  chartRegistry()[targetId] = () => renderEChart(targetId, option);
   const target = document.querySelector(targetId);
   if (!target || !window.echarts) return null;
   const canvasId = `${targetId.replace("#", "")}Echart`;
   target.innerHTML = `<div id="${canvasId}" class="echart-surface" role="img"></div>`;
+  if (!chartTargetReady(target)) {
+    if (chartTargetVisible(target)) scheduleChartRecovery();
+    return null;
+  }
   disposeChartInstance(state.generalCharts[targetId]);
   const chart = echarts.init(document.querySelector(`#${canvasId}`), null, { renderer: "canvas" });
   chart.setOption(option);
   state.generalCharts[targetId] = chart;
+  resizeChartSoon(chart);
   return chart;
 }
 
@@ -197,6 +243,6 @@ function renderBiScore(targetId, score, label, detail) {
       <strong>${number(value)}%</strong>
       <span>${escapeHtml(label)}</span>
     </div>
-    <p>${escapeHtml(detail || "Dados importados e prontos para orientar decisoes.")}</p>
+    <p>${escapeHtml(detail || "Dados importados e prontos para orientar decisões.")}</p>
   `;
 }

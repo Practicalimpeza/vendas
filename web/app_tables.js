@@ -1,4 +1,4 @@
-function tableCellText(row, index) {
+﻿function tableCellText(row, index) {
   return (row.cells[index]?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
@@ -110,7 +110,7 @@ function enhanceDataTables(root = document) {
     const wrap = table.closest(".table-wrap");
     const headerRow = table.tHead?.rows[0];
     const tbody = table.tBodies[0];
-    if (!wrap || !headerRow || !tbody || table.dataset.enhancedTable === "true") return;
+    if (!wrap || !headerRow || !tbody || table.dataset.enhancedTable === "true" || table.closest(".nexo-dt")) return;
     const skipToolbar = wrap.classList.contains("supplier-directory");
     table.dataset.enhancedTable = "true";
     wrap.classList.add("table-shell");
@@ -134,7 +134,7 @@ function enhanceDataTables(root = document) {
             <option value="">Ordenar por</option>
             ${options}
           </select>
-          <select class="search data-table-sort-dir" data-table-sort-dir aria-label="Direcao da ordenacao">
+          <select class="search data-table-sort-dir" data-table-sort-dir aria-label="Direcao da ordenação">
             <option value="asc">Crescente</option>
             <option value="desc">Decrescente</option>
           </select>
@@ -177,16 +177,7 @@ function enhanceActiveDataTables() {
 }
 
 function scheduleDeferredDataTables() {
-  if (deferredTableEnhancementQueued) return;
-  deferredTableEnhancementQueued = true;
-  scheduleIdleTask(() => {
-    deferredTableEnhancementQueued = false;
-    const nextTable = document.querySelector('.view:not(.active) .table-wrap table:not([data-enhanced-table="true"])');
-    const nextRoot = nextTable?.closest(".view");
-    if (!nextRoot) return;
-    enhanceDataTables(nextRoot);
-    scheduleDeferredDataTables();
-  });
+  deferredTableEnhancementQueued = false;
 }
 
 function observeDataTables() {

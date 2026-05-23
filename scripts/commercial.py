@@ -24,6 +24,7 @@ def api_customers(conn: sqlite3.Connection, period: dict | None = None) -> list[
             WHERE customer_id IS NOT NULL{service_period_sql}
         )
         SELECT
+            MIN(c.id) AS id,
             MIN(c.name) AS name,
             COUNT(*) AS purchases,
             MAX(e.event_date) AS last_purchase,
@@ -37,6 +38,112 @@ def api_customers(conn: sqlite3.Connection, period: dict | None = None) -> list[
         """,
         (*product_params, *service_params),
     )
+
+
+def api_customer_mix(conn: sqlite3.Connection, customer_id: str, period: dict | None = None) -> dict:
+    period = period or resolve_period(conn, {"period_days": "all"})
+    customer = one(
+        conn,
+        """
+        SELECT id, organization_id, name, canonical_name
+        FROM customers
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (customer_id,),
+    )
+    if not customer:
+        return {
+            "customer": {},
+            "period": period,
+            "summary": {"products": 0, "quantity": 0, "revenue": 0, "purchase_days": 0},
+            "products": [],
+            "contract_hint": "Cliente nao encontrado.",
+        }
+    product_period_sql, product_params = date_where("ps.sold_at", period, "AND")
+    params = (customer["organization_id"], customer["canonical_name"], *product_params)
+    summary = one(
+        conn,
+        f"""
+        SELECT
+            COUNT(DISTINCT ps.product_id) AS products,
+            ROUND(SUM(ps.quantity), 2) AS quantity,
+            ROUND(SUM(ps.gross_amount), 2) AS revenue,
+            COUNT(DISTINCT substr(ps.sold_at, 1, 10)) AS purchase_days,
+            MAX(substr(ps.sold_at, 1, 10)) AS last_purchase
+        FROM product_sales ps
+        JOIN customers c ON c.id = ps.customer_id
+        WHERE ps.organization_id = ?
+          AND c.canonical_name = ?{product_period_sql}
+        """,
+        params,
+    )
+    mix_rows = rows(
+        conn,
+        f"""
+        SELECT
+            p.id AS product_id,
+            p.source_code,
+            p.name,
+            ROUND(SUM(ps.quantity), 2) AS quantity,
+            ROUND(SUM(ps.gross_amount), 2) AS revenue,
+            COUNT(*) AS sale_lines,
+            COUNT(DISTINCT substr(ps.sold_at, 1, 10)) AS purchase_days,
+            MAX(substr(ps.sold_at, 1, 10)) AS last_purchase,
+            ROUND(SUM(ps.gross_amount) / NULLIF(SUM(ps.quantity), 0), 2) AS avg_unit_price
+        FROM product_sales ps
+        JOIN customers c ON c.id = ps.customer_id
+        JOIN products p ON p.id = ps.product_id
+        WHERE ps.organization_id = ?
+          AND c.canonical_name = ?{product_period_sql}
+        GROUP BY p.id
+        HAVING SUM(ps.gross_amount) > 0
+        ORDER BY SUM(ps.gross_amount) DESC, SUM(ps.quantity) DESC
+        LIMIT 30
+        """,
+        params,
+    )
+    total_revenue = float(summary.get("revenue") or 0)
+    total_quantity = float(summary.get("quantity") or 0)
+    core_revenue = 0.0
+    for index, row in enumerate(mix_rows):
+        revenue = float(row.get("revenue") or 0)
+        quantity = float(row.get("quantity") or 0)
+        share = (revenue / total_revenue * 100) if total_revenue else 0
+        quantity_share = (quantity / total_quantity * 100) if total_quantity else 0
+        row["share"] = round(share, 1)
+        row["quantity_share"] = round(quantity_share, 1)
+        row["mix_role"] = "principal" if index < 5 or share >= 10 else "complementar"
+        if row["mix_role"] == "principal":
+            core_revenue += revenue
+    core_share = (core_revenue / total_revenue * 100) if total_revenue else 0
+    product_count = int(summary.get("products") or 0)
+    purchase_days = int(summary.get("purchase_days") or 0)
+    if product_count >= 3 and purchase_days >= 2:
+        contract_hint = "Bom candidato para mix personalizado com tabela de preco por periodo."
+    elif product_count:
+        contract_hint = "Mix identificado, mas ainda com pouca recorrencia para travar muitos precos."
+    else:
+        contract_hint = "Ainda nao ha venda de produto suficiente para montar mix."
+    return {
+        "customer": {
+            "id": customer["id"],
+            "name": customer["name"],
+            "canonical_name": customer["canonical_name"],
+        },
+        "period": period,
+        "summary": {
+            "products": product_count,
+            "quantity": round(total_quantity, 2),
+            "revenue": round(total_revenue, 2),
+            "purchase_days": purchase_days,
+            "last_purchase": summary.get("last_purchase") or "",
+            "core_revenue": round(core_revenue, 2),
+            "core_share": round(core_share, 1),
+        },
+        "products": mix_rows,
+        "contract_hint": contract_hint,
+    }
 
 
 def customer_commercial_rows(conn: sqlite3.Connection, period: dict | None = None) -> list[dict]:

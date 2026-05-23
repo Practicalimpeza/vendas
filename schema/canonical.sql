@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS organization_profiles (
     organization_id TEXT PRIMARY KEY REFERENCES organizations(id),
     trade_name TEXT DEFAULT '',
@@ -151,6 +157,50 @@ CREATE TABLE IF NOT EXISTS implementation_tasks (
     completed_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS operational_data_sources (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    source_kind TEXT NOT NULL DEFAULT 'system',
+    name TEXT NOT NULL,
+    external_system TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    last_seen_at TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, source_kind, name)
+);
+
+CREATE TABLE IF NOT EXISTS entity_source_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    data_source_id TEXT NOT NULL REFERENCES operational_data_sources(id),
+    external_id TEXT DEFAULT '',
+    external_code TEXT DEFAULT '',
+    link_status TEXT NOT NULL DEFAULT 'active',
+    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT,
+    source_payload_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE (organization_id, entity_type, entity_id, data_source_id)
+);
+
+CREATE TABLE IF NOT EXISTS entity_field_controls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    control_kind TEXT NOT NULL DEFAULT 'app',
+    source_view TEXT NOT NULL DEFAULT '',
+    actor_user_id TEXT DEFAULT '',
+    last_local_value TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, entity_type, entity_id, field_name)
+);
+
 CREATE TABLE IF NOT EXISTS brands (
     id TEXT PRIMARY KEY,
     organization_id TEXT NOT NULL REFERENCES organizations(id),
@@ -238,7 +288,8 @@ CREATE TABLE IF NOT EXISTS product_settings (
     product_id TEXT NOT NULL REFERENCES products(id),
     preferred_supplier_id TEXT REFERENCES suppliers(id),
     package_size NUMERIC NOT NULL DEFAULT 1,
-    target_coverage_days INTEGER NOT NULL DEFAULT 45,
+    target_coverage_days INTEGER NOT NULL DEFAULT 0,
+    target_coverage_mode TEXT NOT NULL DEFAULT 'auto',
     minimum_stock NUMERIC NOT NULL DEFAULT 0,
     maximum_stock NUMERIC,
     weight NUMERIC,
@@ -472,6 +523,7 @@ CREATE TABLE IF NOT EXISTS quote_request_items (
     unit TEXT DEFAULT '',
     suggested_quantity NUMERIC NOT NULL DEFAULT 0,
     requested_quantity NUMERIC NOT NULL DEFAULT 0,
+    confirmed_quantity NUMERIC,
     estimated_unit_cost NUMERIC NOT NULL DEFAULT 0,
     estimated_total_amount NUMERIC NOT NULL DEFAULT 0,
     reason TEXT DEFAULT '',
@@ -525,6 +577,118 @@ CREATE TABLE IF NOT EXISTS operational_decisions (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS whatsapp_contacts (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    wa_id TEXT NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    phone_number TEXT NOT NULL DEFAULT '',
+    customer_id TEXT REFERENCES customers(id),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, wa_id)
+);
+
+CREATE TABLE IF NOT EXISTS whatsapp_agents (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    name TEXT NOT NULL,
+    department TEXT NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS whatsapp_conversations (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    contact_id TEXT REFERENCES whatsapp_contacts(id),
+    customer_id TEXT REFERENCES customers(id),
+    contact_wa_id TEXT NOT NULL,
+    contact_name TEXT NOT NULL DEFAULT '',
+    channel_phone_number_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'novo',
+    owner_user_id TEXT NOT NULL DEFAULT '',
+    owner_name TEXT NOT NULL DEFAULT '',
+    department TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 3,
+    last_message_at TEXT,
+    last_inbound_at TEXT,
+    last_outbound_at TEXT,
+    follow_up_at TEXT,
+    quote_request_id TEXT REFERENCES quote_requests(id),
+    purchase_order_id TEXT REFERENCES purchase_orders(id),
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at TEXT,
+    UNIQUE (organization_id, contact_wa_id, channel_phone_number_id)
+);
+
+CREATE TABLE IF NOT EXISTS whatsapp_messages (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    conversation_id TEXT NOT NULL REFERENCES whatsapp_conversations(id),
+    wa_message_id TEXT,
+    direction TEXT NOT NULL,
+    message_type TEXT NOT NULL DEFAULT 'text',
+    body TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',
+    sender_name TEXT NOT NULL DEFAULT '',
+    sender_wa_id TEXT NOT NULL DEFAULT '',
+    sent_at TEXT,
+    received_at TEXT,
+    raw_payload_json TEXT NOT NULL DEFAULT '{}',
+    error_text TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, wa_message_id)
+);
+
+CREATE TABLE IF NOT EXISTS whatsapp_conversation_events (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    conversation_id TEXT NOT NULL REFERENCES whatsapp_conversations(id),
+    event_type TEXT NOT NULL,
+    actor_name TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS app_users (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    name TEXT NOT NULL,
+    login_name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS app_user_module_permissions (
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    module_key TEXT NOT NULL,
+    can_access INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, module_key)
+);
+
+CREATE TABLE IF NOT EXISTS app_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_agent TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     organization_id TEXT NOT NULL REFERENCES organizations(id),
@@ -543,6 +707,10 @@ CREATE INDEX IF NOT EXISTS idx_source_entity_changes_entity ON source_entity_cha
 CREATE INDEX IF NOT EXISTS idx_source_entity_changes_review ON source_entity_changes(organization_id, review_status, change_type);
 CREATE INDEX IF NOT EXISTS idx_implementation_projects_org ON implementation_projects(organization_id, status);
 CREATE INDEX IF NOT EXISTS idx_implementation_tasks_project ON implementation_tasks(implementation_project_id, status, priority);
+CREATE INDEX IF NOT EXISTS idx_operational_data_sources_org ON operational_data_sources(organization_id, source_kind, status);
+CREATE INDEX IF NOT EXISTS idx_entity_source_links_entity ON entity_source_links(organization_id, entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_source_links_source ON entity_source_links(organization_id, data_source_id, external_code);
+CREATE INDEX IF NOT EXISTS idx_entity_field_controls_entity ON entity_field_controls(organization_id, entity_type, entity_id, control_kind);
 CREATE INDEX IF NOT EXISTS idx_brand_supplier_rules_supplier ON brand_supplier_rules(organization_id, supplier_id);
 CREATE INDEX IF NOT EXISTS idx_products_org_name ON products(organization_id, normalized_name);
 CREATE INDEX IF NOT EXISTS idx_inventory_product_date ON inventory_snapshots(organization_id, store_id, product_id, snapshot_date);
@@ -551,8 +719,13 @@ CREATE INDEX IF NOT EXISTS idx_cost_product_date ON cost_snapshots(organization_
 CREATE INDEX IF NOT EXISTS idx_product_sales_date ON product_sales(organization_id, store_id, sold_at);
 CREATE INDEX IF NOT EXISTS idx_product_sales_product ON product_sales(organization_id, product_id, sold_at);
 CREATE INDEX IF NOT EXISTS idx_product_sales_customer ON product_sales(organization_id, customer_id, sold_at);
+CREATE INDEX IF NOT EXISTS idx_product_sales_sold_day ON product_sales(substr(sold_at, 1, 10));
+CREATE INDEX IF NOT EXISTS idx_product_sales_product_day ON product_sales(product_id, substr(sold_at, 1, 10));
+CREATE INDEX IF NOT EXISTS idx_product_sales_customer_day ON product_sales(customer_id, substr(sold_at, 1, 10));
 CREATE INDEX IF NOT EXISTS idx_service_sales_date ON service_sales(organization_id, store_id, emitted_at);
 CREATE INDEX IF NOT EXISTS idx_service_sales_customer ON service_sales(organization_id, customer_id, emitted_at);
+CREATE INDEX IF NOT EXISTS idx_service_sales_emitted_day ON service_sales(substr(emitted_at, 1, 10));
+CREATE INDEX IF NOT EXISTS idx_service_sales_customer_day ON service_sales(customer_id, substr(emitted_at, 1, 10));
 CREATE INDEX IF NOT EXISTS idx_pricing_settings_product ON product_pricing_settings(organization_id, product_id);
 CREATE INDEX IF NOT EXISTS idx_quote_requests_org_status ON quote_requests(organization_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON quote_request_items(quote_request_id);
@@ -564,6 +737,16 @@ CREATE INDEX IF NOT EXISTS idx_action_items_target ON action_items(organization_
 CREATE INDEX IF NOT EXISTS idx_operational_decisions_org_created ON operational_decisions(organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_operational_decisions_entity ON operational_decisions(organization_id, entity_type, entity_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_operational_decisions_type ON operational_decisions(organization_id, decision_type, decision_value, created_at);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_agents_org_active ON whatsapp_agents(organization_id, active, sort_order, name);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_conversations_org_status ON whatsapp_conversations(organization_id, status, last_message_at);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_conversations_owner ON whatsapp_conversations(organization_id, owner_user_id, status);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_conversation ON whatsapp_messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_wa_id ON whatsapp_messages(organization_id, wa_message_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_events_conversation ON whatsapp_conversation_events(conversation_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_app_users_login ON app_users(login_name);
+CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
+CREATE INDEX IF NOT EXISTS idx_app_users_org_active ON app_users(organization_id, active, role, name);
+CREATE INDEX IF NOT EXISTS idx_app_sessions_user ON app_sessions(user_id, expires_at);
 
 CREATE VIEW IF NOT EXISTS v_products_effective AS
 SELECT

@@ -5,8 +5,12 @@ import sqlite3
 
 REQUIRED_HEALTH_TABLES = {
     "products",
+    "app_settings",
     "product_sales",
     "schema_migrations",
+    "operational_data_sources",
+    "entity_source_links",
+    "entity_field_controls",
     "quote_requests",
     "quote_request_items",
     "purchase_orders",
@@ -16,8 +20,12 @@ REQUIRED_HEALTH_TABLES = {
 }
 
 COVERED_CONTRACTS = [
+    "app_config.v1",
+    "local_installation.v1",
+    "onboarding.v1",
     "summary.v1",
     "replenishment.v1",
+    "replenishment.v2",
     "pricing.v1",
     "supplier_workbench_suppliers.v1",
     "supplier_workbench.v1",
@@ -139,6 +147,58 @@ def assert_replenishment_contract(payload: dict) -> None:
     )
 
 
+def assert_replenishment_v2_contract(payload: dict) -> None:
+    assert_replenishment_contract({**payload, "contract": "replenishment.v1"})
+    check(payload["contract"] == "replenishment.v2", "Contrato de /api/replenishment-v2 mudou sem nova versao.")
+    require_keys(payload["summary"], {"demand_classes", "seasonal_items", "operation_profile"}, "replenishment.v2.summary")
+    require_keys(
+        payload["summary"]["operation_profile"],
+        {
+            "profile_key",
+            "profile_label",
+            "scores",
+            "active_skus",
+            "intermittent_ratio",
+            "package_heavy_ratio",
+            "average_supplier_cycle_days",
+            "reason",
+        },
+        "replenishment.v2.summary.operation_profile",
+    )
+    require_row_keys(
+        payload["rows"],
+        {
+            "demand_class",
+            "demand_class_label",
+            "demand_confidence",
+            "demand_method",
+            "demand_daily_p50",
+            "demand_daily_p75",
+            "demand_daily_p90",
+            "demand_quantile_used",
+            "product_age_days",
+            "first_sale_date",
+            "last_sale_date",
+            "days_since_last_sale",
+            "adi_days_180",
+            "cv2_180",
+            "seasonality_factor",
+            "seasonality_factor_applied",
+            "seasonality_confidence",
+            "seasonality_source",
+            "seasonality_years",
+            "seasonality_reason",
+            "product_rebuy_interval_days",
+            "product_rebuy_interval_source",
+            "product_rebuy_interval_label",
+            "product_rebuy_interval_reason",
+            "operation_profile_key",
+            "operation_profile_label",
+        },
+        "replenishment.v2",
+    )
+
+
 def assert_supplier_workbench_contract(payload: dict) -> None:
     require_keys(payload, {"contract", "supplier", "current_quote", "quote_history", "window_days", "rows", "totals"}, "supplier_workbench.v1")
     check(payload["contract"] == "supplier_workbench.v1", "Contrato de /api/supplier-workbench mudou sem nova versao.")
@@ -159,9 +219,24 @@ def assert_supplier_workbench_contract(payload: dict) -> None:
             "stock_units",
             "demand_window",
             "avg_daily_window",
+            "forecast_daily_demand",
+            "demand_class",
+            "demand_class_label",
+            "demand_confidence",
+            "demand_method",
+            "demand_quantile_used",
             "suggested_quantity",
             "cost_no_tax",
             "cost_with_tax",
+            "projected_stock_units",
+            "projected_coverage_days",
+            "lead_time_days",
+            "review_cycle_days",
+            "product_rebuy_interval_days",
+            "product_rebuy_interval_label",
+            "seasonality_factor_applied",
+            "seasonality_source",
+            "operation_profile_label",
             "status",
             "mix_status",
             "in_quote",
@@ -192,6 +267,7 @@ def assert_supplier_workbench_suppliers_contract(payload: list[dict]) -> None:
             "open_quote_count",
             "latest_quote_at",
             "latest_quote_id",
+            "latest_quote_status",
             "estimated_value",
         },
         "supplier_workbench_suppliers.v1",
@@ -303,6 +379,68 @@ def assert_health_contract(payload: dict) -> None:
     check(not payload["schema"]["missing_tables"], "Health check encontrou tabela obrigatoria ausente.")
 
 
+def assert_app_config_contract(payload: dict) -> None:
+    require_keys(payload, {"schema", "app_name", "app_subtitle", "logo_path", "tenant"}, "app_config.v1")
+    check(payload["schema"] == "pulso.white_label.v1", "app_config.v1 com schema white-label invalido.")
+    check(bool(payload["app_name"]), "app_config.v1 sem app_name.")
+    check(bool(payload["app_subtitle"]), "app_config.v1 sem app_subtitle.")
+    logo_path = str(payload["logo_path"] or "").strip()
+    check(not logo_path or logo_path.startswith("/"), "app_config.v1 logo_path deveria ser vazio ou caminho publico absoluto.")
+
+
+def assert_installation_contract(payload: dict) -> None:
+    require_keys(payload, {"contract", "installation", "license"}, "local_installation.v1")
+    check(payload["contract"] == "local_installation.v1", "Contrato de /api/installation mudou sem nova versao.")
+    require_keys(
+        payload["installation"],
+        {
+            "schema",
+            "installation_id",
+            "created_at",
+            "updated_at",
+            "partner_id",
+            "package_id",
+            "channel",
+            "activation_mode",
+            "billing_model",
+            "active_tenant",
+        },
+        "local_installation.v1.installation",
+    )
+    check(
+        payload["installation"]["schema"] == "platform.installation.v1",
+        "local_installation.v1 installation com schema invalido.",
+    )
+    check(str(payload["installation"]["installation_id"]).startswith("inst_"), "installation_id deveria usar prefixo inst_.")
+    require_keys(
+        payload["license"],
+        {
+            "schema",
+            "status",
+            "plan",
+            "client_status",
+            "checked_at",
+            "valid_until",
+            "activation_url",
+            "offline_grace_days",
+            "billing_model",
+            "reason",
+        },
+        "local_installation.v1.license",
+    )
+    check(payload["license"]["schema"] == "platform.license_state.v1", "local_installation.v1 license com schema invalido.")
+    check(payload["license"]["billing_model"] == "per_active_client", "Licenca deveria estar preparada para cliente ativo.")
+
+
+def assert_onboarding_contract(payload: dict) -> None:
+    require_keys(payload, {"contract", "required", "completed", "steps", "public_config"}, "onboarding.v1")
+    check(payload["contract"] == "onboarding.v1", "Contrato de /api/onboarding mudou sem nova versao.")
+    check(isinstance(payload["steps"], list), "onboarding.v1 steps deveria ser lista.")
+    if payload["steps"]:
+        require_keys(payload["steps"][0], {"key", "label", "done"}, "onboarding.v1.steps")
+    assert_app_config_contract(payload["public_config"])
+
+
 def assert_quotes_list_contract(payload: list[dict]) -> None:
     require_row_keys(
         payload,
@@ -354,13 +492,14 @@ def assert_quote_detail_contract(payload: dict) -> None:
             "purchase_package_size",
             "coverage_target_days",
             "requested_quantity",
+            "confirmed_quantity",
             "quoted_total_amount",
         },
         "quote_detail.v1.items",
     )
     require_keys(
         payload["response_summary"],
-        {"responded_count", "pending_count", "quoted_total_amount", "learned_packages", "average_lead_time_days"},
+        {"responded_count", "pending_count", "confirmed_quantity", "quoted_total_amount", "learned_packages", "average_lead_time_days"},
         "quote_detail.v1.response_summary",
     )
     require_keys(payload["supplier_terms"], {"minimum_order_value"}, "quote_detail.v1.supplier_terms")
@@ -426,7 +565,7 @@ def assert_purchase_order_detail_contract(payload: dict) -> None:
 
 
 def assert_imports_contract(payload: dict) -> None:
-    require_keys(payload, {"contract", "batches", "issues", "changes", "refresh_targets", "local_reference", "readiness", "quality"}, "imports.v1")
+    require_keys(payload, {"contract", "batches", "issues", "changes", "refresh_targets", "local_reference", "readiness", "quality", "assistant"}, "imports.v1")
     check(payload["contract"] == "imports.v1", "Contrato de /api/imports mudou sem nova versao.")
     require_row_keys(payload["batches"], {"id", "source_system", "status", "started_at", "finished_at", "summary_json", "files", "stats"}, "imports.v1.batches")
     require_row_keys(payload["issues"], {"severity", "code", "message", "source_line"}, "imports.v1.issues")
@@ -444,4 +583,16 @@ def assert_imports_contract(payload: dict) -> None:
         payload["quality"]["summary"],
         {"rows", "mapped_rows", "unmapped_rows", "files", "issues", "changes_pending", "manual_conflicts_pending"},
         "imports.v1.quality.summary",
+    )
+    require_keys(payload["assistant"], {"next_recommended_file", "module_scores", "implementation_state", "status", "message"}, "imports.v1.assistant")
+    require_keys(
+        payload["assistant"]["next_recommended_file"],
+        {"id", "title", "why", "expected_files", "minimum_fields", "unlocks", "blocked_modules", "depends_on", "not_now"},
+        "imports.v1.assistant.next_recommended_file",
+    )
+    require_row_keys(payload["assistant"]["module_scores"], {"id", "label", "score", "status", "detail", "tone"}, "imports.v1.assistant.module_scores")
+    require_keys(
+        payload["assistant"]["implementation_state"],
+        {"stage", "message", "ready", "partial", "missing", "essential_gaps"},
+        "imports.v1.assistant.implementation_state",
     )

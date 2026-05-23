@@ -74,15 +74,15 @@
       "view": "quotes",
       "action_type": "quote_response"
     },
-    "close_purchase_order": {
+    "confirm_purchase_order": {
       "skill_id": "quotation_flow",
-      "title": "Fechar pedido de compra",
-      "body": "A cotacao de {supplier_name} foi respondida. Decida itens e quantidade final.",
-      "reason": "Esse passo congela o que sera comprado e preserva a diferenca entre sugerido, cotado e comprado.",
+      "title": "Confirmar pedido provisorio",
+      "body": "O pedido provisorio de {supplier_name} aguarda confirmacao apos a resposta do fornecedor.",
+      "reason": "Conferir valores e quantidades antes de aprovar evita comprar com divergencia do orcamento.",
       "impact": "Pedido canonico do Nexo",
       "priority": 1,
-      "view": "quotes",
-      "action_type": "quote_close"
+      "view": "purchase_orders",
+      "action_type": "purchase_order_confirm"
     },
     "supplier_minimum": {
       "skill_id": "replenishment_mix",

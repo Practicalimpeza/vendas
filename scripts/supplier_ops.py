@@ -1,9 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import sqlite3
 
-from db_helpers import parse_int, rows, scalar_text
+from app_config import app_name
+from db_helpers import mark_app_controlled_fields, parse_int, rows, scalar_text
 from operational_decisions import insert_operational_decision
 from text_utils import clean_phone, make_supplier_id, normalize
 
@@ -55,7 +56,7 @@ def seed_brand_suppliers(conn: sqlite3.Connection) -> None:
 
 
 def api_brand_suppliers(conn: sqlite3.Connection) -> list[dict]:
-    return rows(
+    result = rows(
         conn,
         """
         WITH product_revenue AS (
@@ -102,7 +103,7 @@ def api_brand_suppliers(conn: sqlite3.Connection) -> list[dict]:
             CASE
                 WHEN bsr.supplier_id IS NULL THEN 'Sem fornecedor'
                 WHEN bsr.notes LIKE 'Fornecedor padrao criado%' THEN 'Inferido pela marca'
-                ELSE 'Confirmado no Nexo'
+                ELSE 'Confirmado'
             END AS supplier_rule_label,
             CASE
                 WHEN bsr.supplier_id IS NULL THEN 0.0
@@ -130,6 +131,10 @@ def api_brand_suppliers(conn: sqlite3.Connection) -> list[dict]:
         ORDER BY revenue DESC, product_count DESC, brand_name
         """,
     )
+    for row in result:
+        if row.get("supplier_rule_origin") == "manual":
+            row["supplier_rule_label"] = f"Confirmado no {app_name()}"
+    return result
 
 
 def update_brand_supplier(conn: sqlite3.Connection, payload: dict) -> dict:
@@ -167,18 +172,31 @@ def update_brand_supplier(conn: sqlite3.Connection, payload: dict) -> dict:
         """,
         (supplier_id, organization_id, supplier_name, normalized_supplier, contact_phone, minimum_order_value),
     )
+    mark_app_controlled_fields(
+        conn,
+        organization_id=organization_id,
+        entity_type="supplier",
+        entity_id=supplier_id,
+        source_view="brand_supplier",
+        values={
+            "name": supplier_name,
+            "contact_phone": contact_phone,
+            "minimum_order_value": minimum_order_value,
+        },
+    )
+    note = f"Configurado manualmente no {app_name()}."
     conn.execute(
         """
         INSERT INTO brand_supplier_rules
             (organization_id, brand_id, supplier_id, active, notes, updated_at)
-        VALUES (?, ?, ?, 1, 'Configurado manualmente no Nexo.', CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(organization_id, brand_id) DO UPDATE SET
             supplier_id = excluded.supplier_id,
             active = 1,
             notes = excluded.notes,
             updated_at = CURRENT_TIMESTAMP
         """,
-        (organization_id, brand_id, supplier_id),
+        (organization_id, brand_id, supplier_id, note),
     )
     conn.execute(
         """
@@ -263,8 +281,34 @@ def update_supplier_profile(conn: sqlite3.Connection, payload: dict) -> dict:
                 notes,
             ),
         )
+        controlled_values = {
+            "name": supplier_name,
+            "contact_name": contact_name,
+            "contact_phone": contact_phone,
+            "contact_email": contact_email,
+            "minimum_order_value": minimum_order_value,
+            "target_order_value": target_order_value,
+            "average_lead_time_days": average_lead_time_days,
+            "order_review_cycle_days": order_review_cycle_days or 14,
+            "target_coverage_adjustment_days": target_coverage_adjustment_days,
+            "order_difficulty": order_difficulty,
+            "notes": notes,
+        }
     else:
         supplier_name = supplier_name or supplier["name"]
+        provided_fields = {
+            "supplier_name": "name",
+            "contact_name": "contact_name",
+            "contact_phone": "contact_phone",
+            "contact_email": "contact_email",
+            "minimum_order_value": "minimum_order_value",
+            "target_order_value": "target_order_value",
+            "average_lead_time_days": "average_lead_time_days",
+            "order_review_cycle_days": "order_review_cycle_days",
+            "target_coverage_adjustment_days": "target_coverage_adjustment_days",
+            "order_difficulty": "order_difficulty",
+            "notes": "notes",
+        }
         contact_name = contact_name if "contact_name" in payload else (supplier["contact_name"] or "")
         contact_phone = contact_phone if "contact_phone" in payload else (supplier["contact_phone"] or "")
         contact_email = contact_email if "contact_email" in payload else (supplier["contact_email"] or "")
@@ -321,6 +365,33 @@ def update_supplier_profile(conn: sqlite3.Connection, payload: dict) -> dict:
                 organization_id,
                 supplier_id,
             ),
+        )
+        final_values = {
+            "name": supplier_name,
+            "contact_name": contact_name,
+            "contact_phone": contact_phone,
+            "contact_email": contact_email,
+            "minimum_order_value": minimum_order_value,
+            "target_order_value": target_order_value,
+            "average_lead_time_days": average_lead_time_days,
+            "order_review_cycle_days": order_review_cycle_days,
+            "target_coverage_adjustment_days": target_coverage_adjustment_days,
+            "order_difficulty": order_difficulty,
+            "notes": notes,
+        }
+        controlled_values = {
+            field_name: final_values[field_name]
+            for payload_key, field_name in provided_fields.items()
+            if payload_key in payload
+        }
+    if controlled_values:
+        mark_app_controlled_fields(
+            conn,
+            organization_id=organization_id,
+            entity_type="supplier",
+            entity_id=supplier_id,
+            source_view="supplier_profile",
+            values=controlled_values,
         )
     conn.execute(
         """

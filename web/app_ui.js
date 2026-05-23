@@ -23,7 +23,7 @@ function updateTopbar(view) {
   const subtitle = document.querySelector("#viewSubtitle");
   const question = document.querySelector("#viewQuestion");
   const next = document.querySelector("#viewNextAction");
-  if (eyebrow) eyebrow.textContent = profileName || meta.eyebrow || "NexoVarejo";
+  if (eyebrow) eyebrow.textContent = profileName || meta.eyebrow || appName();
   if (title) title.textContent = meta.label || viewLabel(view);
   if (subtitle) subtitle.textContent = meta.subtitle || "";
   if (question) question.textContent = meta.question || "";
@@ -45,6 +45,9 @@ function enhanceNavigation() {
 
 function setView(view, options = {}) {
   if (!document.getElementById(view)) view = "dashboard";
+  if (typeof canAccessView === "function" && !canAccessView(view)) {
+    view = typeof firstAllowedView === "function" ? firstAllowedView() : "dashboard";
+  }
   document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === view));
   document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === view));
   updateTopbar(view);
@@ -52,9 +55,18 @@ function setView(view, options = {}) {
   const usesPeriod = navItem?.dataset.usesPeriod === "true";
   const selector = document.querySelector(".period-selector");
   const label = document.querySelector(".period-label");
-  if (selector) selector.style.display = usesPeriod ? "" : "none";
-  if (label) label.style.display = usesPeriod ? "" : "none";
-  document.title = `${viewLabel(view)} | NexoVarejo`;
+  const compactAccess = typeof isSingleModuleUser === "function" && isSingleModuleUser();
+  if (selector) selector.style.display = usesPeriod && !compactAccess ? "" : "none";
+  if (label) label.style.display = usesPeriod && !compactAccess ? "" : "none";
+  const whatsappFloat = document.querySelector("#whatsappFloatButton");
+  if (whatsappFloat) {
+    const overlayOpen = document.querySelector("#whatsapp")?.classList.contains("chat-overlay-open");
+    const active = view === "whatsapp" || overlayOpen;
+    whatsappFloat.classList.toggle("active", active);
+    whatsappFloat.setAttribute("aria-pressed", active ? "true" : "false");
+    if (compactAccess) whatsappFloat.hidden = true;
+  }
+  document.title = `${viewLabel(view)} | ${appName()}`;
   if (options.updateHistory !== false) {
     const nextPath = routeForView(view);
     const current = `${window.location.pathname}${window.location.search}`;
@@ -68,9 +80,9 @@ function renderKpis(kpis) {
     ["Produtos", number(kpis.products), ""],
     ["Clientes", number(kpis.customers), "blue"],
     ["Receita produtos", compactMoney(kpis.product_revenue), "green"],
-    ["Receita servicos", compactMoney(kpis.service_revenue), "blue"],
+    ["Receita serviços", compactMoney(kpis.service_revenue), "blue"],
     ["Estoque un.", number(kpis.stock_units), "amber"],
-    ["Pendencias", number(kpis.open_tasks), ""],
+    ["Pendências", number(kpis.open_tasks), ""],
   ];
   document.querySelector("#kpis").innerHTML = items
     .map(
@@ -92,13 +104,20 @@ function renderKpiGrid(selector, items) {
 }
 
 function setModuleMode(config, mode) {
-  const nextMode = mode === "dashboard" ? "dashboard" : "operational";
+  const buttons = Array.from(document.querySelectorAll(`[${config.modeAttr}]`));
+  const knownModes = new Set(buttons.map((button) => button.getAttribute(config.modeAttr)));
+  const nextMode = knownModes.has(mode) ? mode : "operational";
+  const panels = config.panels || {
+    operational: config.operationalSelector,
+    dashboard: config.dashboardSelector,
+  };
   state[config.stateKey] = nextMode;
-  document.querySelectorAll(`[${config.modeAttr}]`).forEach((button) => {
+  buttons.forEach((button) => {
     button.classList.toggle("active", button.getAttribute(config.modeAttr) === nextMode);
   });
-  document.querySelector(config.operationalSelector)?.classList.toggle("active", nextMode === "operational");
-  document.querySelector(config.dashboardSelector)?.classList.toggle("active", nextMode === "dashboard");
+  Object.entries(panels).forEach(([panelMode, selector]) => {
+    document.querySelector(selector)?.classList.toggle("active", panelMode === nextMode);
+  });
 }
 
 function insightCards(selector, items) {
@@ -130,16 +149,29 @@ function insightCards(selector, items) {
 function openModal(title, bodyHtml, onMount, options = {}) {
   const modal = document.querySelector(".modal");
   modal.className = ["modal", options.modalClass || ""].filter(Boolean).join(" ");
+  state.modalOnClose = typeof options.onClose === "function" ? options.onClose : null;
   document.querySelector("#modalTitle").textContent = title;
   document.querySelector("#modalBody").innerHTML = bodyHtml;
   document.querySelector("#modalOverlay").hidden = false;
   document.body.classList.add("modal-open");
+  updateFloatingOverlayState();
   if (onMount) onMount(document.querySelector("#modalBody"));
 }
 
 function closeModal() {
+  const onClose = state.modalOnClose;
+  state.modalOnClose = null;
   document.querySelector("#modalOverlay").hidden = true;
   document.querySelector("#modalBody").innerHTML = "";
   document.querySelector(".modal").className = "modal";
   document.body.classList.remove("modal-open");
+  updateFloatingOverlayState();
+  if (onClose) onClose();
+}
+
+function updateFloatingOverlayState() {
+  const modalOpen = !document.querySelector("#modalOverlay")?.hidden;
+  const supplierPopupOpen = Boolean(document.querySelector("#quoteSupplierInspector.open"));
+  const productDrawerOpen = Boolean(document.querySelector(".product-drawer-overlay:not(.hidden)"));
+  document.body.classList.toggle("popup-open", Boolean(modalOpen || supplierPopupOpen || productDrawerOpen));
 }

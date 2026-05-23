@@ -1,8 +1,8 @@
-const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+﻿const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const num = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 
 async function api(path) {
-  const response = await fetch(path);
+  const response = await fetch(path, { credentials: "same-origin" });
   const text = await response.text();
   let data = {};
   try {
@@ -11,6 +11,9 @@ async function api(path) {
     data = { error: text || response.statusText };
   }
   if (!response.ok) {
+    if (response.status === 401 && typeof renderAuthGate === "function") {
+      renderAuthGate({ authenticated: false, needs_bootstrap: false, modules: state.auth?.modules || [] });
+    }
     const message = data.error || `Erro ao carregar ${path}`;
     showAppError("Falha ao carregar dados", message);
     throw new Error(message);
@@ -36,13 +39,13 @@ function clearAppError() {
 
 function requireContract(payload, expectedContract, path) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    const message = `Contrato invalido em ${path}: resposta nao e objeto.`;
-    showAppError("Contrato de API invalido", message);
+    const message = `Contrato inválido em ${path}: resposta não é objeto.`;
+    showAppError("Contrato de API inválido", message);
     throw new Error(message);
   }
   if (payload.contract !== expectedContract) {
-    const message = `Contrato invalido em ${path}: esperado ${expectedContract}.`;
-    showAppError("Contrato de API invalido", message);
+    const message = `Contrato inválido em ${path}: esperado ${expectedContract}.`;
+    showAppError("Contrato de API inválido", message);
     throw new Error(message);
   }
   return payload;
@@ -50,15 +53,15 @@ function requireContract(payload, expectedContract, path) {
 
 function requireRows(payload, requiredKeys, label, path) {
   if (!Array.isArray(payload)) {
-    const message = `Contrato invalido em ${path}: ${label} deveria ser lista.`;
-    showAppError("Contrato de API invalido", message);
+    const message = `Contrato inválido em ${path}: ${label} deveria ser lista.`;
+    showAppError("Contrato de API inválido", message);
     throw new Error(message);
   }
   if (payload.length) {
     const missing = requiredKeys.filter((key) => !(key in payload[0]));
     if (missing.length) {
-      const message = `Contrato invalido em ${path}: ${label} sem ${missing.join(", ")}.`;
-      showAppError("Contrato de API invalido", message);
+      const message = `Contrato inválido em ${path}: ${label} sem ${missing.join(", ")}.`;
+      showAppError("Contrato de API inválido", message);
       throw new Error(message);
     }
   }
@@ -76,6 +79,7 @@ async function apiRows(path, requiredKeys, label) {
 async function apiPost(path, payload) {
   const response = await fetch(path, {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -93,6 +97,7 @@ async function apiPost(path, payload) {
 async function apiPostForm(path, formData) {
   const response = await fetch(path, {
     method: "POST",
+    credentials: "same-origin",
     body: formData,
   });
   const text = await response.text();

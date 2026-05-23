@@ -18,7 +18,7 @@ correcao deve acontecer na regra de importacao ou no ERP, nao em uma edicao
 pontual no Nexo.
 
 Dado operacional criado no NexoVarejo pertence ao NexoVarejo. Fornecedor
-preferencial, embalagem de compra, cobertura alvo, bloqueios de compra,
+preferencial, embalagem de compra, ciclos de compra, bloqueios de compra,
 observacoes internas, **referencia do fornecedor** e demais configuracoes que
 nao vieram das planilhas devem continuar iguais depois de novas importacoes.
 

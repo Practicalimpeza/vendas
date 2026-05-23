@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from app_config import default_organization_slug
 from db_helpers import default_organization_id, parse_decimal, scalar_text
 from erp_import_flow import parse_erp_file_bytes, upsert_imported_supplier
 from text_utils import clean_phone, make_supplier_id, normalize
@@ -809,7 +810,7 @@ def api_link_preview(conn: sqlite3.Connection, payload: dict) -> dict:
     if spec.get("mode") == "supplier_profile":
         indexes = _resolve_profile_indexes(payload, headers, spec)
         records = _build_supplier_profile_records(data_rows, indexes)
-        org = default_organization_id(conn) or "org_practica"
+        org = default_organization_id(conn) or default_organization_slug()
         diff = _build_supplier_profile_diff(conn, org, records)
         return {
             "ok": True,
@@ -834,7 +835,7 @@ def api_link_preview(conn: sqlite3.Connection, payload: dict) -> dict:
         }
     src, tgt = _resolve_indexes(payload, headers, spec)
     pairs = _build_pairs(data_rows, src, tgt)
-    org = default_organization_id(conn) or "org_practica"
+    org = default_organization_id(conn) or default_organization_slug()
     diff = _build_diff(spec, conn, org, pairs)
     return {
         "ok": True,
@@ -884,11 +885,11 @@ def api_link_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     if spec.get("mode") == "supplier_profile":
         indexes = _resolve_profile_indexes(payload, headers, spec)
         records = _build_supplier_profile_records(data_rows, indexes)
-        org = default_organization_id(conn) or "org_practica"
+        org = default_organization_id(conn) or default_organization_slug()
         summary = _commit_supplier_profiles(conn, org, records)
         return {"ok": True, "type": type_id, **summary}
     src, tgt = _resolve_indexes(payload, headers, spec)
     pairs = _build_pairs(data_rows, src, tgt)
-    org = default_organization_id(conn) or "org_practica"
+    org = default_organization_id(conn) or default_organization_slug()
     summary = _commit_pairs(spec, conn, org, pairs)
     return {"ok": True, "type": type_id, **summary}

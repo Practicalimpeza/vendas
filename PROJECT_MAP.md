@@ -1,209 +1,272 @@
-# PROJECT_MAP — NexoVarejo
+# PROJECT_MAP - NexoVarejo
 
-Guia de entrada para agentes de IA e novos colaboradores entenderem o projeto rapidamente.
+Guia de entrada para agentes de IA e novos colaboradores entenderem o projeto
+rapidamente.
 
----
+Este arquivo descreve como o projeto esta organizado hoje. As regras de trabalho
+estao em `AGENTS.md`; o estado vivo da sessao esta em `HANDOFF.md`.
 
-## 1. Resumo do produto
+## 1. Resumo do Produto
 
-NexoVarejo é uma **plataforma de gestão analítica para pequenos e médios varejistas brasileiros**.
-Ela **não substitui o ERP operacional** do cliente: recebe exportações CSV de ERPs heterogêneos,
-padroniza os dados em um modelo SQL canônico e entrega uma **mesa de trabalho web** com 12 visões:
+NexoVarejo e o Sistema Operacional de Gestao para pequenos e medios varejistas
+brasileiros. Ele nasce como uma nova categoria para gerir empresas do varejo:
+uma infraestrutura operacional com metodologia de gestao embutida no software.
 
-- Painel executivo (KPIs, maturidade, receita mensal)
-- Central de ações diárias (Hoje)
-- Motor do Nexo (skills internas, regras e rastreabilidade)
-- Produtos por receita
-- Motor de reposição (demanda, variabilidade, ABC, ponto de pedido)
-- Diretório de fornecedores (pedido mínimo, telefone, confiabilidade)
-- Fluxo de cotações (draft → enviada → respondida → pedido)
-- Precificação acionável (margem, preço alvo)
-- Oportunidades comerciais (clientes em risco, recompra provável, momento de marcas/produtos)
-- Clientes, Serviços e Importação
+Ele comeca por cima do ERP operacional/fiscal e das planilhas do cliente nesta
+fase: recebe exportacoes e planilhas auxiliares, padroniza os dados em um modelo
+SQL canonico e entrega uma mesa de trabalho web. Com o tempo, pode evoluir em
+modo standalone gradual e substituir partes da operacao quando a rotina nascer
+direto no app.
 
-**Estágio atual:** MVP funcional rodando como app local com dados de uma empresa teste (Practica).
+O produto deve ser IA-friendly por fundamento, nao IA-first por marketing:
+contratos claros, estados explicaveis, origem dos dados, audit log e pacotes de
+contexto devem permitir analise assistida externa sem exigir IA embutida.
 
----
+O produto cobre hoje:
 
-## 2. Stack técnica
+- Painel executivo, maturidade e indicadores por periodo.
+- Central de acoes diarias, timeline, pulso operacional e memoria.
+- Motor do Nexo com skills internas e explicabilidade.
+- Produtos por receita, estoque, curva de reposicao e mix.
+- Motor de reposicao v1 e v2, com comparacao.
+- Diretorio de fornecedores, marcas e regras de compra.
+- Fluxo de cotacoes, PDF, respostas, pedidos e recebimento.
+- Precificacao acionavel e guardrails de margem.
+- Oportunidades comerciais, clientes e servicos.
+- Importacao assistida de ERP, reconciliacao e importacoes auxiliares.
+- Perfil da empresa, autenticacao, usuarios, permissoes e admin.
+- WhatsApp CRM com conversas, agentes, eventos e webhook.
+
+Fundamentos de produto:
+
+- Dados conectados entre produto, venda, estoque, custo, preco, fornecedor,
+  cliente, cotacao, pedido e acao.
+- Processos vivos, adaptaveis ao jeito real de cada empresa.
+- Autonomia do operador acima de recomendacao do sistema.
+- Visualizacao ampla, informacoes interligadas, filtros, buscas, presets de
+  visao, comparacoes e trabalho em lote como forca principal.
+- Semantica de varejo: giro, cobertura, ruptura, excesso, margem, recompra,
+  minimo, prazo, caixa empatado e mix.
+- Gestao antes de relatorio: cada leitura deve abrir uma ferramenta, uma rotina
+  ou uma investigacao util.
+- Memoria operacional: decisoes, justificativas, impactos e mudancas precisam
+  ser rastreaveis.
+- Mesa como experiencia: a interface principal e uma mesa diaria de operacao,
+  nao um dashboard generico.
+
+Estagio atual: beta assistida em consolidacao. O app roda localmente, mas ja tem
+autenticacao, modulos operacionais e trilhos de verificacao suficientes para um
+release candidate controlado.
+
+## 2. Stack Tecnica
 
 | Camada | Tecnologia | Notas |
 |---|---|---|
-| Backend | Python 3.11+ | Apenas biblioteca padrão (`http.server`, `sqlite3`, `csv`, `json`) |
-| Banco | SQLite | Arquivo local `data/nexovarejo.db`, schema em `schema/canonical.sql` |
-| Frontend | HTML5 + CSS3 + JavaScript vanilla | Zero frameworks. SPA manual com `data-view` toggles no DOM |
-| Servidor HTTP | `http.server.ThreadingHTTPServer` | Servido pelo próprio Python, sem WSGI/ASGI |
-| Dependências | Sem instalação | Backend só com biblioteca padrão; frontend usa bibliotecas vendorizadas em `web/vendor/` |
-| Build/bundler | Nenhum | Arquivos estáticos servidos diretamente de `web/` |
+| Backend | Python 3.11+ | Biblioteca padrao (`http.server`, `sqlite3`, `csv`, `json`, etc.). |
+| Banco | SQLite | Arquivo local em `data/`, schema em `schema/canonical.sql`. |
+| Frontend | HTML5, CSS3 e JavaScript vanilla | SPA manual por `data-view`, sem framework. |
+| Servidor HTTP | `http.server.ThreadingHTTPServer` | Servido pelo proprio Python. |
+| Bibliotecas frontend | ECharts e Lucide vendorizados | Em `web/vendor/`, sem instalacao. |
+| Build/bundler | Nenhum | Arquivos estaticos servidos diretamente de `web/`. |
 
----
+Nao adicionar dependencias instaladas sem discussao previa.
 
-## 3. Estrutura de pastas
+## 3. Estrutura de Pastas
 
 ```text
 nexovarejo/
-  HANDOFF.md          — estado vivo e próximos passos para novas sessões
-  docs/               — documentação do produto e decisões
-    README.md                      — índice vivo da documentação
-    00_visao_produto.md             — visão, personas, jobs-to-be-done
-    01_inventario_dados_exemplo.md  — catálogo dos CSVs de entrada
-    02_modelo_canonico_sql.md       — modelo de dados padronizado
-    03_ingestao_e_padronizacao.md   — pipeline de ETL
-    04_catalogo_analitico.md        — métricas e análises disponíveis
-    05_roadmap_operacional.md       — plano de fases do produto
-    06_implantacao_novos_comercios.md — onboarding de novos clientes
-    07_motor_reposicao.md           — lógica de sugestão de compra
-    08_referencia_practica_navegacao.md — navegação do ERP Practica
-    09_fluxo_cotacoes.md            — fluxo de cotação com fornecedores
-    10_maturidade_nexo.md           — dashboard de maturidade
-    11_trilhas_operacionais.md      — missões com gamificação
-    12_inteligencia_comercial.md    — oportunidades de venda
-    13_central_acoes.md             — mesa de ações diárias
-    14_decisao_mix_no_pedido.md     — decisão de mix no pedido
-    15_skills_internas_nexo.md      — playbooks internos
-    16_motor_do_nexo.md             — arquitetura do motor
-    17_ciclo_cotacao.md             — ciclo completo de cotação
-    18_pedido_compra_canonico.md    — modelo de pedido de compra
-    19_precificacao_periodo.md      — precificação por período
-    20_estado_atual.md              — snapshot do produto implementado
-    21_metodo_de_trabalho.md        — método para modelar decisões
-    22_roadmap_produto_final.md     — plano de estabilização
-    23_contratos_api.md             — contratos mínimos de API
-    99_guia_de_contexto.md          — guia rápido de contexto
+  AGENTS.md          regras operacionais para agentes
+  HANDOFF.md         estado vivo e proximos passos
+  PROJECT_MAP.md     este mapa
+  README.md          entrada humana do projeto
+  roadmap.txt        roadmap historico da beta
+  docs/              documentos canonicos e aprofundamentos
   schema/
-    canonical.sql                   — schema SQL completo e schema_migrations
+    canonical.sql    schema SQLite canonico e indices
   scripts/
-    serve_app.py                    — camada HTTP fina, arquivos estáticos e bootstrap local
-    api_routes.py                   — mapa GET/POST das rotas
-    api_contracts.py                — validadores de contrato e health
-    http_helpers.py                 — respostas HTTP, erros e arquivos
-    import_practica.py              — pipeline de ingestão dos 5 CSVs da Practica
-    erp_import_flow.py              — importação assistida de planilhas ERP
-    replenishment.py                — reposição, estoque e compra sugerida
-    quotes.py                       — cotações, pedidos e recebimento
-    pricing.py                      — precificação acionável
-    commercial.py                   — clientes, serviços e inteligência comercial
-    supplier_ops.py                 — fornecedores, marcas e mix
-    action_center.py                — ações, timeline e pulso operacional
-    product_views.py                — dashboard, maturidade e produtos
-    schema_upgrades.py              — upgrades locais registrados em schema_migrations
-    smoke_checks.py                 — verificações automatizadas sem CSV real
+    serve_app.py                 camada HTTP, auth gate, PDF, webhook e estaticos
+    api_routes.py                mapa GET/POST das rotas de dominio
+    api_contracts.py             validadores de contrato e health
+    http_helpers.py              respostas HTTP, erros, multipart e arquivos
+    auth.py                      bootstrap, login, sessoes, permissoes e usuarios
+    import_practica.py           pipeline dos CSVs da Practica
+    erp_import_flow.py           importacao assistida de planilhas ERP
+    relationship_imports.py      importacao de vinculos e perfis auxiliares
+    replenishment.py             reposicao v1, estoque e compra sugerida
+    replenishment_v2.py          motor v2, sazonalidade e comparacao
+    replenishment_v2_scenarios.py cenarios do motor v2
+    compare_replenishment_v2.py  utilitario de comparacao
+    quotes.py                    cotacoes, pedidos, recebimento e PDF
+    quote_cache.py               cache de payloads de cotacao
+    pricing.py                   precificacao acionavel
+    commercial.py                clientes, servicos e inteligencia comercial
+    supplier_ops.py              fornecedores, marcas e mix
+    action_center.py             acoes, timeline, pulso e auditoria operacional
+    operational_decisions.py     registro de decisoes operacionais
+    company_profile.py           perfil da empresa
+    whatsapp_crm.py              CRM WhatsApp e webhook
+    product_views.py             dashboard, maturidade e produtos
+    schema_upgrades.py           upgrades locais registrados
+    db_helpers.py                helpers SQLite compartilhados
+    text_utils.py                normalizacao e IDs
+    nexo_skills_runtime.py       leitura das skills internas
+    smoke_checks.py              verificacoes sem CSV real
   web/
-    index.html                      — shell da SPA
-    app_core.js                     — API, contratos e formatadores compartilhados
-    app_charts.js                   — helpers de ECharts e linhas de dashboard
-    app_tables.js                   — filtros, ordenacao e observacao de tabelas
-    app_ui.js                       — navegacao, KPIs, cards e modal base
-    app.js                          — lógica de frontend vanilla
-    app.css                         — estilos completos
-    vendor/                         — ECharts e Lucide vendorizados
-    logo-practica-transparent.png   — logo da empresa Practica
+    index.html                   shell declarativo da SPA
+    app_core.js                  API, contratos, erros e formatadores
+    app_state.js                 estado global, views e metadados
+    app_boot.js                  inicializacao, eventos e carga da SPA
+    app_ui.js                    navegacao, KPIs, modal e UI compartilhada
+    app_charts.js                ECharts e helpers visuais
+    app_tables.js                filtros, ordenacao e tabelas
+    app_dashboard.js             painel executivo
+    app_products.js              produtos e detalhes
+    app_period_data.js           carga por periodo
+    app_quotes_suppliers.js      fornecedores da mesa de compras
+    app_quote_workbench.js       montagem da cotacao
+    app_quote_cycle.js           ciclo cotacao -> pedido -> recebimento
+    app_quote_dashboard.js       dashboard de compras
+    app_quote_formula.js         formula e simulacoes de compra
+    app_purchase_orders.js       pedidos de compra
+    app_commercial.js            oportunidades comerciais
+    app_customers.js             clientes e relacionamento
+    app_pricing.js               margem e precificacao
+    app_imports.js               importacao e reconciliacao
+    app_company_profile.js       perfil da empresa
+    app_actions_engine.js        acoes e memoria operacional
+    app_inventory_suppliers.js   estoque/fornecedores
+    app_whatsapp.js              WhatsApp CRM
+    app_auth.js                  login, gate e admin de usuarios
+    app_quote_tools.js           utilitarios de compras
+    app.js                       codigo legado remanescente e cola de telas
+    app.css                      estilos completos
+    vendor/                      ECharts e Lucide vendorizados
   mappings/
-    practica_csv.yml                — mapeamento colunas CSV → campos canônicos
+    practica_csv.yml            mapeamento CSV -> canonico
   nexo_skills/
-    manifest.json                   — índice das skills
-    data_governance.json            — skill de governança de dados
-    commercial_intelligence.json    — skill de inteligência comercial
-    quotation_flow.json             — skill de fluxo de cotação
-    replenishment_mix.json          — skill de mix de reposição
-    implementation_journey.json     — skill de jornada de implantação
-  *.csv (5 arquivos)               — exportações de exemplo do ERP Practica
-    produtopreco__Sheet1.csv        — produtos e preços
-    produtocusto__Sheet1.csv        — custos dos produtos
-    saidaprod__Sheet1.csv           — vendas de produtos
-    servico__Sheet1.csv             — vendas de serviços
-    saidaprodlucro__Sheet1.csv      — lucro por produto
-  ROOT/
-    README.md                       — entrada do projeto, comandos para rodar
-    pyproject.toml                  — config Python (nome, versão, ruff)
-    requirements.txt                — vazio (biblioteca padrão apenas)
-    roadmap.txt                     — roadmap da versão Beta
-    PROJECT_MAP.md                  — este arquivo
+    manifest.json
+    *.json                      skills internas versionadas
+  *.csv                         exportacoes reais da Practica
 ```
 
----
+## 4. Arquivos Criticos
 
-## 4. Arquivos críticos
+| Arquivo | Funcao | Atencao |
+|---|---|---|
+| `scripts/serve_app.py` | Camada HTTP, auth gate, webhook, PDF e estaticos | Nao recolocar regra de dominio aqui. |
+| `scripts/api_routes.py` | Roteamento GET/POST para dominios | Endpoint novo deve nascer com contrato/smoke quando central. |
+| `scripts/auth.py` | Login, sessoes, permissoes e admin | Testar bootstrap, usuario comum e rotas protegidas. |
+| `scripts/import_practica.py` | Importacao Practica | Usa `incremental_sync`; nao voltar para refresh destrutivo. |
+| `scripts/erp_import_flow.py` | Importacao assistida ERP | Arquivo grande; buscar funcoes antes de ler trechos. |
+| `scripts/relationship_imports.py` | Vinculos e perfis auxiliares | Afeta fornecedores, marcas e produtos. |
+| `scripts/replenishment.py` | Reposicao v1 e estoque | Fluxo de dinheiro; validar com smoke. |
+| `scripts/replenishment_v2.py` | Motor v2 e comparacao | Decidir se v2 e diagnostico ou motor principal no RC. |
+| `scripts/quotes.py` | Cotacoes, pedidos, PDF e recebimento | Arquivo grande; mexer com smoke e roteiro manual. |
+| `scripts/whatsapp_crm.py` | CRM WhatsApp e webhook | Nao adicionar secrets; testar modo sem credenciais. |
+| `docs/00_visao_produto.md` | Visao canonica do Sistema Operacional de Gestao | Atualizar quando mudar posicionamento, promessa ou escopo. |
+| `docs/25_mesa_de_gestao.md` | Direcao UX da mesa operacional | Norte para autonomia, filtros, presets, lote, Visao, dock e linguagem de controle do gestor. |
+| `schema/canonical.sql` | Modelo canonico | Mudanca estrutural exige upgrade registrado. |
+| `scripts/schema_upgrades.py` | Upgrades locais | Nao adicionar `ALTER TABLE` solto. |
+| `scripts/smoke_checks.py` | Gate principal | Deve seguir verde antes/depois de mudancas centrais. |
+| `web/index.html` | Estrutura das views | Scripts carregados em ordem classica. |
+| `web/app.js` | Legado remanescente/cola | Nunca ler inteiro; buscar funcoes especificas. |
+| `web/app.css` | Estilos completos | Nunca ler inteiro; buscar seletores. |
 
-| Arquivo | Peso | Função | Atenção |
-|---|---|---|---|
-| `scripts/serve_app.py` | ~6 KB | Camada HTTP fina, bootstrap local e servidor de estáticos | Não recolocar regra de domínio aqui; use `api_routes.py` e módulos da área |
-| `scripts/api_routes.py` | ~5 KB | Roteamento GET/POST para funções de domínio | Endpoint novo deve nascer com contrato e smoke |
-| `scripts/import_practica.py` | ~26 KB | Pipeline de ingestão dos CSVs da Practica | Usa `incremental_sync`; não voltar para `full_refresh` destrutivo sem discutir |
-| `scripts/erp_import_flow.py` | ~113 KB | Importação assistida de planilhas ERP | Arquivo grande; localizar funções com grep antes de ler trechos |
-| `schema/canonical.sql` | ~24 KB | Define modelo canônico e `schema_migrations` | Mudança estrutural precisa de upgrade registrado |
-| `scripts/schema_upgrades.py` | ~17 KB | Upgrades locais e migração legada consolidada | Evitar `ALTER TABLE` solto fora deste trilho |
-| `scripts/smoke_checks.py` | ~46 KB | Smoke em banco temporário e HTTP | Gate principal antes/depois de mexer em fluxos centrais |
-| `web/app_core.js` | ~7 KB | API, validação de contratos e formatadores do frontend | Carregado antes de `app.js`, sem module/bundler |
-| `web/app_charts.js` | ~9 KB | Helpers de ECharts, score e linhas de dashboard | Carregado antes de `app.js`, sem module/bundler |
-| `web/app_tables.js` | ~6 KB | Filtros, ordenação e observador de tabelas HTML | Carregado antes de `app.js`, sem module/bundler |
-| `web/app_ui.js` | ~6 KB | Navegação, topbar, KPIs, cards de insight e modal base | Carregado antes de `app.js`, sem module/bundler |
-| `web/app.js` | ~383 KB | Frontend principal, estado e rotinas de tela | Nunca ler inteiro; buscar função/handler específico |
-| `web/app.css` | ~176 KB | Estilos completos | Nunca ler inteiro; buscar seletor/seção específica |
-| `web/index.html` | ~20 KB | Estrutura declarativa das views | Navegação por `data-view` e sections |
-| `mappings/practica_csv.yml` | 4 KB | Mapeamento declarativo das colunas CSV para o modelo canônico | Base para futuros conectores de ERP |
+## 5. Rotas e Modulos Relevantes
 
----
+- Auth/admin: `/api/auth/me`, `/api/auth/bootstrap`, `/api/auth/login`,
+  `/api/auth/logout`, `/api/admin/users`, `/api/admin/users/upsert`.
+- Health/contratos: `/api/health`.
+- Importacao: `/api/imports`, `/api/erp/import-preview`,
+  `/api/erp/import-commit`, `/api/imports/reference-folder`,
+  `/api/imports/refresh-local`.
+- Relacionamentos: `/api/links/inspect`, `/api/links/preview`,
+  `/api/links/commit`.
+- Reposicao: `/api/replenishment`, `/api/replenishment-v2`,
+  `/api/replenishment-v2/compare`.
+- Compras: `/api/supplier-workbench`, `/api/quotes`, `/api/quote`,
+  `/api/quote/pdf`, `/api/purchase-orders`, `/api/purchase-order`.
+- Margem: `/api/pricing`, `/api/pricing/product`.
+- Operacao: `/api/actions/today`, `/api/actions/status`,
+  `/api/quick-actions`, `/api/operational-decisions`.
+- WhatsApp: `/api/whatsapp/conversations`, `/api/whatsapp/conversation`,
+  `/api/whatsapp/conversations/update`, `/api/whatsapp/messages/send`,
+  `/api/whatsapp/agents/upsert`, `/api/whatsapp/webhook`.
 
-## 5. Riscos técnicos atuais
+## 6. Riscos Tecnicos Atuais
 
-1. **Beta ainda local** — adequado para validação assistida, mas exige proteção simples antes de qualquer exposição fora de localhost.
-2. **SQLite multi-tenant** — schema usa `organization_id`, mas SQLite não resolve concorrência real de SaaS. PostgreSQL fica para etapa posterior.
-3. **Frontend grande em arquivo único** — `web/app.js` e `web/app.css` cresceram bastante; buscar trechos antes de editar e evitar reescritas amplas.
-4. **Importação assistida complexa** — `erp_import_flow.py` concentra parsing, mapeamento, conflitos e commit; mexer com smoke e casos de borda.
-5. **Migrações em transição** — existe trilho `schema_migrations`, mas upgrades locais ainda vivem consolidados em `schema_upgrades.py`.
-6. **Dados sensíveis** — os CSVs na raiz contêm dados reais da empresa Practica (preços, custos, nomes de clientes). Não expor nem comitar derivados.
-7. **Sem suíte formal de testes** — o gate atual é `scripts/smoke_checks.py`; ampliar quando fluxos de dinheiro/compra/margem mudarem.
+1. Working tree grande e recente: antes de novas features, estabilizar release
+   candidate com smoke, checks e roteiro manual.
+2. Dados sensiveis: CSVs da Practica contem precos, custos, margens e clientes.
+   Nao expor nem comitar derivados.
+3. Multiempresa: o schema usa `organization_id`, mas isolamento precisa ser
+   validado em rotas, queries, caches e telas.
+4. Backup/restauracao: ainda e bloqueador de beta real se nao estiver testado.
+5. Auth local: ja existe, mas precisa de teste formal de permissoes e sessoes.
+6. WhatsApp: nao usar credenciais reais sem ambiente controlado e politica de
+   suporte.
+7. Frontend grande: apesar da modularizacao, `app.js` e `app.css` continuam
+   grandes; editar por busca e trechos.
+8. SQLite: suficiente para beta assistida local, nao para concorrencia SaaS
+   ampla.
+9. Posicionamento: ao evoluir para "Sistema Operacional de Gestao", nao
+   prometer substituicao fiscal, financeiro completo ou IA autonoma antes de
+   consolidar dados, contratos, governanca e rotina operacional.
 
----
+## 7. Proximos Passos Recomendados
 
-## 6. Próximos passos recomendados
+1. Alinhar linguagem, telas e docs vivos ao posicionamento de Sistema
+   Operacional de Gestao para empresas do varejo.
+2. Congelar um release candidate de beta assistida.
+3. Rodar `python scripts\smoke_checks.py`, `py_compile` dos modulos centrais e
+   `node --check` nos scripts principais do frontend.
+4. Executar roteiro manual de ponta a ponta: primeiro acesso, usuario, perfil da
+   empresa, importacao, qualidade, reposicao, cotacao, pedido, recebimento,
+   margem, clientes e audit log.
+5. Definir primeira versao operacional de presets de visao, filtros salvos,
+   busca, selecao/lote, contexto interligado, fichas vivas e pacote IA-friendly.
+6. Validar permissoes, multiempresa e rotas protegidas.
+7. Fechar ou documentar backup/restauracao como bloqueador.
+8. Atualizar `HANDOFF.md` sempre que o estado do RC mudar.
 
-1. Consolidar o checkpoint atual: smoke verde, docs alinhados e working tree revisada antes de novas features grandes.
-2. Continuar a Fase 3 de UX de trabalho: compras/reposição, clientes, estoque e margem como filas de decisão.
-3. Melhorar onboarding de novos comércios: checklist de arquivos, confiança da importação e primeiro valor entregue.
-4. Fechar melhor o ciclo sugerido → cotado → comprado → recebido.
-5. Definir proteção simples de acesso antes de qualquer beta fora de localhost.
-6. Consolidar ou arquivar docs antigos que viraram histórico.
+## 8. Ordem de Leitura Otimizada
 
----
+1. `AGENTS.md`
+2. `HANDOFF.md`
+3. `PROJECT_MAP.md`
+4. `docs/README.md`
+5. `docs/20_estado_atual.md`
+6. `docs/22_roadmap_produto_final.md`
+7. `docs/23_contratos_api.md`
+8. `docs/25_mesa_de_gestao.md` quando mexer em Visao, dock, Pulso, filtros,
+   presets, lote, UX ou linguagem de autonomia
+9. Documento especifico da area que sera alterada
 
-## 7. Instruções para outro agente de IA
+## 9. Comandos Uteis
 
-### Ordem de leitura otimizada
-
-1. **Este arquivo** (`PROJECT_MAP.md`) — visão geral
-2. `HANDOFF.md` — estado vivo e próximos passos
-3. `docs/README.md` — índice vivo da documentação
-4. `docs/20_estado_atual.md` — snapshot do produto
-5. `docs/22_roadmap_produto_final.md` — fase atual e prioridades
-6. `docs/23_contratos_api.md` — contrato de endpoints centrais
-7. Documento específico da área que será alterada
-
-### Comandos de entrada
-
-```bash
-# Listar rotas da API
+```powershell
 rg -n "GET_ROUTES|POST_ROUTES|/api/" scripts/api_routes.py scripts/serve_app.py
+```
 
-# Ver funções por módulo
-rg -n "^def " scripts/replenishment.py scripts/quotes.py scripts/pricing.py scripts/commercial.py
+```powershell
+rg -n "^def " scripts/replenishment.py scripts/replenishment_v2.py scripts/quotes.py scripts/pricing.py scripts/commercial.py
+```
 
-# Encontrar lógica específica por palavra-chave
-rg -n "replenishment|rfm|abc|quote|pricing|maturity|contract" scripts
+```powershell
+Get-Content schema\canonical.sql -TotalCount 220
+```
 
-# Ver estrutura das tabelas principais
-head -n 200 schema/canonical.sql
-
-# Gate de verificação
+```powershell
 python scripts\smoke_checks.py
 ```
 
-### Regras de contexto
+## 10. Regras de Contexto
 
-- O projeto está em **português** (código, comentários, docs, interface).
-- **Não editar arquivos** sem ler o conteúdo atual primeiro.
-- Arquivos grandes como `erp_import_flow.py`, `web/app.js` e `web/app.css` devem ser explorados com grep/rg antes de ler trechos.
-- Os CSVs na raiz são **dados de exemplo** do ERP Practica, não são lixo.
-- `data/`, `outputs/` e `*.db` estão no `.gitignore` — bancos locais não são commitados.
-- A branch `main` é a única branch ativa.
+- O projeto esta em portugues.
+- Nao editar arquivos sem ler o conteudo atual ou o trecho relevante.
+- Nao ler nem editar CSVs da raiz.
+- Nao ler `web/app.js`, `web/app.css` ou `scripts/erp_import_flow.py` inteiros;
+  use busca antes.
+- Nao adicionar dependencias instaladas sem alinhamento.
+- `data/`, `outputs/`, `*.db`, planilhas sensiveis e caches nao devem ser
+  commitados.

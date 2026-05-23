@@ -1,0 +1,15 @@
+{
+  "schema": "pulso.white_label.v1",
+  "public": {
+    "app_name": "Sistema",
+    "app_subtitle": "Mesa de operacao",
+    "logo_path": ""
+  },
+  "defaults": {
+    "organization_id": "org_default",
+    "company_name": "Empresa",
+    "imported_company_name": "Empresa importada",
+    "store_name": "Loja principal",
+    "country": "Brasil"
+  }
+}

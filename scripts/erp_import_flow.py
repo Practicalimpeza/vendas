@@ -16,8 +16,11 @@ from pathlib import Path
 from uuid import uuid4
 from xml.etree import ElementTree
 
+from app_config import active_tenant, app_name, default_organization_slug, default_store_name, import_config_path, imported_company_name
 from db_helpers import (
+    app_controlled_fields,
     default_organization_id,
+    normalize_code,
     one,
     parse_decimal,
     parse_int,
@@ -29,7 +32,6 @@ from text_utils import canonical_customer_key, clean_phone, make_supplier_id, no
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCAL_IMPORT_CONFIG_PATH = ROOT / "data" / "import_reference.json"
 REFERENCE_FILE_ORDER = ("produtopreco.xls", "produtocusto.xls", "saidaprod.xls", "servico.xls")
 
 
@@ -49,16 +51,15 @@ ERP_FIELD_CATALOG = [
     {"entity": "produto", "field": "localizacao", "label": "Produto - localizacao/rua", "keywords": ["localizacao", "rua", "prateleira", "gondola", "corredor", "endereco_estoque"]},
     {"entity": "produto", "field": "estoque_minimo", "label": "Produto - estoque minimo cadastral", "keywords": ["estoque_minimo_cadastral", "minimo_cadastral", "ponto_pedido_cadastral"]},
     {"entity": "produto", "field": "estoque_maximo", "label": "Produto - estoque maximo cadastral", "keywords": ["estoque_maximo_cadastral", "maximo_cadastral"]},
-    {"entity": "configuracao", "field": "preferred_supplier", "label": "Configuracao - fornecedor preferencial", "keywords": ["fornecedor_preferencial", "fornecedor_padrao", "fornecedor_compra", "supplier_preferencial"]},
-    {"entity": "configuracao", "field": "package_size", "label": "Configuracao - embalagem/multiplo de compra", "keywords": ["embalagem_compra", "multiplo_compra", "caixa", "fardo", "qtd_caixa", "package_size", "multiplo"]},
-    {"entity": "configuracao", "field": "target_coverage_days", "label": "Configuracao - cobertura alvo dias", "keywords": ["cobertura_alvo", "dias_cobertura", "target_coverage", "estoque_dias", "dias_estoque"]},
-    {"entity": "configuracao", "field": "minimum_stock", "label": "Configuracao - estoque minimo", "keywords": ["estoque_minimo", "minimo", "min_stock", "ponto_pedido", "minimo_operacional", "estoque_minimo_operacional", "minimum_stock", "estoque_seguranca"]},
-    {"entity": "configuracao", "field": "maximum_stock", "label": "Configuracao - estoque maximo", "keywords": ["estoque_maximo", "maximo", "max_stock", "maximo_operacional", "estoque_maximo_operacional", "maximum_stock"]},
-    {"entity": "configuracao", "field": "weight", "label": "Configuracao - peso", "keywords": ["peso_compra", "peso_logistico", "peso_item"]},
-    {"entity": "configuracao", "field": "expires", "label": "Configuracao - perecivel/vence", "keywords": ["perecivel", "vence", "validade", "controla_validade", "expira"]},
-    {"entity": "configuracao", "field": "blocked_for_purchase", "label": "Configuracao - bloquear compra", "keywords": ["bloquear_compra", "bloqueado_compra", "nao_comprar", "descontinuado"]},
-    {"entity": "configuracao", "field": "ignored_in_purchase_reports", "label": "Configuracao - ignorar nos relatorios", "keywords": ["ignorar_compra", "ignorar_relatorio", "fora_relatorio", "nao_sugerir"]},
-    {"entity": "configuracao", "field": "notes", "label": "Configuracao - observacao", "keywords": ["observacao", "observacoes", "nota_operacional", "comentario", "notes"]},
+    {"entity": "configuracao", "field": "preferred_supplier", "label": "Produto - fornecedor preferencial", "keywords": ["fornecedor_preferencial", "fornecedor_padrao", "fornecedor_compra", "supplier_preferencial"]},
+    {"entity": "configuracao", "field": "package_size", "label": "Produto - qtd. por embalagem de compra", "keywords": ["embalagem_compra", "unidades_por_embalagem", "qtd_por_embalagem", "quantidade_por_embalagem", "multiplo_compra", "caixa", "fardo", "qtd_caixa", "package_size", "multiplo"]},
+    {"entity": "configuracao", "field": "minimum_stock", "label": "Produto - estoque minimo para compra", "keywords": ["estoque_minimo", "minimo", "min_stock", "ponto_pedido", "minimo_operacional", "estoque_minimo_operacional", "minimum_stock", "estoque_seguranca"]},
+    {"entity": "configuracao", "field": "maximum_stock", "label": "Produto - estoque maximo para compra", "keywords": ["estoque_maximo", "maximo", "max_stock", "maximo_operacional", "estoque_maximo_operacional", "maximum_stock"]},
+    {"entity": "configuracao", "field": "weight", "label": "Produto - peso logistico", "keywords": ["peso_compra", "peso_logistico", "peso_item"]},
+    {"entity": "configuracao", "field": "expires", "label": "Produto - perecivel/validade", "keywords": ["perecivel", "vence", "validade", "controla_validade", "expira"]},
+    {"entity": "configuracao", "field": "blocked_for_purchase", "label": "Produto - bloquear compra", "keywords": ["bloquear_compra", "bloqueado_compra", "nao_comprar", "descontinuado"]},
+    {"entity": "configuracao", "field": "ignored_in_purchase_reports", "label": "Produto - ignorar em compras", "keywords": ["ignorar_compra", "ignorar_relatorio", "fora_relatorio", "nao_sugerir"]},
+    {"entity": "configuracao", "field": "notes", "label": "Produto - observacao operacional", "keywords": ["observacao", "observacoes", "nota_operacional", "comentario", "notes"]},
     {"entity": "estoque", "field": "estoque_atual", "label": "Estoque - quantidade atual", "keywords": ["estoque", "saldo", "quantidade_estoque", "qtde_estoque", "qtd_estoque", "disponivel"]},
     {"entity": "estoque", "field": "estoque_reservado", "label": "Estoque - reservado", "keywords": ["reservado", "estoque_reservado", "qtd_reservada"]},
     {"entity": "estoque", "field": "estoque_em_transito", "label": "Estoque - em transito", "keywords": ["em_transito", "transito", "estoque_transito", "pedido_em_aberto"]},
@@ -169,6 +170,16 @@ def suggest_erp_field(header: str, value_type: str) -> dict:
         entity_key = normalize(candidate["entity"])
         if entity_key and (normalized.startswith(f"{entity_key}_") or normalized.endswith(f"_{entity_key}")):
             score += 4
+        if candidate["entity"] == "configuracao" and candidate["field"] == "package_size" and any(
+            marker in normalized
+            for marker in ("por_embalagem", "qtd_embalagem", "quantidade_embalagem", "multiplo", "caixa", "fardo")
+        ):
+            score += 8
+        if candidate["entity"] == "produto" and candidate["field"] == "unidade" and any(
+            marker in normalized
+            for marker in ("por_embalagem", "qtd_embalagem", "quantidade_embalagem", "multiplo", "caixa", "fardo")
+        ):
+            score -= 6
         if value_type == "data" and candidate["field"].startswith("data_"):
             score += 3
         if value_type == "documento" and "documento" in candidate["field"]:
@@ -180,7 +191,7 @@ def suggest_erp_field(header: str, value_type: str) -> dict:
             "quantidade_vendida", "quantidade_comprada", "valor_venda", "valor_liquido", "desconto",
             "base_icms", "aliquota_icms", "valor_icms", "valor_pis", "valor_cofins",
             "pedido_minimo", "limite_credito", "valor_titulo",
-            "package_size", "target_coverage_days", "minimum_stock", "maximum_stock", "weight",
+            "package_size", "minimum_stock", "maximum_stock", "weight",
         }:
             score += 1
         if score > best_score:
@@ -189,6 +200,624 @@ def suggest_erp_field(header: str, value_type: str) -> dict:
     if not best or best_score < 3:
         return {"entity": "ignorar", "field": "ignorar", "label": "Ignorar / nao mapeado", "confidence": 0}
     return {"entity": best["entity"], "field": best["field"], "label": best["label"], "confidence": min(98, 35 + best_score * 8)}
+
+
+ERP_OPERATIONAL_FIELD_HELP = {
+    "produto.codigo_produto": ("Chave do produto", "Liga a linha ao produto. E obrigatorio para gravar estoque, custo, preco, venda e ajustes de compra."),
+    "produto.nome_produto": ("Cadastro do produto", "Cria ou atualiza o nome quando o produto ainda nao existe."),
+    "identificador.barcode": ("Identificador", "Salva codigo de barras/EAN vinculado ao produto."),
+    "identificador.supplier_reference": ("Identificador", "Salva o codigo do produto usado pelo fornecedor."),
+    "configuracao.preferred_supplier": ("Compra por produto", "Define o fornecedor preferencial do produto."),
+    "configuracao.package_size": ("Compra por produto", "Define quantas unidades vem em uma embalagem de compra, como caixa com 12 ou 24."),
+    "configuracao.minimum_stock": ("Compra por produto", "Define o estoque minimo operacional do produto."),
+    "configuracao.maximum_stock": ("Compra por produto", "Define o teto operacional usado para limitar sugestoes."),
+    "configuracao.weight": ("Compra por produto", "Guarda peso logistico para apoio operacional."),
+    "configuracao.expires": ("Compra por produto", "Marca se o produto controla validade ou perecibilidade."),
+    "configuracao.blocked_for_purchase": ("Compra por produto", "Impede sugestao automatica de compra para o produto."),
+    "configuracao.ignored_in_purchase_reports": ("Compra por produto", "Remove o produto dos relatorios/sugestoes de compra."),
+    "configuracao.notes": ("Compra por produto", "Guarda observacao operacional do produto."),
+    "estoque.estoque_atual": ("Estoque", "Grava snapshot de saldo atual do produto."),
+    "estoque.data_movimento": ("Estoque", "Data usada no snapshot de estoque; se vier vazia, usa hoje."),
+    "preco.preco_venda": ("Preco", "Grava snapshot do preco de venda atual."),
+    "custo.purchase_cost": ("Custo", "Grava custo de compra sem impostos."),
+    "custo.total_cost": ("Custo", "Grava custo total/com impostos."),
+    "custo.freight_cost": ("Custo", "Grava componente de frete no custo."),
+    "custo.icms_cost": ("Custo", "Grava componente de ICMS no custo."),
+    "custo.ipi_cost": ("Custo", "Grava componente de IPI no custo."),
+    "custo.snapshot_date": ("Custo", "Data usada no snapshot de custo; se vier vazia, usa hoje."),
+    "venda.data_venda": ("Venda de produto/servico", "Data da venda usada no historico e na demanda."),
+    "venda.quantidade_vendida": ("Venda de produto/servico", "Quantidade vendida usada no historico e na demanda."),
+    "venda.valor_venda": ("Venda de produto/servico", "Valor bruto usado no historico comercial."),
+    "venda.valor_liquido": ("Venda de servico", "Valor liquido usado em vendas de servico."),
+    "venda.numero_documento": ("Venda de produto/servico", "Ajuda a evitar duplicidade de vendas importadas."),
+    "cliente.codigo_cliente": ("Venda", "Identifica o cliente na venda quando disponivel."),
+    "cliente.nome_cliente": ("Venda", "Identifica o nome do cliente na venda quando disponivel."),
+    "fornecedor.nome_fornecedor": ("Fornecedor", "Cria/atualiza fornecedor e tambem pode virar fornecedor preferencial do produto."),
+    "fornecedor.documento_fornecedor": ("Fornecedor", "Atualiza CNPJ/documento do fornecedor."),
+    "fornecedor.contato": ("Fornecedor", "Atualiza contato principal do fornecedor."),
+    "fornecedor.telefone": ("Fornecedor", "Atualiza telefone do fornecedor."),
+    "fornecedor.email": ("Fornecedor", "Atualiza e-mail do fornecedor."),
+    "fornecedor.pedido_minimo": ("Fornecedor", "Atualiza valor minimo de pedido do fornecedor."),
+    "servico.nome_servico": ("Venda de servico", "Cria/identifica o servico para importar vendas de servico."),
+    "contato.telefone": ("Fornecedor", "Usado como telefone quando a linha tambem tem fornecedor."),
+    "contato.email": ("Fornecedor", "Usado como e-mail quando a linha tambem tem fornecedor."),
+}
+
+ERP_RAW_ONLY_HELP_BY_ENTITY = {
+    "produto": ("Cadastro complementar", "Fica salvo no registro bruto do lote, mas ainda nao atualiza o cadastro operacional do produto."),
+    "estoque": ("Estoque complementar", "Fica salvo no registro bruto do lote, mas ainda nao entra no saldo usado pelo sistema."),
+    "preco": ("Preco complementar", "Fica salvo no registro bruto do lote, mas ainda nao atualiza preco operacional."),
+    "compra": ("Compra complementar", "Fica salvo no registro bruto do lote, mas ainda nao alimenta pedidos de compra."),
+    "venda": ("Venda complementar", "Fica salvo no registro bruto do lote, mas ainda nao muda historico ou demanda."),
+    "fiscal": ("Fiscal", "Fica salvo no registro bruto do lote para auditoria; ainda nao alimenta telas fiscais."),
+    "cliente": ("Cliente complementar", "Fica salvo no registro bruto do lote, mas ainda nao atualiza cadastro de clientes."),
+    "fornecedor": ("Fornecedor complementar", "Fica salvo no registro bruto do lote, mas ainda nao atualiza o cadastro operacional do fornecedor."),
+    "financeiro": ("Financeiro", "Fica salvo no registro bruto do lote para auditoria; ainda nao alimenta telas financeiras."),
+}
+
+
+def erp_field_option(option: dict) -> dict:
+    if option.get("entity") == "ignorar":
+        return {**option, "support": "ignored", "usage": "Ignorar", "description": "Esta coluna nao sera importada."}
+    key = f"{option.get('entity')}.{option.get('field')}"
+    if key in ERP_OPERATIONAL_FIELD_HELP:
+        usage, description = ERP_OPERATIONAL_FIELD_HELP[key]
+        return {**option, "support": "operational", "usage": usage, "description": description}
+    usage, description = ERP_RAW_ONLY_HELP_BY_ENTITY.get(
+        option.get("entity"),
+        ("Registro bruto", "Fica salvo no lote importado, mas ainda nao atualiza telas operacionais."),
+    )
+    return {**option, "support": "raw_only", "usage": usage, "description": description}
+
+
+ERP_IMPORT_BLOCKS = [
+    {
+        "id": "products_prices_stock",
+        "title": "Produtos, precos e estoque",
+        "keys": {"produto.codigo_produto", "produto.nome_produto", "preco.preco_venda", "estoque.estoque_atual"},
+        "critical": {"produto.codigo_produto", "produto.nome_produto"},
+        "modules": ["ranking de produtos", "reposicao", "precificacao", "mix ativo"],
+    },
+    {
+        "id": "purchase_costs",
+        "title": "Custos de compra",
+        "keys": {"custo.purchase_cost", "custo.total_cost", "custo.freight_cost", "custo.icms_cost", "custo.ipi_cost"},
+        "critical": {"produto.codigo_produto"},
+        "modules": ["margem", "preco alvo", "decisao de compra"],
+    },
+    {
+        "id": "product_sales",
+        "title": "Vendas de produtos",
+        "keys": {"venda.data_venda", "venda.quantidade_vendida", "venda.valor_venda", "produto.codigo_produto"},
+        "critical": {"produto.codigo_produto", "venda.data_venda", "venda.quantidade_vendida"},
+        "modules": ["demanda", "curva ABC", "reposicao", "clientes", "oportunidades"],
+    },
+    {
+        "id": "services",
+        "title": "Vendas de servicos",
+        "keys": {"servico.nome_servico", "venda.data_venda", "venda.quantidade_vendida", "venda.valor_venda", "venda.valor_liquido"},
+        "critical": {"servico.nome_servico", "venda.data_venda"},
+        "modules": ["ranking de servicos", "carteira de clientes", "margem de servico"],
+    },
+    {
+        "id": "supplier_identifiers",
+        "title": "Codigos para compra e fornecedores",
+        "keys": {"identificador.supplier_reference", "fornecedor.nome_fornecedor", "fornecedor.telefone", "fornecedor.pedido_minimo"},
+        "critical": {"produto.codigo_produto"},
+        "modules": ["cotacao", "pedido de compra", "minimo por fornecedor"],
+    },
+    {
+        "id": "operational_settings",
+        "title": "Ajustes de produto importaveis",
+        "keys": {
+            "configuracao.preferred_supplier",
+            "configuracao.package_size",
+            "configuracao.minimum_stock",
+            "configuracao.maximum_stock",
+            "configuracao.blocked_for_purchase",
+        },
+        "critical": {"produto.codigo_produto"},
+        "modules": ["reposicao mais fiel", "pedido por caixa/fardo", "bloqueios de compra"],
+    },
+]
+
+
+IMPORT_DEPENDENCY_RULES = [
+    {
+        "id": "products_prices_stock",
+        "label": "Produtos, precos e estoque",
+        "unlocks": ["catalogo base", "reposicao inicial", "precificacao inicial"],
+        "depends_on": [],
+        "blocks": ["Reposicao", "Precificacao", "Cotacao"],
+        "reason": "Sem produto, preco e estoque, os outros modulos nao tem item, saldo ou base de venda para trabalhar.",
+    },
+    {
+        "id": "purchase_costs",
+        "label": "Custos de compra",
+        "unlocks": ["margem", "preco alvo", "compra com custo"],
+        "depends_on": ["products_prices_stock"],
+        "blocks": ["Precificacao", "Reposicao com custo"],
+        "reason": "Custo destrava margem, preco alvo e priorizacao de compra com impacto financeiro.",
+    },
+    {
+        "id": "product_sales",
+        "label": "Vendas de produtos",
+        "unlocks": ["demanda", "curva ABC", "reposicao orientada por venda", "oportunidades comerciais"],
+        "depends_on": ["products_prices_stock"],
+        "blocks": ["Reposicao", "Comercial"],
+        "reason": "Vendas por item transformam cadastro em demanda real, ABC e rotina de reposicao.",
+    },
+    {
+        "id": "supplier_identifiers",
+        "label": "Fornecedores e codigos de compra",
+        "unlocks": ["cotacao", "pedido por fornecedor", "codigo correto para enviar ao fornecedor"],
+        "depends_on": ["products_prices_stock"],
+        "blocks": ["Cotacao"],
+        "reason": "Cotacao precisa saber quem fornece e qual codigo o fornecedor reconhece.",
+    },
+    {
+        "id": "operational_settings",
+        "label": "Parametros de compra",
+        "unlocks": ["compra por caixa/fardo", "bloqueios de compra"],
+        "depends_on": ["products_prices_stock"],
+        "blocks": ["Reposicao refinada", "Cotacao refinada"],
+        "reason": "Parametros de compra reduzem decisao manual e aproximam a sugestao da rotina real.",
+    },
+    {
+        "id": "services",
+        "label": "Servicos vendidos",
+        "unlocks": ["ranking de servicos", "carteira de clientes por servico"],
+        "depends_on": [],
+        "blocks": ["Comercial de servicos"],
+        "reason": "Servicos sao relevantes quando o varejo vende receita de mao de obra ou assistencia.",
+    },
+    {
+        "id": "purchase_history",
+        "label": "Historico de compras e recebimentos",
+        "unlocks": ["lead time real", "performance de fornecedor", "validacao de custo"],
+        "depends_on": ["products_prices_stock", "purchase_costs", "supplier_identifiers"],
+        "blocks": ["Compra avancada"],
+        "reason": "Compras ajudam muito, mas rendem mais depois que produtos, custos e fornecedores estao minimamente mapeados.",
+    },
+    {
+        "id": "fiscal_documents",
+        "label": "Dados fiscais por item",
+        "unlocks": ["auditoria fiscal", "margem tributaria fina"],
+        "depends_on": ["products_prices_stock", "purchase_costs"],
+        "blocks": ["Auditoria fiscal"],
+        "reason": "Fiscal enriquece margem e auditoria, mas nao deve vir antes de produto e custo basicos.",
+    },
+    {
+        "id": "financial_titles",
+        "label": "Financeiro",
+        "unlocks": ["inadimplencia", "fluxo de caixa", "compra segura por caixa"],
+        "depends_on": ["customer_commercial", "supplier_identifiers"],
+        "blocks": ["Financeiro"],
+        "reason": "Financeiro precisa de clientes e fornecedores identificaveis para cruzar cobranca e compra.",
+    },
+]
+
+
+PRODUCT_DEPENDENT_ENTITIES = {"estoque", "preco", "custo", "identificador", "configuracao"}
+
+
+def erp_column_key(column: dict) -> str:
+    suggestion = column.get("suggestion") or column
+    entity = scalar_text(suggestion.get("entity"))
+    field = scalar_text(suggestion.get("field"))
+    if not entity or not field or entity == "ignorar" or field == "ignorar":
+        return ""
+    return f"{entity}.{field}"
+
+
+def erp_column_label(column: dict) -> str:
+    suggestion = column.get("suggestion") or column
+    return scalar_text(suggestion.get("label")) or scalar_text(column.get("header")) or "Campo"
+
+
+def infer_erp_sheet_purpose(keys: set[str]) -> dict:
+    ranked = []
+    for block in ERP_IMPORT_BLOCKS:
+        matched = keys & block["keys"]
+        if not matched:
+            continue
+        score = len(matched) * 2 + len(keys & block.get("critical", set()))
+        ranked.append((score, block))
+    if not ranked:
+        return {
+            "id": "unknown",
+            "title": "Planilha ainda nao identificada",
+            "modules": [],
+            "confidence": "baixa",
+        }
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    score, block = ranked[0]
+    confidence = "alta" if score >= 6 else "media"
+    return {
+        "id": block["id"],
+        "title": block["title"],
+        "modules": block["modules"],
+        "confidence": confidence,
+    }
+
+
+def import_plan_status_id(item: dict) -> str:
+    coverage = item.get("coverage") or {}
+    if item.get("priority") == "dispensado":
+        return "dispensado"
+    if item.get("id") == "products_prices_stock":
+        if coverage.get("products") and coverage.get("products_with_price") and coverage.get("products_with_stock"):
+            return "coberto"
+        return "parcial" if coverage.get("products") or coverage.get("products_with_price") or coverage.get("products_with_stock") else "faltando"
+    if item.get("id") == "purchase_costs":
+        return "coberto" if coverage.get("products_with_cost") else "faltando"
+    if item.get("id") == "product_sales":
+        if coverage.get("rows") and int(coverage.get("sales_months") or 0) >= 3:
+            return "coberto"
+        return "parcial" if coverage.get("rows") else "faltando"
+    if item.get("id") == "services":
+        return "coberto" if coverage.get("rows") else "parcial"
+    if item.get("id") == "supplier_identifiers":
+        if coverage.get("products_with_supplier_reference") and coverage.get("suppliers"):
+            return "coberto"
+        return "parcial" if coverage.get("products_with_supplier_reference") or coverage.get("suppliers") else "faltando"
+    if item.get("id") == "operational_settings":
+        return "coberto" if coverage.get("products_with_package") else "parcial"
+    return "parcial" if coverage and not coverage.get("stage") else "faltando"
+
+
+def readiness_plan_by_id(readiness: dict) -> dict[str, dict]:
+    return {item.get("id"): item for item in readiness.get("plan") or [] if item.get("id")}
+
+
+def dependency_rule(block_id: str) -> dict:
+    for rule in IMPORT_DEPENDENCY_RULES:
+        if rule["id"] == block_id:
+            return rule
+    return {"id": block_id, "label": block_id, "unlocks": [], "depends_on": [], "blocks": [], "reason": ""}
+
+
+def dependency_status(readiness: dict, block_id: str) -> dict:
+    plan_by_id = readiness_plan_by_id(readiness)
+    rule = dependency_rule(block_id)
+    missing = []
+    partial = []
+    for dependency in rule.get("depends_on") or []:
+        status = import_plan_status_id(plan_by_id.get(dependency) or {})
+        if status == "faltando":
+            missing.append(dependency_rule(dependency).get("label") or dependency)
+        elif status != "coberto":
+            partial.append(dependency_rule(dependency).get("label") or dependency)
+    return {"missing": missing, "partial": partial, "ready": not missing}
+
+
+def next_recommended_import(readiness: dict, current_block_ids: set[str] | None = None) -> dict:
+    current_block_ids = current_block_ids or set()
+    priorities = {"essencial": 80, "recomendado": 55, "ambicioso": 25, "travado": -20, "dispensado": -40}
+    candidates = []
+    plan_by_id = readiness_plan_by_id(readiness)
+    for item in readiness.get("plan") or []:
+        if item.get("id") in current_block_ids or item.get("priority") in {"travado", "dispensado"}:
+            continue
+        status = import_plan_status_id(item)
+        if status == "coberto":
+            continue
+        rule = dependency_rule(item.get("id") or "")
+        deps = dependency_status(readiness, item.get("id") or "")
+        blocked_by_missing = len(deps["missing"])
+        blocked_by_partial = len(deps["partial"])
+        essential_bonus = priorities.get(item.get("priority"), 0)
+        status_bonus = 30 if status == "faltando" else 12
+        unlock_bonus = min(30, len(rule.get("unlocks") or []) * 8 + len(rule.get("blocks") or []) * 5)
+        dependency_penalty = blocked_by_missing * 35 + blocked_by_partial * 10
+        score = essential_bonus + status_bonus + unlock_bonus - dependency_penalty
+        candidates.append((score, item, rule, deps, status))
+    if not candidates:
+        not_now = [
+            {
+                "title": item.get("title") or "",
+                "why": "Nao e prioridade agora: os blocos operacionais principais ja estao cobertos ou este arquivo e apenas enriquecimento.",
+            }
+            for item in readiness.get("plan") or []
+            if item.get("priority") in {"ambicioso", "dispensado"}
+        ][:3]
+        return {
+            "id": "",
+            "title": "Base essencial coberta",
+            "why": "Os blocos principais ja aparecem no mapa atual. Use proximas importacoes para atualizar arquivos conhecidos ou enriquecer dados avancados.",
+            "expected_files": [],
+            "minimum_fields": [],
+            "unlocks": [],
+            "blocked_modules": [],
+            "depends_on": [],
+            "not_now": not_now,
+        }
+    candidates.sort(key=lambda entry: entry[0], reverse=True)
+    _score, item, rule, deps, status = candidates[0]
+    fields = item.get("what_to_send") or []
+    dependencies = [dependency_rule(dep).get("label") or dep for dep in rule.get("depends_on") or []]
+    blocked_modules = []
+    if deps["missing"]:
+        blocked_modules.extend(f"Antes falta {name}" for name in deps["missing"])
+    if deps["partial"]:
+        blocked_modules.extend(f"{name} ainda esta parcial" for name in deps["partial"])
+    if not blocked_modules:
+        blocked_modules = rule.get("blocks") or []
+    not_now = []
+    for other in sorted(candidates[1:], key=lambda entry: entry[0]):
+        other_item = other[1]
+        other_rule = other[2]
+        if other_item.get("priority") == "ambicioso" or other[3]["missing"]:
+            not_now.append(
+                {
+                    "title": other_item.get("title") or other_rule.get("label") or "",
+                    "why": other_rule.get("reason") or "Rende mais depois que os blocos anteriores estiverem completos.",
+                }
+            )
+        if len(not_now) >= 3:
+            break
+    why = rule.get("reason") or f"Esse bloco ainda esta {status} e destrava: {', '.join((item.get('used_for') or [])[:4])}."
+    if deps["missing"]:
+        why = f"{why} Mas para aproveitar bem, primeiro resolva: {', '.join(deps['missing'])}."
+    elif deps["partial"]:
+        why = f"{why} Ja da para avancar, mas {', '.join(deps['partial'])} ainda esta parcial."
+    return {
+        "id": item.get("id") or "",
+        "title": item.get("title") or "Proximo arquivo",
+        "priority": item.get("priority") or "",
+        "status": status,
+        "why": why,
+        "expected_files": item.get("expected_files") or [],
+        "minimum_fields": fields[:6],
+        "unlocks": rule.get("unlocks") or (item.get("used_for") or [])[:4],
+        "blocked_modules": blocked_modules,
+        "depends_on": dependencies,
+        "not_now": not_now,
+    }
+
+
+def import_module_scores(readiness: dict, quality: dict) -> list[dict]:
+    plan_by_id = {item.get("id"): item for item in readiness.get("plan") or []}
+
+    def coverage(block_id: str) -> dict:
+        return (plan_by_id.get(block_id) or {}).get("coverage") or {}
+
+    def clamp_score(value: float) -> int:
+        return max(0, min(100, int(round(value))))
+
+    products = coverage("products_prices_stock")
+    costs = coverage("purchase_costs")
+    sales = coverage("product_sales")
+    services = coverage("services")
+    suppliers = coverage("supplier_identifiers")
+    settings = coverage("operational_settings")
+    product_count = int(products.get("products") or 0)
+    price_pct = int(products.get("price_pct") or 0)
+    stock_pct = int(products.get("stock_pct") or 0)
+    barcode_pct = int(products.get("barcode_pct") or 0)
+    cost_pct = int(costs.get("cost_pct") or 0)
+    supplier_ref_pct = int(suppliers.get("supplier_reference_pct") or 0)
+    package_pct = int(settings.get("package_pct") or 0)
+    sales_months = int(sales.get("sales_months") or 0)
+    sales_rows = int(sales.get("rows") or 0)
+    service_rows = int(services.get("rows") or 0)
+    supplier_count = int(suppliers.get("suppliers") or 0)
+    customer_count = int((coverage("customer_commercial") or {}).get("customers") or 0)
+    quality_penalty = 20 if quality.get("status") == "blocked" else 8 if quality.get("status") == "attention" else 0
+
+    module_rows = [
+        {
+            "id": "products",
+            "label": "Produtos",
+            "score": clamp_score((100 if product_count else 0) * 0.45 + price_pct * 0.25 + stock_pct * 0.2 + barcode_pct * 0.1),
+            "status": "base" if product_count else "faltando",
+            "detail": f"{product_count} produto(s), {price_pct}% com preco, {stock_pct}% com estoque.",
+        },
+        {
+            "id": "inventory",
+            "label": "Estoque",
+            "score": clamp_score(stock_pct - quality_penalty),
+            "status": "confiavel" if stock_pct >= 80 else "parcial" if stock_pct else "faltando",
+            "detail": f"{stock_pct}% dos produtos tem saldo importado.",
+        },
+        {
+            "id": "pricing",
+            "label": "Precificacao",
+            "score": clamp_score((price_pct * 0.45) + (cost_pct * 0.45) + (100 if product_count else 0) * 0.1 - quality_penalty),
+            "status": "confiavel" if price_pct >= 80 and cost_pct >= 80 else "parcial" if price_pct or cost_pct else "faltando",
+            "detail": f"{price_pct}% com preco e {cost_pct}% com custo.",
+        },
+        {
+            "id": "replenishment",
+            "label": "Reposicao",
+            "score": clamp_score((stock_pct * 0.3) + (cost_pct * 0.2) + (min(sales_months, 6) / 6 * 35) + (package_pct * 0.15) - quality_penalty),
+            "status": "confiavel" if stock_pct >= 70 and sales_months >= 3 else "parcial" if stock_pct or sales_rows else "faltando",
+            "detail": f"{sales_months} mes(es) de venda, {stock_pct}% com estoque, {package_pct}% com embalagem.",
+        },
+        {
+            "id": "quotes",
+            "label": "Cotacao",
+            "score": clamp_score((supplier_ref_pct * 0.45) + (100 if supplier_count else 0) * 0.25 + (package_pct * 0.2) + (cost_pct * 0.1) - quality_penalty),
+            "status": "confiavel" if supplier_ref_pct >= 70 and supplier_count else "parcial" if supplier_ref_pct or supplier_count else "faltando",
+            "detail": f"{supplier_ref_pct}% com referencia de fornecedor e {supplier_count} fornecedor(es).",
+        },
+        {
+            "id": "commercial",
+            "label": "Comercial",
+            "score": clamp_score((min(sales_months, 6) / 6 * 55) + (100 if customer_count else 0) * 0.25 + (100 if service_rows else 0) * 0.2 - quality_penalty),
+            "status": "confiavel" if sales_months >= 3 and customer_count else "parcial" if sales_rows or customer_count else "faltando",
+            "detail": f"{sales_months} mes(es) de venda, {customer_count} cliente(s), {service_rows} linha(s) de servico.",
+        },
+    ]
+    for item in module_rows:
+        if item["score"] >= 75:
+            item["tone"] = "good"
+        elif item["score"] >= 35:
+            item["tone"] = "warn"
+        else:
+            item["tone"] = "danger"
+    return module_rows
+
+
+def implementation_state(readiness: dict, quality: dict, module_scores: list[dict]) -> dict:
+    ready = [item["label"] for item in module_scores if item.get("score", 0) >= 75]
+    partial = [item["label"] for item in module_scores if 35 <= item.get("score", 0) < 75]
+    missing = [item["label"] for item in module_scores if item.get("score", 0) < 35]
+    essential = [
+        item
+        for item in readiness.get("plan") or []
+        if item.get("priority") == "essencial" and import_plan_status_id(item) != "coberto"
+    ]
+    if quality.get("status") == "blocked":
+        stage = "bloqueada"
+        message = "A base tem bloqueios no ultimo lote antes de ser usada como rotina."
+    elif essential:
+        stage = "implantacao parcial"
+        message = "A base ja mostra valor, mas ainda faltam fontes essenciais para rotina completa."
+    elif missing or partial:
+        stage = "operacao assistida"
+        message = "Os blocos essenciais estao encaminhados; use a rotina com acompanhamento e enriqueça dados por prioridade."
+    else:
+        stage = "base operacional"
+        message = "A base esta pronta para operar e receber atualizacoes recorrentes."
+    return {
+        "stage": stage,
+        "message": message,
+        "ready": ready,
+        "partial": partial,
+        "missing": missing,
+        "essential_gaps": [item.get("title") or item.get("id") for item in essential],
+    }
+
+
+def erp_preview_assistant(analyzed: list[dict], readiness: dict) -> dict:
+    all_keys: set[str] = set()
+    raw_only_fields = []
+    ignored_columns = 0
+    low_confidence = []
+    sheet_guidance = []
+    alignment_warnings = []
+    for sheet in analyzed:
+        keys: set[str] = set()
+        sheet_raw_only = []
+        for column in sheet.get("columns") or []:
+            key = erp_column_key(column)
+            if key:
+                keys.add(key)
+                all_keys.add(key)
+                option = erp_field_option((column.get("suggestion") or {}))
+                if option.get("support") == "raw_only":
+                    sheet_raw_only.append(erp_column_label(column))
+                    raw_only_fields.append(erp_column_label(column))
+            else:
+                ignored_columns += 1
+            confidence = int((column.get("suggestion") or {}).get("confidence") or 0)
+            if 0 < confidence < 70:
+                low_confidence.append(erp_column_label(column))
+        purpose = infer_erp_sheet_purpose(keys)
+        missing = missing_critical_fields(keys, purpose.get("id"))
+        alignment = sheet.get("alignment") or {}
+        if alignment.get("status") == "warn":
+            alignment_warnings.append(
+                {
+                    "sheet_name": sheet.get("sheet_name") or "",
+                    "severity": alignment.get("severity") or "medio",
+                    "message": alignment.get("message") or "",
+                    "issue_count": alignment.get("issue_count") or 0,
+                    "examples": alignment.get("examples") or [],
+                }
+            )
+        sheet_guidance.append(
+            {
+                "sheet_name": sheet.get("sheet_name") or "",
+                "purpose": purpose,
+                "feeds": purpose.get("modules") or [],
+                "missing_critical": missing,
+                "raw_only_fields": sheet_raw_only[:8],
+                "structure": sheet.get("structure") or {},
+                "alignment": alignment,
+            }
+        )
+    current_block_ids = {guidance["purpose"]["id"] for guidance in sheet_guidance if guidance.get("purpose", {}).get("id") not in {"", "unknown"}}
+    missing_global = missing_critical_fields(all_keys, None)
+    risk = "baixo"
+    if missing_global:
+        risk = "alto"
+    elif alignment_warnings:
+        risk = "alto" if any(item.get("severity") == "alto" for item in alignment_warnings) else "medio"
+    elif low_confidence or len(raw_only_fields) >= 3:
+        risk = "medio"
+    purpose_titles = [item["purpose"]["title"] for item in sheet_guidance if item.get("purpose", {}).get("id") != "unknown"]
+    feeds = []
+    for item in sheet_guidance:
+        for module in item.get("feeds") or []:
+            if module not in feeds:
+                feeds.append(module)
+    action = "Pode gravar depois da revisao dos campos."
+    if missing_global:
+        action = "Revise os campos criticos antes de gravar; parte da planilha ficara apenas em auditoria."
+    elif alignment_warnings:
+        action = "Confira o alinhamento das colunas antes de gravar; o arquivo pode ter valores deslocados do cabecalho."
+    elif not purpose_titles:
+        action = "Mapeie manualmente as colunas uteis ou use a planilha apenas como registro bruto."
+    structures = [item.get("structure") or {} for item in sheet_guidance if item.get("structure")]
+    structure_statuses = {item.get("status") for item in structures}
+    if "changed" in structure_statuses:
+        structure_summary = "Estrutura alterada em relacao a importacoes anteriores."
+    elif "known" in structure_statuses:
+        structure_summary = "Estrutura conhecida: mapeamento anterior reaproveitado quando possivel."
+    elif "new" in structure_statuses:
+        structure_summary = "Estrutura nova: primeira leitura dessa planilha."
+    else:
+        structure_summary = ""
+    return {
+        "title": " + ".join(purpose_titles[:2]) if purpose_titles else "Planilha nao identificada",
+        "risk": risk,
+        "feeds": feeds[:8],
+        "missing_critical": missing_global,
+        "raw_only_fields": list(dict.fromkeys(raw_only_fields))[:10],
+        "low_confidence_fields": list(dict.fromkeys(low_confidence))[:10],
+        "alignment_warnings": alignment_warnings[:5],
+        "ignored_columns": ignored_columns,
+        "action": action,
+        "next_recommended_file": next_recommended_import(readiness, current_block_ids),
+        "structure_summary": structure_summary,
+        "sheets": sheet_guidance,
+    }
+
+
+def missing_critical_fields(keys: set[str], purpose_id: str | None) -> list[dict]:
+    missing = []
+    has_product_dependent = any(key.split(".", 1)[0] in PRODUCT_DEPENDENT_ENTITIES for key in keys)
+    has_product_sale = any(key.startswith("venda.") for key in keys) and "servico.nome_servico" not in keys
+    if (has_product_dependent or has_product_sale or purpose_id in {"purchase_costs", "product_sales", "supplier_identifiers", "operational_settings"}) and "produto.codigo_produto" not in keys:
+        missing.append(
+            {
+                "field": "produto.codigo_produto",
+                "label": "Produto - codigo",
+                "effect": "Sem codigo do produto, estoque, custo, preco, venda e ajustes de produto ficam sem item de destino.",
+                "fix": "Mapeie a coluna de codigo interno/SKU ou exporte o arquivo com esse campo.",
+            }
+        )
+    if (has_product_sale or purpose_id == "product_sales") and "venda.data_venda" not in keys:
+        missing.append(
+            {
+                "field": "venda.data_venda",
+                "label": "Venda - data",
+                "effect": "Sem data, a venda nao entra em historico, demanda, curva ABC ou reposicao.",
+                "fix": "Mapeie a data de emissao/movimento da venda.",
+            }
+        )
+    if purpose_id == "services" and "servico.nome_servico" not in keys:
+        missing.append(
+            {
+                "field": "servico.nome_servico",
+                "label": "Servico - descricao",
+                "effect": f"Sem descricao do servico, o {app_name()} nao consegue criar o historico por servico.",
+                "fix": "Mapeie a coluna de servico/descricao do servico.",
+            }
+        )
+    return missing
 
 
 def detect_header_row(rows_data: list[list[str]]) -> int:
@@ -224,6 +853,151 @@ def normalize_table_rows(rows_data: list[list[str]], limit: int = 500) -> tuple[
     return headers, data_rows, header_index + 1
 
 
+def expected_header_value_type(header: str) -> str:
+    normalized = normalize(header)
+    if not normalized:
+        return ""
+    if any(marker in normalized for marker in ("data", "dt_", "emissao", "vencimento", "pagamento")):
+        return "data"
+    if any(marker in normalized for marker in ("cnpj", "cpf", "documento", "doc_")):
+        return "documento"
+    numeric_markers = (
+        "qtd",
+        "quantidade",
+        "qtde",
+        "valor",
+        "preco",
+        "custo",
+        "saldo",
+        "estoque",
+        "minimo",
+        "maximo",
+        "margem",
+        "percentual",
+        "desconto",
+        "total",
+        "unitario",
+        "multiplo",
+        "embalagem",
+        "caixa",
+    )
+    if any(marker in normalized for marker in numeric_markers):
+        return "numero"
+    return ""
+
+
+def value_type_matches_expected(value_type: str, expected: str) -> bool:
+    if not expected or not value_type or value_type == "vazio":
+        return True
+    return value_type == expected
+
+
+def detect_table_alignment_issues(
+    rows_data: list[list[str]],
+    headers: list[str],
+    header_line: int,
+    limit: int = 220,
+) -> dict:
+    if not headers or not header_line:
+        return {"status": "ok", "message": "", "issue_count": 0, "examples": [], "hints": []}
+    usable = [row for row in rows_data if any(str(cell or "").strip() for cell in row)]
+    header_index = max(0, header_line - 1)
+    if header_index >= len(usable):
+        return {"status": "ok", "message": "", "issue_count": 0, "examples": [], "hints": []}
+
+    width = len(headers)
+    expected_types = [expected_header_value_type(header) for header in headers]
+    clear_type_count = sum(1 for item in expected_types if item)
+    raw_rows = usable[header_index + 1 : header_index + 1 + limit]
+    examples = []
+    issue_rows: set[int] = set()
+    extra_cells_rows = 0
+    shifted_rows = 0
+    sampled_rows = 0
+
+    for offset, row in enumerate(raw_rows, start=1):
+        raw = [str(cell or "").strip() for cell in row]
+        if not any(raw):
+            continue
+        sampled_rows += 1
+        display_line = header_line + offset
+        trailing_values = [value for value in raw[width:] if value]
+        if trailing_values:
+            extra_cells_rows += 1
+            issue_rows.add(display_line)
+            if len(examples) < 4:
+                examples.append(
+                    {
+                        "line": display_line,
+                        "reason": "A linha tem valores depois da ultima coluna do cabecalho.",
+                        "sample": " | ".join(trailing_values[:3]),
+                    }
+                )
+
+        if clear_type_count < 2:
+            continue
+        mismatches = 0
+        adjacent_matches = 0
+        for index, value in enumerate(raw[:width]):
+            if not value:
+                continue
+            expected = expected_types[index] if index < len(expected_types) else ""
+            if not expected:
+                continue
+            value_type = detect_value_type([value])
+            if value_type_matches_expected(value_type, expected):
+                continue
+            mismatches += 1
+            left_expected = expected_types[index - 1] if index > 0 else ""
+            right_expected = expected_types[index + 1] if index + 1 < width else ""
+            if value_type_matches_expected(value_type, left_expected) or value_type_matches_expected(value_type, right_expected):
+                adjacent_matches += 1
+        mismatch_limit = max(2, min(5, clear_type_count // 2))
+        if adjacent_matches >= 2 or mismatches >= mismatch_limit:
+            shifted_rows += 1
+            issue_rows.add(display_line)
+            if len(examples) < 4:
+                examples.append(
+                    {
+                        "line": display_line,
+                        "reason": "Os tipos dos valores nao combinam bem com os nomes das colunas.",
+                        "sample": " | ".join(value for value in raw[: min(width, 6)] if value)[:140],
+                    }
+                )
+
+    issue_count = len(issue_rows)
+    issue_rate = (issue_count / sampled_rows) if sampled_rows else 0
+    should_warn = issue_count >= 2 and (extra_cells_rows >= 2 or shifted_rows >= 2 or issue_rate >= 0.08)
+    if not should_warn:
+        return {
+            "status": "ok",
+            "message": "",
+            "issue_count": issue_count,
+            "sampled_rows": sampled_rows,
+            "examples": examples[:2],
+            "hints": [],
+        }
+
+    severity = "alto" if issue_rate >= 0.25 or issue_count >= 12 else "medio"
+    message = (
+        "Algumas linhas parecem desalinhadas com o cabecalho. "
+        "Confira os exemplos das colunas antes de gravar para evitar que valor, quantidade, codigo ou data entrem no campo errado."
+    )
+    hints = [
+        "Abra 'Conferir colunas reconhecidas' e veja se os exemplos batem com cada coluna.",
+        "Se o arquivo veio de uma exportacao com quebras ou colunas mescladas, gere uma nova planilha mais simples antes de importar.",
+    ]
+    return {
+        "status": "warn",
+        "severity": severity,
+        "message": message,
+        "issue_count": issue_count,
+        "sampled_rows": sampled_rows,
+        "extra_cells_rows": extra_cells_rows,
+        "shifted_rows": shifted_rows,
+        "examples": examples,
+        "hints": hints,
+    }
 def parse_text_planilha(content: str) -> tuple[list[dict], dict]:
     sample = content[:4096]
     try:
@@ -762,6 +1536,7 @@ def load_latest_erp_mappings(conn: sqlite3.Connection) -> dict:
 
 def analyze_erp_sheet(sheet: dict) -> dict:
     headers, data_rows, header_line = normalize_table_rows(sheet["rows"], limit=100000)
+    alignment = detect_table_alignment_issues(sheet["rows"], headers, header_line)
     columns = []
     for index, header in enumerate(headers):
         samples = []
@@ -798,6 +1573,7 @@ def analyze_erp_sheet(sheet: dict) -> dict:
         "dominant_entity": dominant_entity,
         "entity_counts": entity_counts,
         "columns": columns,
+        "alignment": alignment,
         "preview_rows": [dict(zip(headers, row[: len(headers)])) for row in data_rows[:8]],
     }
 
@@ -824,17 +1600,142 @@ def apply_saved_erp_mapping(analyzed: list[dict], saved_mappings: dict) -> int:
     return reused
 
 
+def load_latest_erp_mapping_profiles(conn: sqlite3.Connection) -> list[dict]:
+    profiles = []
+    for row in conn.execute(
+        """
+        SELECT summary_json
+        FROM import_batches
+        WHERE source_system = 'erp_planilha'
+          AND status = 'completed'
+        ORDER BY finished_at DESC, started_at DESC
+        LIMIT 50
+        """
+    ).fetchall():
+        try:
+            summary = json.loads(row["summary_json"] or "{}")
+        except json.JSONDecodeError:
+            continue
+        file_name = summary.get("file_name") or ""
+        for sheet in summary.get("mappings") or []:
+            mapping = sheet.get("mapping") or {}
+            fields = []
+            labels = []
+            for col_info in mapping.values():
+                if not isinstance(col_info, dict):
+                    continue
+                entity = scalar_text(col_info.get("entity"))
+                field = scalar_text(col_info.get("field"))
+                if not entity or not field or entity == "ignorar" or field == "ignorar":
+                    continue
+                fields.append(f"{entity}.{field}")
+                labels.append(scalar_text(col_info.get("label")) or f"{entity} - {field}")
+            profiles.append(
+                {
+                    "file_name": file_name,
+                    "sheet_name": sheet.get("sheet_name") or "",
+                    "signature": sheet.get("signature") or "",
+                    "fields": list(dict.fromkeys(fields)),
+                    "labels": list(dict.fromkeys(labels)),
+                }
+            )
+    return profiles
+
+
+def erp_sheet_structure_status(sheet: dict, profiles: list[dict], file_name: str = "") -> dict:
+    current_fields = []
+    current_labels = []
+    current_headers = []
+    for column in sheet.get("columns") or []:
+        current_headers.append(scalar_text(column.get("header")) or f"coluna {int(column.get('index') or 0) + 1}")
+        key = erp_column_key(column)
+        if key:
+            current_fields.append(key)
+            current_labels.append(erp_column_label(column))
+    current_fields = list(dict.fromkeys(current_fields))
+    current_labels = list(dict.fromkeys(current_labels))
+    signature = sheet.get("signature") or ""
+    exact = next((profile for profile in profiles if signature and profile.get("signature") == signature), None)
+    if exact:
+        return {
+            "status": "known",
+            "label": "Estrutura conhecida",
+            "message": "A assinatura da planilha bate com um mapeamento ja gravado.",
+            "reused_fields": len(set(current_fields) & set(exact.get("fields") or [])),
+            "new_columns": [],
+            "missing_columns": [],
+            "matched_sheet": exact.get("sheet_name") or "",
+        }
+    scored = []
+    current_field_set = set(current_fields)
+    current_count = max(1, len(current_field_set))
+    for profile in profiles:
+        profile_fields = set(profile.get("fields") or [])
+        if not profile_fields or not current_field_set:
+            continue
+        overlap = len(current_field_set & profile_fields)
+        same_file_bonus = 2 if file_name and profile.get("file_name") == file_name else 0
+        sheet_name = scalar_text(sheet.get("sheet_name"))
+        profile_sheet = scalar_text(profile.get("sheet_name"))
+        same_sheet_bonus = 1 if sheet_name and profile_sheet and sheet_name == profile_sheet and sheet_name.lower() not in {"sheet1", "aba 1"} else 0
+        scored.append((overlap + same_file_bonus + same_sheet_bonus, overlap, profile))
+    if not scored:
+        return {
+            "status": "new",
+            "label": "Estrutura nova",
+            "message": "Nao ha mapeamento anterior parecido para essa aba.",
+            "reused_fields": 0,
+            "new_columns": current_headers[:8],
+            "missing_columns": [],
+            "matched_sheet": "",
+        }
+    scored.sort(key=lambda item: item[0], reverse=True)
+    _score, overlap, profile = scored[0]
+    overlap_ratio = overlap / current_count
+    if overlap < 3 or overlap_ratio < 0.55:
+        return {
+            "status": "new",
+            "label": "Estrutura nova",
+            "message": "Ha poucos campos em comum com importacoes anteriores; trate como uma nova origem.",
+            "reused_fields": overlap,
+            "new_columns": current_labels[:8],
+            "missing_columns": [],
+            "matched_sheet": "",
+        }
+    profile_fields = set(profile.get("fields") or [])
+    current_label_by_field = {field: label for field, label in zip(current_fields, current_labels)}
+    profile_label_by_field = {field: label for field, label in zip(profile.get("fields") or [], profile.get("labels") or [])}
+    new_columns = [current_label_by_field.get(field, field) for field in current_fields if field not in profile_fields]
+    missing_columns = [profile_label_by_field.get(field, field) for field in profile.get("fields") or [] if field not in current_field_set]
+    return {
+        "status": "changed" if overlap else "new",
+        "label": "Estrutura alterada" if overlap else "Estrutura nova",
+        "message": "A planilha parece relacionada a uma estrutura anterior, mas houve mudanca de campos." if overlap else "A estrutura nao reaproveita campos suficientes de importacoes anteriores.",
+        "reused_fields": overlap,
+        "new_columns": new_columns[:8],
+        "missing_columns": missing_columns[:8],
+        "matched_sheet": profile.get("sheet_name") or "",
+    }
+
+
 def api_erp_import_preview(conn: sqlite3.Connection, payload: dict) -> dict:
     file_name, sheets, metadata, content_hash, file_size = parse_erp_file_payload(payload)
     analyzed = [analyze_erp_sheet(sheet) for sheet in sheets]
-    reused = apply_saved_erp_mapping(analyzed, load_latest_erp_mappings(conn))
+    saved_mappings = load_latest_erp_mappings(conn)
+    saved_profiles = load_latest_erp_mapping_profiles(conn)
+    reused = apply_saved_erp_mapping(analyzed, saved_mappings)
+    for sheet in analyzed:
+        sheet["structure"] = erp_sheet_structure_status(sheet, saved_profiles, file_name)
     required_review = sum(1 for sheet in analyzed for column in sheet["columns"] if column["suggestion"]["confidence"] < 70)
+    readiness = api_import_readiness(conn)
     return {
         "ok": True,
         "file_name": file_name,
         "metadata": {**metadata, "content_hash": content_hash, "file_size_bytes": file_size, "reused_mappings": reused},
         "sheets": analyzed,
-        "field_options": [{"entity": "ignorar", "field": "ignorar", "label": "Ignorar / nao mapeado"}] + ERP_FIELD_CATALOG,
+        "assistant": erp_preview_assistant(analyzed, readiness),
+        "field_options": [erp_field_option({"entity": "ignorar", "field": "ignorar", "label": "Ignorar / nao mapeado"})]
+        + [erp_field_option(option) for option in ERP_FIELD_CATALOG],
         "summary": {
             "sheets": len(analyzed),
             "columns": sum(sheet["column_count"] for sheet in analyzed),
@@ -949,7 +1850,41 @@ def upsert_erp_product_from_record(
     payload: dict,
 ) -> str:
     clean_code = scalar_text(code)
-    clean_name = scalar_text(name) or f"Produto {clean_code}"
+    provided_name = scalar_text(name)
+    existing_product = product_for_erp_code(conn, org, clean_code)
+    if existing_product.get("exists"):
+        actual_product_id = existing_product["id"]
+        controlled_fields = app_controlled_fields(conn, org, "product", actual_product_id)
+        if provided_name and "name" not in controlled_fields:
+            conn.execute(
+                """
+                UPDATE products
+                SET name = ?,
+                    normalized_name = ?,
+                    last_seen_import_batch_id = ?,
+                    source_payload_json = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE organization_id = ?
+                  AND id = ?
+                """,
+                (provided_name, normalize(provided_name), batch_id, json.dumps(payload, ensure_ascii=False), org, actual_product_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE products
+                SET last_seen_import_batch_id = ?,
+                    source_payload_json = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE organization_id = ?
+                  AND id = ?
+                """,
+                (batch_id, json.dumps(payload, ensure_ascii=False), org, actual_product_id),
+            )
+        conn.execute("INSERT OR IGNORE INTO product_settings (organization_id, product_id) VALUES (?, ?)", (org, actual_product_id))
+        return actual_product_id
+
+    clean_name = provided_name or generated_product_name(clean_code)
     product_id = erp_product_id(org, clean_code)
     conn.execute(
         """
@@ -958,8 +1893,32 @@ def upsert_erp_product_from_record(
              first_seen_import_batch_id, last_seen_import_batch_id, source_payload_json)
         VALUES (?, ?, ?, ?, ?, 'UN', ?, ?, ?)
         ON CONFLICT(organization_id, source_code) DO UPDATE SET
-            name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE products.name END,
-            normalized_name = CASE WHEN excluded.name <> '' THEN excluded.normalized_name ELSE products.normalized_name END,
+            name = CASE
+                WHEN excluded.name <> ''
+                 AND NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = products.organization_id
+                      AND c.entity_type = 'product'
+                      AND c.entity_id = products.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                 )
+                THEN excluded.name
+                ELSE products.name
+            END,
+            normalized_name = CASE
+                WHEN excluded.name <> ''
+                 AND NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = products.organization_id
+                      AND c.entity_type = 'product'
+                      AND c.entity_id = products.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                 )
+                THEN excluded.normalized_name
+                ELSE products.normalized_name
+            END,
             last_seen_import_batch_id = excluded.last_seen_import_batch_id,
             source_payload_json = excluded.source_payload_json,
             updated_at = CURRENT_TIMESTAMP
@@ -1030,6 +1989,35 @@ def upsert_erp_customer(conn: sqlite3.Connection, org: str, batch_id: str, code:
     clean_code = scalar_text(code)
     customer_id = erp_customer_id(org, clean_code, clean_name)
     canonical = canonical_customer_key(clean_name) or normalize(clean_name) or "sem_cliente"
+    if clean_code:
+        existing = conn.execute(
+            "SELECT id FROM customers WHERE organization_id = ? AND source_code = ? ORDER BY id LIMIT 1",
+            (org, clean_code),
+        ).fetchone()
+        if existing:
+            controlled_fields = app_controlled_fields(conn, org, "customer", existing["id"])
+            if "name" in controlled_fields:
+                conn.execute(
+                    """
+                    UPDATE customers
+                    SET last_seen_import_batch_id = ?
+                    WHERE organization_id = ? AND id = ?
+                    """,
+                    (batch_id, org, existing["id"]),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE customers
+                    SET name = ?,
+                        normalized_name = ?,
+                        canonical_name = ?,
+                        last_seen_import_batch_id = ?
+                    WHERE organization_id = ? AND id = ?
+                    """,
+                    (clean_name, normalize(clean_name), canonical, batch_id, org, existing["id"]),
+                )
+            return existing["id"]
     conn.execute(
         """
         INSERT INTO customers
@@ -1037,8 +2025,30 @@ def upsert_erp_customer(conn: sqlite3.Connection, org: str, batch_id: str, code:
              first_seen_import_batch_id, last_seen_import_batch_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, source_code, normalized_name) DO UPDATE SET
-            name = excluded.name,
-            canonical_name = excluded.canonical_name,
+            name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = customers.organization_id
+                      AND c.entity_type = 'customer'
+                      AND c.entity_id = customers.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.name
+                ELSE customers.name
+            END,
+            canonical_name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = customers.organization_id
+                      AND c.entity_type = 'customer'
+                      AND c.entity_id = customers.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.canonical_name
+                ELSE customers.canonical_name
+            END,
             last_seen_import_batch_id = excluded.last_seen_import_batch_id
         """,
         (customer_id, org, clean_code, clean_name, normalize(clean_name), canonical, batch_id, batch_id),
@@ -1211,7 +2221,7 @@ def ensure_default_store(conn: sqlite3.Connection, org: str) -> str:
     store_id = f"{org}:store:principal"
     conn.execute(
         "INSERT OR IGNORE INTO stores (id, organization_id, name) VALUES (?, ?, ?)",
-        (store_id, org, "Loja principal"),
+        (store_id, org, default_store_name()),
     )
     return store_id
 
@@ -1451,20 +2461,22 @@ def upsert_product_identifier(
     identifier_type: str,
     identifier_value: str,
 ) -> bool:
-    clean_value = scalar_text(identifier_value)[:160]
+    clean_value = normalize_code(identifier_value)[:160] if identifier_type == "supplier_reference" else scalar_text(identifier_value)[:160]
     if not clean_value:
         return False
     same_value = conn.execute(
         """
-        SELECT product_id
+        SELECT product_id, identifier_value
         FROM product_identifiers
         WHERE organization_id = ?
           AND identifier_type = ?
-          AND identifier_value = ?
-        LIMIT 1
         """,
-        (org, identifier_type, clean_value),
-    ).fetchone()
+        (org, identifier_type),
+    ).fetchall()
+    if identifier_type == "supplier_reference":
+        same_value = next((row for row in same_value if normalize_code(row["identifier_value"]) == clean_value), None)
+    else:
+        same_value = next((row for row in same_value if row["identifier_value"] == clean_value), None)
     if same_value and same_value["product_id"] != product_id:
         return False
     before = conn.total_changes
@@ -1519,14 +2531,51 @@ def manual_conflict_choices_from_payload(payload: dict) -> dict[str, str]:
     return choices
 
 
+def generated_product_name(source_code: str) -> str:
+    return f"Produto {scalar_text(source_code)}"
+
+
+def is_generated_product_name(name: object, source_code: object) -> bool:
+    return normalize(scalar_text(name)) == normalize(generated_product_name(scalar_text(source_code)))
+
+
 def product_for_erp_code(conn: sqlite3.Connection, org: str, code: str) -> dict:
     clean_code = scalar_text(code)
-    existing = conn.execute(
-        "SELECT id, name FROM products WHERE organization_id = ? AND source_code = ?",
-        (org, clean_code),
-    ).fetchone()
-    if existing:
-        return {"id": existing["id"], "name": existing["name"] or "", "exists": True}
+    candidates = conn.execute(
+        """
+        SELECT id, source_code, name, active
+        FROM products
+        WHERE organization_id = ?
+          AND (
+            source_code = ?
+            OR (
+              ? NOT GLOB '*[^0-9]*'
+              AND source_code NOT GLOB '*[^0-9]*'
+              AND NULLIF(LTRIM(source_code, '0'), '') = NULLIF(LTRIM(?, '0'), '')
+            )
+          )
+        """,
+        (org, clean_code, clean_code, clean_code),
+    ).fetchall()
+    if candidates:
+        def score(row: sqlite3.Row) -> tuple[int, int, int, int]:
+            source_code = scalar_text(row["source_code"])
+            exact = source_code == clean_code
+            generated = is_generated_product_name(row["name"], source_code)
+            return (
+                0 if not generated else 1,
+                0 if exact else 1,
+                0 if int(row["active"] or 0) else 1,
+                -len(source_code),
+            )
+
+        existing = sorted(candidates, key=score)[0]
+        return {
+            "id": existing["id"],
+            "source_code": existing["source_code"] or clean_code,
+            "name": existing["name"] or "",
+            "exists": True,
+        }
     return {"id": erp_product_id(org, clean_code), "name": "", "exists": False}
 
 
@@ -1552,8 +2601,30 @@ def upsert_imported_supplier(conn: sqlite3.Connection, *, org: str, name: str) -
             (id, organization_id, name, normalized_name, order_review_cycle_days, notes)
         VALUES (?, ?, ?, ?, 14, 'Criado pela importacao ERP.')
         ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            normalized_name = excluded.normalized_name
+            name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = suppliers.organization_id
+                      AND c.entity_type = 'supplier'
+                      AND c.entity_id = suppliers.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.name
+                ELSE suppliers.name
+            END,
+            normalized_name = CASE
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM entity_field_controls c
+                    WHERE c.organization_id = suppliers.organization_id
+                      AND c.entity_type = 'supplier'
+                      AND c.entity_id = suppliers.id
+                      AND c.field_name = 'name'
+                      AND c.control_kind = 'app'
+                )
+                THEN excluded.normalized_name
+                ELSE suppliers.normalized_name
+            END
         """,
         (supplier_id, org, supplier_name, normalize(supplier_name)),
     )
@@ -1615,6 +2686,10 @@ def materialize_erp_supplier_profile(
     created = 0
     if existing:
         supplier_id = existing["id"]
+        controlled_fields = app_controlled_fields(conn, org, "supplier", supplier_id)
+        fields = {field: value for field, value in fields.items() if field not in controlled_fields}
+        if not fields:
+            return {"imported": 0, "created": 0, "updated": 0, "unchanged": 1, "invalid": invalid, "status": "app_controlled"}
         changed = False
         for field, imported_value in fields.items():
             current_value = existing[field]
@@ -1649,22 +2724,20 @@ def materialize_erp_supplier_profile(
 
 
 SETTING_FIELD_LABELS = {
-    "preferred_supplier_id": "Configuracao - fornecedor preferencial",
-    "package_size": "Configuracao - embalagem/multiplo de compra",
-    "target_coverage_days": "Configuracao - cobertura alvo dias",
-    "minimum_stock": "Configuracao - estoque minimo",
-    "maximum_stock": "Configuracao - estoque maximo",
-    "weight": "Configuracao - peso",
-    "expires": "Configuracao - perecivel/vence",
-    "blocked_for_purchase": "Configuracao - bloquear compra",
-    "ignored_in_purchase_reports": "Configuracao - ignorar nos relatorios",
-    "notes": "Configuracao - observacao",
+    "preferred_supplier_id": "Produto - fornecedor preferencial",
+    "package_size": "Produto - qtd. por embalagem de compra",
+    "minimum_stock": "Produto - estoque minimo para compra",
+    "maximum_stock": "Produto - estoque maximo para compra",
+    "weight": "Produto - peso logistico",
+    "expires": "Produto - perecivel/validade",
+    "blocked_for_purchase": "Produto - bloquear compra",
+    "ignored_in_purchase_reports": "Produto - ignorar em compras",
+    "notes": "Produto - observacao operacional",
 }
 
 SETTING_DEFAULTS = {
     "preferred_supplier_id": "",
     "package_size": 1.0,
-    "target_coverage_days": 45,
     "minimum_stock": 0.0,
     "maximum_stock": None,
     "weight": None,
@@ -1724,7 +2797,6 @@ def erp_product_setting_fields(
     fields = {}
     numeric_fields = {
         "package_size": "configuracao.package_size",
-        "target_coverage_days": "configuracao.target_coverage_days",
         "minimum_stock": "configuracao.minimum_stock",
         "maximum_stock": "configuracao.maximum_stock",
         "weight": "configuracao.weight",
@@ -1734,8 +2806,8 @@ def erp_product_setting_fields(
             value = parse_decimal(normalized.get(key), None)
             if value is not None:
                 fields[field] = {
-                    "value": int(value) if field == "target_coverage_days" else value,
-                    "display": scalar_text(int(value) if field == "target_coverage_days" else value),
+                    "value": value,
+                    "display": scalar_text(value),
                 }
     for field in ("expires", "blocked_for_purchase", "ignored_in_purchase_reports"):
         parsed = parse_bool_flag(normalized.get(f"configuracao.{field}"))
@@ -1892,10 +2964,10 @@ def manual_identifier_conflict(
     sheet_name: str,
     row_number: int,
 ) -> dict | None:
-    clean_value = scalar_text(identifier_value)[:160]
+    clean_value = normalize_code(identifier_value)[:160] if identifier_type == "supplier_reference" else scalar_text(identifier_value)[:160]
     if not clean_value:
         return None
-    manual = conn.execute(
+    manual_rows = conn.execute(
         """
         SELECT identifier_value
         FROM product_identifiers
@@ -1903,12 +2975,14 @@ def manual_identifier_conflict(
           AND product_id = ?
           AND identifier_type = ?
           AND source_system = 'manual'
-          AND identifier_value <> ?
         ORDER BY id DESC
-        LIMIT 1
         """,
-        (org, product_id, identifier_type, clean_value),
-    ).fetchone()
+        (org, product_id, identifier_type),
+    ).fetchall()
+    if identifier_type == "supplier_reference":
+        manual = next((row for row in manual_rows if normalize_code(row["identifier_value"]) != clean_value), None)
+    else:
+        manual = next((row for row in manual_rows if row["identifier_value"] != clean_value), None)
     if not manual:
         return None
     return {
@@ -2085,7 +3159,7 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     analyzed = [analyze_erp_sheet(sheet) for sheet in parsed_sheets]
     mappings = selected_mapping_from_payload(payload)
     mapping_by_sheet = {int(sheet["sheet_index"]): sheet for sheet in mappings}
-    organization_id = default_organization_id(conn) or "org_practica"
+    organization_id = default_organization_id(conn) or default_organization_slug()
     manual_conflict_choices = manual_conflict_choices_from_payload(payload)
     conflict_check_only = scalar_text(payload.get("conflict_check_only")).lower() in {"1", "true", "sim", "yes"}
     if conflict_check_only:
@@ -2158,7 +3232,7 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
         INSERT OR IGNORE INTO organizations (id, name)
         VALUES (?, ?)
         """,
-        (organization_id, "Empresa importada"),
+        (organization_id, imported_company_name()),
     )
     if not store_id:
         store_id = ensure_default_store(conn, organization_id)
@@ -2583,7 +3657,7 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
                 (import_batch_id, source_file_id, severity, code, message)
             VALUES (?, ?, 'warning', 'erp_settings_without_product_code', ?)
             """,
-            (batch_id, source_file_id, f"{settings_rows_missing_product_code} linhas tinham configuracoes operacionais, mas nao tinham codigo de produto mapeado."),
+            (batch_id, source_file_id, f"{settings_rows_missing_product_code} linhas tinham ajustes de produto, mas nao tinham codigo de produto mapeado."),
         )
     if supplier_profile_invalid_rows:
         conn.execute(
@@ -2664,27 +3738,40 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
 
 
 def api_import_readiness(conn: sqlite3.Connection) -> dict:
-    coverage = one(
-        conn,
-        """
-        SELECT
-            (SELECT COUNT(*) FROM products) AS products,
-            (SELECT COUNT(DISTINCT product_id) FROM price_snapshots) AS products_with_price,
-            (SELECT COUNT(DISTINCT product_id) FROM inventory_snapshots) AS products_with_stock,
-            (SELECT COUNT(DISTINCT product_id) FROM cost_snapshots) AS products_with_cost,
-            (SELECT COUNT(*) FROM product_sales) AS product_sales,
-            (SELECT COUNT(DISTINCT product_id) FROM product_sales) AS products_with_sales,
-            (SELECT COUNT(DISTINCT substr(sold_at, 1, 7)) FROM product_sales) AS sales_months,
-            (SELECT COUNT(*) FROM service_sales) AS service_sales,
-            (SELECT COUNT(*) FROM services) AS services,
-            (SELECT COUNT(*) FROM customers) AS customers,
-            (SELECT COUNT(*) FROM suppliers) AS suppliers,
-            (SELECT COUNT(*) FROM product_settings WHERE COALESCE(package_size, 1) > 1) AS products_with_package,
-            (SELECT COUNT(DISTINCT product_id) FROM product_identifiers WHERE identifier_type = 'barcode') AS products_with_barcode,
-            (SELECT COUNT(DISTINCT product_id) FROM product_identifiers WHERE identifier_type = 'supplier_reference') AS products_with_supplier_reference,
-            (SELECT COUNT(*) FROM source_files WHERE LOWER(file_name) LIKE '%saidaprodlucro%') AS deprecated_profit_files
-        """
-    ) or {}
+    organization_id = default_organization_id(conn)
+    if not organization_id:
+        coverage = {}
+    else:
+        coverage = one(
+            conn,
+            """
+            WITH current_org(id) AS (VALUES (?))
+            SELECT
+                (SELECT COUNT(*) FROM products WHERE organization_id = current_org.id) AS products,
+                (SELECT COUNT(DISTINCT product_id) FROM price_snapshots WHERE organization_id = current_org.id) AS products_with_price,
+                (SELECT COUNT(DISTINCT product_id) FROM inventory_snapshots WHERE organization_id = current_org.id) AS products_with_stock,
+                (SELECT COUNT(DISTINCT product_id) FROM cost_snapshots WHERE organization_id = current_org.id) AS products_with_cost,
+                (SELECT COUNT(*) FROM product_sales WHERE organization_id = current_org.id) AS product_sales,
+                (SELECT COUNT(DISTINCT product_id) FROM product_sales WHERE organization_id = current_org.id) AS products_with_sales,
+                (SELECT COUNT(DISTINCT substr(sold_at, 1, 7)) FROM product_sales WHERE organization_id = current_org.id) AS sales_months,
+                (SELECT COUNT(*) FROM service_sales WHERE organization_id = current_org.id) AS service_sales,
+                (SELECT COUNT(*) FROM services WHERE organization_id = current_org.id) AS services,
+                (SELECT COUNT(*) FROM customers WHERE organization_id = current_org.id) AS customers,
+                (SELECT COUNT(*) FROM suppliers WHERE organization_id = current_org.id) AS suppliers,
+                (SELECT COUNT(*) FROM product_settings WHERE organization_id = current_org.id AND COALESCE(package_size, 1) > 1) AS products_with_package,
+                (SELECT COUNT(DISTINCT product_id) FROM product_identifiers WHERE organization_id = current_org.id AND identifier_type = 'barcode') AS products_with_barcode,
+                (SELECT COUNT(DISTINCT product_id) FROM product_identifiers WHERE organization_id = current_org.id AND identifier_type = 'supplier_reference') AS products_with_supplier_reference,
+                (
+                    SELECT COUNT(*)
+                    FROM source_files sf
+                    JOIN import_batches ib ON ib.id = sf.import_batch_id
+                    WHERE ib.organization_id = current_org.id
+                      AND LOWER(sf.file_name) LIKE '%saidaprodlucro%'
+                ) AS deprecated_profit_files
+            FROM current_org
+            """,
+            (organization_id,),
+        ) or {}
     product_count = int(coverage.get("products") or 0)
 
     def pct(value: object, total: int = product_count) -> int:
@@ -2763,9 +3850,9 @@ def api_import_readiness(conn: sqlite3.Connection) -> dict:
         {
             "id": "operational_settings",
             "priority": "recomendado",
-            "title": "Configuracoes operacionais importaveis",
+            "title": "Ajustes de produto importaveis",
             "expected_files": ["parametros de compra", "cadastro operacional", "planilha de ajustes manuais"],
-            "what_to_send": ["fornecedor preferencial", "embalagem/multiplo de compra", "cobertura alvo em dias", "estoque minimo", "estoque maximo", "peso", "perecivel", "bloquear compra", "ignorar relatorios", "observacao"],
+            "what_to_send": ["fornecedor preferencial", "qtd. por embalagem de compra", "estoque minimo", "estoque maximo", "peso", "perecivel", "bloquear compra", "ignorar relatorios", "observacao"],
             "used_for": ["reposicao mais fiel", "pedido por caixa/fardo", "bloqueio de item descontinuado", "migrar ajustes manuais do ERP"],
             "coverage": {
                 "products_with_package": int(coverage.get("products_with_package") or 0),
@@ -2776,7 +3863,7 @@ def api_import_readiness(conn: sqlite3.Connection) -> dict:
         {
             "id": "nexo_derived",
             "priority": "travado",
-            "title": "Campos derivados pelo Nexo",
+            "title": f"Campos derivados pelo {app_name()}",
             "expected_files": ["nao importar"],
             "what_to_send": [],
             "used_for": ["curva ABC", "demanda prevista", "sugestao de compra", "prioridade", "score de maturidade", "oportunidades", "alertas"],
@@ -2859,15 +3946,21 @@ def api_import_readiness(conn: sqlite3.Connection) -> dict:
 
 
 def import_quality_report(conn: sqlite3.Connection) -> dict:
-    latest = one(
-        conn,
-        """
-        SELECT id, source_system, status, started_at, finished_at, summary_json
-        FROM import_batches
-        ORDER BY started_at DESC
-        LIMIT 1
-        """,
-    )
+    organization_id = default_organization_id(conn)
+    if not organization_id:
+        latest = {}
+    else:
+        latest = one(
+            conn,
+            """
+            SELECT id, source_system, status, started_at, finished_at, summary_json
+            FROM import_batches
+            WHERE organization_id = ?
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (organization_id,),
+        )
     if not latest:
         return {
             "status": "no_imports",
@@ -3086,6 +4179,9 @@ def import_quality_report(conn: sqlite3.Connection) -> dict:
 
 
 def import_refresh_targets(conn: sqlite3.Connection) -> list[dict]:
+    organization_id = default_organization_id(conn)
+    if not organization_id:
+        return []
     raw = rows(
         conn,
         """
@@ -3100,7 +4196,10 @@ def import_refresh_targets(conn: sqlite3.Connection) -> list[dict]:
                 ROW_NUMBER() OVER (PARTITION BY sf.file_name ORDER BY ib.finished_at DESC, ib.started_at DESC) AS rn
             FROM source_files sf
             JOIN import_batches ib ON ib.id = sf.import_batch_id
-            WHERE ib.status = 'completed' AND sf.file_name IS NOT NULL AND sf.file_name <> ''
+            WHERE ib.status = 'completed'
+              AND ib.organization_id = ?
+              AND sf.file_name IS NOT NULL
+              AND sf.file_name <> ''
         )
         SELECT file_name, batch_id, source_system, finished_at, summary_json, row_count
         FROM ranked
@@ -3108,6 +4207,7 @@ def import_refresh_targets(conn: sqlite3.Connection) -> list[dict]:
         ORDER BY finished_at DESC
         LIMIT 10
         """,
+        (organization_id,),
     )
     targets = []
     for row in raw:
@@ -3141,17 +4241,21 @@ def import_refresh_targets(conn: sqlite3.Connection) -> list[dict]:
 
 def read_local_import_config() -> dict:
     try:
-        return json.loads(LOCAL_IMPORT_CONFIG_PATH.read_text(encoding="utf-8"))
+        return json.loads(import_config_path().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
 
 
 def write_local_import_config(config: dict) -> None:
-    LOCAL_IMPORT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    LOCAL_IMPORT_CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    path = import_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def latest_import_file_metadata(conn: sqlite3.Connection) -> dict[str, dict]:
+def latest_import_file_metadata(conn: sqlite3.Connection, organization_id: str = "") -> dict[str, dict]:
+    organization_id = organization_id or default_organization_id(conn)
+    if not organization_id:
+        return {}
     result = {}
     for row in rows(
         conn,
@@ -3169,28 +4273,40 @@ def latest_import_file_metadata(conn: sqlite3.Connection) -> dict[str, dict]:
                 ROW_NUMBER() OVER (PARTITION BY sf.file_name ORDER BY ib.finished_at DESC, ib.started_at DESC) AS rn
             FROM source_files sf
             JOIN import_batches ib ON ib.id = sf.import_batch_id
-            WHERE ib.status = 'completed' AND sf.file_name IS NOT NULL AND sf.file_name <> ''
+            WHERE ib.status = 'completed'
+              AND ib.organization_id = ?
+              AND sf.file_name IS NOT NULL
+              AND sf.file_name <> ''
         )
         SELECT file_name, content_hash, row_count, file_size_bytes, batch_id, finished_at, started_at, summary_json
         FROM ranked
         WHERE rn = 1
         """,
+        (organization_id,),
     ):
         result[row["file_name"]] = row
     return result
 
 
-def reference_file_names(_conn: sqlite3.Connection) -> list[str]:
-    return list(REFERENCE_FILE_ORDER)
+def reference_file_names(conn: sqlite3.Connection, organization_id: str = "") -> list[str]:
+    imported_names = list(latest_import_file_metadata(conn, organization_id).keys())
+    if active_tenant():
+        return imported_names
+    names = list(REFERENCE_FILE_ORDER)
+    for file_name in imported_names:
+        if file_name not in names:
+            names.append(file_name)
+    return names
 
 
 def local_reference_status(conn: sqlite3.Connection) -> dict:
+    organization_id = default_organization_id(conn)
     config = read_local_import_config()
     folder = scalar_text(config.get("folder"))
     folder_path = Path(folder).expanduser() if folder else None
-    latest_by_file = latest_import_file_metadata(conn)
+    latest_by_file = latest_import_file_metadata(conn, organization_id)
     files = []
-    for file_name in reference_file_names(conn):
+    for file_name in reference_file_names(conn, organization_id):
         if Path(file_name).name != file_name:
             continue
         latest = latest_by_file.get(file_name) or {}
@@ -3411,7 +4527,20 @@ def import_batch_stats(conn: sqlite3.Connection, batch_ids: list[str]) -> dict[s
 
 
 def api_imports(conn: sqlite3.Connection) -> dict:
-    batches = rows(conn, "SELECT id, source_system, status, source_period_start, source_period_end, started_at, finished_at, summary_json FROM import_batches ORDER BY started_at DESC LIMIT 20")
+    organization_id = default_organization_id(conn)
+    batches = []
+    if organization_id:
+        batches = rows(
+            conn,
+            """
+            SELECT id, source_system, status, source_period_start, source_period_end, started_at, finished_at, summary_json
+            FROM import_batches
+            WHERE organization_id = ?
+            ORDER BY started_at DESC
+            LIMIT 20
+            """,
+            (organization_id,),
+        )
     if batches:
         batch_ids = [batch["id"] for batch in batches]
         placeholders = ",".join("?" for _ in batch_ids)
@@ -3439,13 +4568,51 @@ def api_imports(conn: sqlite3.Connection) -> dict:
         for batch in batches:
             batch["files"] = files_by_batch.get(batch["id"], [])
             batch["stats"] = stats_by_batch.get(batch["id"], {})
+    issues = []
+    changes = []
+    if organization_id:
+        issues = rows(
+            conn,
+            """
+            SELECT ii.severity, ii.code, ii.message, ii.source_line
+            FROM import_issues ii
+            JOIN import_batches ib ON ib.id = ii.import_batch_id
+            WHERE ib.organization_id = ?
+            ORDER BY ii.id DESC
+            LIMIT 200
+            """,
+            (organization_id,),
+        )
+        changes = rows(
+            conn,
+            """
+            SELECT entity_type, source_code, field_name, previous_value, new_value, review_status, created_at
+            FROM source_entity_changes
+            WHERE organization_id = ?
+            ORDER BY id DESC
+            LIMIT 200
+            """,
+            (organization_id,),
+        )
+    readiness = api_import_readiness(conn)
+    quality = import_quality_report(conn)
+    next_file = next_recommended_import(readiness)
+    module_scores = import_module_scores(readiness, quality)
+    state = implementation_state(readiness, quality, module_scores)
     return {
         "contract": "imports.v1",
         "batches": batches,
-        "issues": rows(conn, "SELECT severity, code, message, source_line FROM import_issues ORDER BY id DESC LIMIT 200"),
-        "changes": rows(conn, "SELECT entity_type, source_code, field_name, previous_value, new_value, review_status, created_at FROM source_entity_changes ORDER BY id DESC LIMIT 200"),
+        "issues": issues,
+        "changes": changes,
         "refresh_targets": import_refresh_targets(conn),
         "local_reference": local_reference_status(conn),
-        "readiness": api_import_readiness(conn),
-        "quality": import_quality_report(conn),
+        "readiness": readiness,
+        "quality": quality,
+        "assistant": {
+            "next_recommended_file": next_file,
+            "module_scores": module_scores,
+            "implementation_state": state,
+            "status": quality.get("status") or "no_imports",
+            "message": quality.get("next_step") or next_file.get("why") or "",
+        },
     }

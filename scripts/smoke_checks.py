@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import struct
@@ -9,6 +10,7 @@ import tempfile
 import threading
 import urllib.error
 import urllib.request
+from datetime import date, timedelta
 from pathlib import Path
 
 
@@ -20,14 +22,18 @@ WEB_DIR = ROOT / "web"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import import_practica  # noqa: E402
+import app_config  # noqa: E402
 import serve_app  # noqa: E402
 from api_contracts import (  # noqa: E402
     api_health,
+    assert_app_config_contract,
     assert_actions_today_contract,
     assert_commercial_intelligence_contract,
     assert_customers_top_contract,
     assert_health_contract,
     assert_imports_contract,
+    assert_installation_contract,
+    assert_onboarding_contract,
     assert_pricing_contract,
     assert_products_top_contract,
     assert_purchase_order_detail_contract,
@@ -35,13 +41,17 @@ from api_contracts import (  # noqa: E402
     assert_quote_detail_contract,
     assert_quotes_list_contract,
     assert_replenishment_contract,
+    assert_replenishment_v2_contract,
     assert_services_top_contract,
     assert_summary_contract,
     assert_supplier_workbench_suppliers_contract,
     assert_supplier_workbench_contract,
 )
 from action_center import api_actions_today  # noqa: E402
+from app_config import app_public_config, white_label_config  # noqa: E402
 from commercial import api_commercial_intelligence, api_customers, api_services  # noqa: E402
+from db_helpers import normalize_code  # noqa: E402
+from db_helpers import mark_app_controlled_fields  # noqa: E402
 from erp_import_flow import (  # noqa: E402
     api_imports,
     apply_erp_product_context,
@@ -49,12 +59,15 @@ from erp_import_flow import (  # noqa: E402
     materialize_erp_price_snapshot,
     materialize_erp_product_sale,
     materialize_erp_product_settings,
+    materialize_erp_supplier_profile,
     parse_biff_sheet,
     parse_biff_sst,
+    upsert_erp_customer,
+    upsert_erp_product_from_record,
 )
 from nexo_skills_runtime import api_nexo_skills  # noqa: E402
 from pricing import api_pricing, update_product_pricing  # noqa: E402
-from product_views import api_summary, api_top_products  # noqa: E402
+from product_views import api_product_detail, api_summary, api_top_products, upsert_product_profile  # noqa: E402
 from quotes import (  # noqa: E402
     api_quote_detail,
     api_quotes,
@@ -62,7 +75,7 @@ from quotes import (  # noqa: E402
     api_purchase_orders,
     api_supplier_workbench_list,
     api_supplier_workbench,
-    close_purchase_order,
+    update_pending_purchase_order,
     export_quote_pdf,
     latest_purchase_costs,
     receive_purchase_order,
@@ -71,8 +84,13 @@ from quotes import (  # noqa: E402
     upsert_quote_item,
 )
 from replenishment import api_replenishment  # noqa: E402
+from replenishment_v2 import api_replenishment_v2  # noqa: E402
+from replenishment_v2_scenarios import run as run_replenishment_v2_scenarios  # noqa: E402
 from schema_upgrades import ensure_schema_upgrades  # noqa: E402
 from schema_upgrades import LEGACY_SCHEMA_MIGRATION_ID  # noqa: E402
+from schema_upgrades import OPERATIONAL_DATA_SOURCES_MIGRATION_ID  # noqa: E402
+from schema_upgrades import CORRUPT_PRODUCT_CODE_QUARANTINE_MIGRATION_ID  # noqa: E402
+from schema_upgrades import _safe_legacy_source_code  # noqa: E402
 
 
 ORG_ID = "org_smoke"
@@ -87,6 +105,15 @@ CUSTOMER_FAST = "customer_fast"
 def check(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def smoke_code_normalization() -> None:
+    check(normalize_code("000123") == "123", "Normalizacao nao removeu zeros iniciais numericos.")
+    check(normalize_code("ABC000123") == "ABC123", "Normalizacao nao removeu zeros antes do primeiro numero.")
+    check(import_practica.product_id("org", "000123") == "org:product:123", "ID de produto deve ignorar zeros a esquerda.")
+    check(_safe_legacy_source_code("00000080") == "00000080", "Codigo legado numerico valido foi rejeitado.")
+    check(_safe_legacy_source_code("080 7890000000000 NOBRE") == "", "Codigo legado concatenado nao foi bloqueado.")
+    check(_safe_legacy_source_code("㌀㐀㔀 JAGUAR 789695") == "", "Codigo legado corrompido nao foi bloqueado.")
 
 
 def open_memory_db() -> sqlite3.Connection:
@@ -218,12 +245,12 @@ def seed_fixture(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         INSERT INTO quote_request_items
-            (quote_request_id, product_id, source_code, quote_code, product_name, unit,
+            (quote_request_id, product_id, source_code, supplier_reference, quote_code, product_name, unit,
              purchase_unit, purchase_package_size, coverage_target_days,
              suggested_quantity, requested_quantity, estimated_unit_cost, estimated_total_amount)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        ("quote_smoke", PRODUCT_FAST, "P001", "P001", "Produto Giro Rapido", "UN", "CX", 6, 45, 6, 6, 12, 72),
+        ("quote_smoke", PRODUCT_FAST, "P001", "MANUAL-P001", "MANUAL-P001", "Produto Giro Rapido", "UN", "CX", 6, 45, 6, 6, 12, 72),
     )
     conn.commit()
 
@@ -239,29 +266,277 @@ def smoke_schema_and_import_bootstrap() -> None:
                     "SELECT name FROM sqlite_master WHERE type = 'table'"
                 ).fetchall()
             }
-            for table in {"products", "product_sales", "quote_requests", "purchase_orders", "audit_log", "schema_migrations"}:
+            for table in {
+                "products",
+                "product_sales",
+                "quote_requests",
+                "purchase_orders",
+                "audit_log",
+                "schema_migrations",
+                "operational_data_sources",
+                "entity_source_links",
+                "entity_field_controls",
+            }:
                 check(table in tables, f"Tabela esperada ausente no schema: {table}")
             migration = conn.execute(
                 "SELECT id FROM schema_migrations WHERE id = ?",
                 (LEGACY_SCHEMA_MIGRATION_ID,),
             ).fetchone()
             check(migration is not None, "Schema sem registro de migracao legada aplicada.")
+            operational_sources_migration = conn.execute(
+                "SELECT id FROM schema_migrations WHERE id = ?",
+                (OPERATIONAL_DATA_SOURCES_MIGRATION_ID,),
+            ).fetchone()
+            check(
+                operational_sources_migration is not None,
+                "Schema sem registro da base de fontes operacionais.",
+            )
+            quarantine_migration = conn.execute(
+                "SELECT id FROM schema_migrations WHERE id = ?",
+                (CORRUPT_PRODUCT_CODE_QUARANTINE_MIGRATION_ID,),
+            ).fetchone()
+            check(
+                quarantine_migration is not None,
+                "Schema sem registro da quarentena de produtos corrompidos.",
+            )
             check(import_practica.money("1.234,56") == 1234.56, "Parser de dinheiro perdeu formato brasileiro.")
             check(import_practica.normalize("\u00c1lcool 70%") == "alcool_70", "Normalizacao da importacao mudou.")
         finally:
             conn.close()
 
 
+def smoke_corrupt_product_code_quarantine() -> None:
+    conn = open_memory_db()
+    try:
+        conn.execute("INSERT INTO organizations (id, name) VALUES (?, ?)", (ORG_ID, "Org Smoke"))
+        corrupt_code = "080 \x0178996827764188\x01NOBRE"
+        product_id = f"{ORG_ID}:product:{corrupt_code}"
+        conn.execute(
+            """
+            INSERT INTO products (id, organization_id, source_code, name, normalized_name, unit)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (product_id, ORG_ID, corrupt_code, "Produto com codigo quebrado", "produto_com_codigo_quebrado", "UN"),
+        )
+        conn.execute(
+            """
+            INSERT INTO cost_snapshots (organization_id, product_id, snapshot_date, purchase_cost, total_cost)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, product_id, "2026-05-22", 10, 10),
+        )
+        ensure_schema_upgrades(conn)
+        product = conn.execute("SELECT id, source_code, name, active FROM products WHERE source_code LIKE 'corrupt_%'").fetchone()
+        check(product is not None, "Produto corrompido nao foi isolado.")
+        check(int(product["active"]) == 0, "Produto corrompido nao foi inativado.")
+        check(str(product["source_code"]).startswith("corrupt_"), "Produto corrompido nao recebeu marcador seguro.")
+        cost_count = conn.execute("SELECT COUNT(*) AS total FROM cost_snapshots WHERE product_id = ?", (product["id"],)).fetchone()
+        check(int(cost_count["total"] or 0) == 1, "Quarentena removeu snapshots do produto corrompido.")
+        audit = conn.execute(
+            "SELECT action FROM audit_log WHERE target_id = ? AND action = ?",
+            (product["id"], "product_corrupt_code_quarantined"),
+        ).fetchone()
+        check(audit is not None, "Quarentena nao registrou auditoria.")
+    finally:
+        conn.close()
+
+
+def smoke_import_preserves_app_controlled_fields() -> None:
+    conn = open_memory_db()
+    try:
+        conn.execute("INSERT INTO organizations (id, name) VALUES (?, ?)", (ORG_ID, "Org Smoke"))
+        conn.execute(
+            "INSERT INTO import_batches (id, organization_id, source_system, status, import_mode) VALUES (?, ?, ?, ?, ?)",
+            ("batch_local_guard", ORG_ID, "erp_planilha", "finished", "incremental_sync"),
+        )
+        conn.execute(
+            "INSERT INTO import_batches (id, organization_id, source_system, status, import_mode) VALUES (?, ?, ?, ?, ?)",
+            ("batch_local_guard_new", ORG_ID, "erp_planilha", "created", "incremental_sync"),
+        )
+        conn.execute(
+            """
+            INSERT INTO products
+                (id, organization_id, source_code, name, normalized_name, unit, first_seen_import_batch_id, last_seen_import_batch_id)
+            VALUES (?, ?, ?, ?, ?, 'UN', ?, ?)
+            """,
+            ("product_local_guard", ORG_ID, "PLOCAL", "Nome ajustado no app", "nome_ajustado_no_app", "batch_local_guard", "batch_local_guard"),
+        )
+        mark_app_controlled_fields(
+            conn,
+            organization_id=ORG_ID,
+            entity_type="product",
+            entity_id="product_local_guard",
+            source_view="smoke",
+            values={"name": "Nome ajustado no app"},
+        )
+        upsert_erp_product_from_record(
+            conn,
+            org=ORG_ID,
+            batch_id="batch_local_guard_new",
+            code="PLOCAL",
+            name="Nome vindo da planilha",
+            payload={"source": "smoke"},
+        )
+        product = conn.execute("SELECT name, last_seen_import_batch_id FROM products WHERE id = ?", ("product_local_guard",)).fetchone()
+        check(product["name"] == "Nome ajustado no app", "Importacao sobrescreveu nome de produto controlado no app.")
+        check(product["last_seen_import_batch_id"] == "batch_local_guard_new", "Importacao nao atualizou presenca do produto preservado.")
+
+        conn.execute(
+            """
+            INSERT INTO customers
+                (id, organization_id, source_code, name, normalized_name, canonical_name, first_seen_import_batch_id, last_seen_import_batch_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "customer_local_guard",
+                ORG_ID,
+                "CLOCAL",
+                "Cliente ajustado no app",
+                "cliente_ajustado_no_app",
+                "cliente_ajustado_no_app",
+                "batch_local_guard",
+                "batch_local_guard",
+            ),
+        )
+        mark_app_controlled_fields(
+            conn,
+            organization_id=ORG_ID,
+            entity_type="customer",
+            entity_id="customer_local_guard",
+            source_view="smoke",
+            values={"name": "Cliente ajustado no app"},
+        )
+        customer_id = upsert_erp_customer(conn, ORG_ID, "batch_local_guard_new", "CLOCAL", "Cliente vindo da planilha")
+        customers = conn.execute("SELECT id, name FROM customers WHERE organization_id = ? AND source_code = ?", (ORG_ID, "CLOCAL")).fetchall()
+        check(customer_id == "customer_local_guard", "Importacao nao reutilizou cliente controlado por codigo externo.")
+        check(len(customers) == 1, "Importacao criou cliente duplicado ao receber nome diferente.")
+        check(customers[0]["name"] == "Cliente ajustado no app", "Importacao sobrescreveu nome de cliente controlado no app.")
+
+        conn.execute(
+            """
+            INSERT INTO suppliers
+                (id, organization_id, name, normalized_name, contact_phone)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            ("supplier_local_guard", ORG_ID, "Fornecedor Local", "fornecedor_local", "11999990000"),
+        )
+        mark_app_controlled_fields(
+            conn,
+            organization_id=ORG_ID,
+            entity_type="supplier",
+            entity_id="supplier_local_guard",
+            source_view="smoke",
+            values={"contact_phone": "11999990000"},
+        )
+        materialize_erp_supplier_profile(
+            conn,
+            org=ORG_ID,
+            record={
+                "normalized": {
+                    "fornecedor.nome_fornecedor": "Fornecedor Local",
+                    "fornecedor.telefone": "11888880000",
+                    "fornecedor.email": "novo@example.com",
+                }
+            },
+        )
+        supplier = conn.execute(
+            "SELECT contact_phone, contact_email FROM suppliers WHERE id = ?",
+            ("supplier_local_guard",),
+        ).fetchone()
+        check(supplier["contact_phone"] == "11999990000", "Importacao sobrescreveu telefone de fornecedor controlado no app.")
+        check(supplier["contact_email"] == "novo@example.com", "Importacao deixou de atualizar campo livre do fornecedor.")
+    finally:
+        conn.close()
+
+
+def smoke_product_profile_upsert() -> None:
+    conn = open_memory_db()
+    try:
+        conn.execute("INSERT INTO organizations (id, name) VALUES (?, ?)", (ORG_ID, "Org Smoke"))
+        result = upsert_product_profile(
+            conn,
+            {
+                "organization_id": ORG_ID,
+                "source_code": "APP001",
+                "name": "Produto criado no app",
+                "unit": "UN",
+                "brand_name": "Marca App",
+                "category_name": "Categoria App",
+                "supplier_name": "Fornecedor App",
+                "barcode": "7890000000001",
+                "supplier_reference": "000REF-001",
+                "package_size": 12,
+                "minimum_stock": 2,
+                "maximum_stock": 60,
+                "expires": True,
+                "notes": "Cadastro standalone.",
+            },
+        )
+        product = result["product"]
+        check(product["id"], "Cadastro de produto nao retornou id.")
+        check(product["brand_name"] == "Marca App", "Cadastro de produto nao vinculou marca.")
+        check(product["category_name"] == "Categoria App", "Cadastro de produto nao vinculou categoria.")
+        check(product["supplier_reference"] == "REF-1", "Cadastro de produto nao normalizou referencia do fornecedor.")
+        check(float(product["settings"]["package_size"]) == 12.0, "Cadastro de produto nao salvou embalagem.")
+        check(int(product["settings"]["target_coverage_days"]) == 0, "Cadastro de produto nao manteve cobertura automatica neutra.")
+        check(product["settings"]["target_coverage_mode"] == "auto", "Cadastro de produto nao manteve cobertura calculada pelo motor.")
+        detail = api_product_detail(conn, product["id"])
+        controlled = {(row["entity_type"], row["field_name"]) for row in detail["controlled_fields"]}
+        check(("product", "name") in controlled, "Cadastro de produto nao marcou nome como controlado pelo app.")
+        check(("product_settings", "package_size") in controlled, "Cadastro de produto nao marcou compra como controlada pelo app.")
+        catalog = api_top_products(conn, {"period_days": "all", "date_from": "", "date_to": "", "label": "Todo periodo"})
+        check(any(row["id"] == product["id"] and float(row["revenue"] or 0) == 0.0 for row in catalog), "Produto sem venda nao apareceu na base do mix.")
+    finally:
+        conn.close()
+
+
 def smoke_static_assets() -> None:
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     js = "\n".join(
         (WEB_DIR / script_name).read_text(encoding="utf-8")
-        for script_name in ("app_core.js", "app_charts.js", "app_tables.js", "app_ui.js", "app.js")
+        for script_name in (
+            "app_core.js",
+            "app_state.js",
+            "app_charts.js",
+            "app_tables.js",
+            "app_ui.js",
+            "app_dashboard.js",
+            "app_products.js",
+            "app_period_data.js",
+            "app_quotes_suppliers.js",
+            "app_quote_dashboard.js",
+            "app_purchase_orders.js",
+            "app_quote_workbench.js",
+            "app_quote_cycle.js",
+            "app_quote_formula.js",
+            "app_commercial.js",
+            "app_pricing.js",
+            "app_imports.js",
+            "app_customers.js",
+            "app_company_profile.js",
+            "app_actions_engine.js",
+            "app_auth.js",
+            "app_distribution.js",
+            "app_implementation.js",
+            "app_inventory_suppliers.js",
+            "app_quote_tools.js",
+            "app.js",
+            "app_boot.js",
+        )
     )
     backend = (SCRIPTS_DIR / "serve_app.py").read_text(encoding="utf-8")
     api_routes = (SCRIPTS_DIR / "api_routes.py").read_text(encoding="utf-8")
     schema_upgrades = (SCRIPTS_DIR / "schema_upgrades.py").read_text(encoding="utf-8")
     canonical_schema = SCHEMA_PATH.read_text(encoding="utf-8")
+    white_label = white_label_config()
+    assert_app_config_contract(app_public_config())
+    check(white_label.get("schema") == "pulso.white_label.v1", "Config white-label sem schema esperado.")
+    check((ROOT / "config" / "white_label" / "default.json").exists(), "Perfil white-label base ausente.")
+    check((ROOT / "config" / "partners" / "default.json").exists(), "Perfil de parceiro base ausente.")
+    check((ROOT / "config" / "distribution" / "default.json").exists(), "Perfil de distribuicao base ausente.")
+    check((SCRIPTS_DIR / "partner_distribution.py").exists(), "Aplicador de perfil de distribuicao ausente.")
+    check((ROOT / "docs" / "24_fluxo_parceiros_distribuicao.md").exists(), "Fluxo de parceiros/distribuicao nao documentado.")
+    check((WEB_DIR / "brand" / "pulso.svg").exists(), "Logo white-label base ausente.")
     check((SCRIPTS_DIR / "http_helpers.py").exists(), "Helpers HTTP deveriam estar em scripts/http_helpers.py.")
     check((SCRIPTS_DIR / "api_contracts.py").exists(), "Contratos deveriam estar em scripts/api_contracts.py.")
     check((SCRIPTS_DIR / "api_routes.py").exists(), "Rotas API deveriam estar em scripts/api_routes.py.")
@@ -301,6 +576,11 @@ def smoke_static_assets() -> None:
     }
     missing_sections = sorted(nav_views - view_sections)
     check(not missing_sections, f"Navegacao aponta para views ausentes: {missing_sections}")
+    view_routes_match = re.search(r"const VIEW_ROUTES = \{(?P<body>.*?)\};", js, re.DOTALL)
+    check(view_routes_match is not None, "VIEW_ROUTES nao encontrado no frontend.")
+    if view_routes_match is not None:
+        for route in sorted(set(re.findall(r':\s*"(/[^"]+)"', view_routes_match.group("body")))):
+            check(route in serve_app.SPA_ROUTES, f"Rota de tela nao existe no servidor: {route}")
     for vendor in {"echarts.min.js", "lucide.min.js"}:
         check((WEB_DIR / "vendor" / vendor).exists(), f"Vendor asset ausente: {vendor}")
 
@@ -340,6 +620,128 @@ def smoke_static_assets() -> None:
     check(not missing_ids, f"JS usa IDs estaticos ausentes no HTML/templates: {missing_ids}")
 
 
+def smoke_new_tenant_isolation() -> None:
+    env_names = [
+        "PULSO_CONFIG",
+        "NEXOVAREJO_CONFIG",
+        "PULSO_APP_NAME",
+        "NEXOVAREJO_APP_NAME",
+        "PULSO_DEFAULT_ORG_ID",
+        "NEXOVAREJO_DEFAULT_ORG_ID",
+        "PULSO_DEFAULT_COMPANY_NAME",
+        "NEXOVAREJO_DEFAULT_COMPANY_NAME",
+        "PULSO_IMPORTED_COMPANY_NAME",
+        "NEXOVAREJO_IMPORTED_COMPANY_NAME",
+        "PULSO_DEFAULT_STORE_NAME",
+        "NEXOVAREJO_DEFAULT_STORE_NAME",
+    ]
+    saved_env = {name: os.environ.get(name) for name in env_names}
+    original_tenants_dir = app_config.TENANTS_DIR
+    original_legacy_config = app_config.LEGACY_LOCAL_CONFIG_PATH
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            global_config = tmp_root / "practica_global.json"
+            global_config.write_text(
+                json.dumps(
+                    {
+                        "schema": "pulso.white_label.v1",
+                        "public": {"app_name": "Practica Gestao", "logo_path": "/brand/practica.svg"},
+                        "defaults": {
+                            "organization_id": "practica",
+                            "company_name": "Practica",
+                            "imported_company_name": "Practica",
+                            "store_name": "Practica",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            os.environ["PULSO_CONFIG"] = str(global_config)
+            os.environ["PULSO_APP_NAME"] = "Practica Gestao"
+            os.environ["PULSO_DEFAULT_ORG_ID"] = "practica"
+            os.environ["PULSO_DEFAULT_COMPANY_NAME"] = "Practica"
+            app_config.TENANTS_DIR = tmp_root / "tenants"
+            app_config.LEGACY_LOCAL_CONFIG_PATH = tmp_root / "local" / "app_config.json"
+            tenant_dir = app_config.TENANTS_DIR / "cliente_novo"
+            tenant_dir.mkdir(parents=True)
+
+            app_config.set_active_tenant("cliente_novo")
+            check(app_config.local_config_path() == tenant_dir / "app_config.json", "Config local de tenant novo saiu da pasta do tenant.")
+            check(app_config.import_config_path() == tenant_dir / "import_reference.json", "Referencia de importacao nao ficou isolada por tenant.")
+            check(app_config.default_organization_slug() == "org_default", "Tenant novo herdou organization_id global indevido.")
+            check(app_config.default_company_name() == "Empresa", "Tenant novo herdou empresa global indevida.")
+            check("Practica" not in app_config.app_public_config().get("app_name", ""), "Tenant novo herdou app_name da Practica.")
+
+            (tenant_dir / "app_config.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "pulso.white_label.v1",
+                        "public": {"app_name": "Cliente Novo", "app_subtitle": "", "logo_path": ""},
+                        "defaults": {
+                            "organization_id": "cliente_novo",
+                            "company_name": "Cliente Novo",
+                            "imported_company_name": "Cliente Novo",
+                            "store_name": "Cliente Novo",
+                            "country": "Brasil",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            check(app_config.default_organization_slug() == "cliente_novo", "Tenant nao aplicou organization_id proprio.")
+            check(app_config.default_company_name() == "Cliente Novo", "Tenant nao aplicou empresa propria.")
+
+            conn = open_memory_db()
+            try:
+                conn.executemany(
+                    "INSERT INTO organizations (id, name) VALUES (?, ?)",
+                    [("practica", "Practica"), ("cliente_novo", "Cliente Novo")],
+                )
+                conn.executemany(
+                    """
+                    INSERT INTO import_batches (id, organization_id, source_system, status, import_mode, finished_at)
+                    VALUES (?, ?, 'erp_planilha', 'completed', 'smoke', CURRENT_TIMESTAMP)
+                    """,
+                    [("batch_practica", "practica"), ("batch_cliente", "cliente_novo")],
+                )
+                conn.executemany(
+                    """
+                    INSERT INTO source_files (id, import_batch_id, file_name, file_role, row_count)
+                    VALUES (?, ?, ?, 'principal', 1)
+                    """,
+                    [("file_practica", "batch_practica", "practica.csv"), ("file_cliente", "batch_cliente", "cliente.csv")],
+                )
+                conn.execute(
+                    "INSERT INTO import_issues (import_batch_id, source_file_id, severity, code, message) VALUES (?, ?, 'warning', 'smoke', 'vazamento')",
+                    ("batch_practica", "file_practica"),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO source_entity_changes
+                        (organization_id, import_batch_id, entity_type, entity_id, source_system, field_name)
+                    VALUES ('practica', 'batch_practica', 'produto', 'p1', 'erp_planilha', 'name')
+                    """,
+                )
+                imports = api_imports(conn)
+                check([batch["id"] for batch in imports["batches"]] == ["batch_cliente"], "Importacoes de outro tenant apareceram no onboarding/importacao.")
+                file_names = [item["file_name"] for item in imports["local_reference"]["files"]]
+                check(file_names == ["cliente.csv"], "Referencia local listou arquivo importado por outro tenant.")
+                check(not imports["issues"], "Avisos de outro tenant vazaram para importacao.")
+                check(not imports["changes"], "Mudancas de outro tenant vazaram para importacao.")
+            finally:
+                conn.close()
+    finally:
+        for name, value in saved_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        app_config.TENANTS_DIR = original_tenants_dir
+        app_config.LEGACY_LOCAL_CONFIG_PATH = original_legacy_config
+        app_config.set_active_tenant("")
+
+
 def smoke_skills() -> None:
     payload = api_nexo_skills()
     skills = payload.get("skills") or []
@@ -362,6 +764,12 @@ def smoke_replenishment(conn: sqlite3.Connection) -> None:
     check(by_product[PRODUCT_FAST]["status"] in {"urgent", "buy_now"}, "Produto sem estoque e com giro nao virou compra.")
     check(by_product[PRODUCT_NO_SALES]["status"] == "no_demand", "Produto com estoque e sem venda deveria ficar sem demanda.")
     check(result["summary"]["buy_now"] >= 1, "Resumo de reposicao nao contou compra sugerida.")
+    result_v2 = api_replenishment_v2(conn, period={"period_days": "all", "date_from": "", "date_to": "", "label": "Todo periodo"})
+    assert_replenishment_v2_contract(result_v2)
+    by_product_v2 = {row["product_id"]: row for row in result_v2["rows"]}
+    check(by_product_v2[PRODUCT_FAST]["product_age_days"] > 0, "Reposicao V2 nao calculou idade comercial.")
+    check(by_product_v2[PRODUCT_FAST]["demand_class"], "Reposicao V2 nao classificou demanda.")
+    check(by_product_v2[PRODUCT_FAST]["demand_quantile_used"] in {"p50", "p75", "p90"}, "Reposicao V2 nao escolheu quantil de demanda.")
 
 
 def smoke_replenishment_sparse_guardrail() -> None:
@@ -369,6 +777,7 @@ def smoke_replenishment_sparse_guardrail() -> None:
     try:
         seed_fixture(conn)
         product_id = "product_sparse_burst"
+        slow_covered_id = "product_slow_covered"
         conn.execute(
             """
             INSERT INTO products (id, organization_id, source_code, name, normalized_name, unit, brand_id)
@@ -378,11 +787,26 @@ def smoke_replenishment_sparse_guardrail() -> None:
         )
         conn.execute(
             """
+            INSERT INTO products (id, organization_id, source_code, name, normalized_name, unit, brand_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (slow_covered_id, ORG_ID, "P998", "Produto Lento Coberto", "produto_lento_coberto", "UN", BRAND_ID),
+        )
+        conn.execute(
+            """
             INSERT INTO product_settings
                 (organization_id, product_id, preferred_supplier_id, package_size, target_coverage_days)
             VALUES (?, ?, ?, ?, ?)
             """,
             (ORG_ID, product_id, SUPPLIER_ID, 1, 45),
+        )
+        conn.execute(
+            """
+            INSERT INTO product_settings
+                (organization_id, product_id, preferred_supplier_id, package_size, target_coverage_days)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, slow_covered_id, SUPPLIER_ID, 12, 45),
         )
         for sold_at, quantity in [("2025-07-15", 1), ("2026-01-09", 200), ("2026-01-10", 200)]:
             conn.execute(
@@ -393,6 +817,15 @@ def smoke_replenishment_sparse_guardrail() -> None:
                 """,
                 (ORG_ID, STORE_ID, product_id, sold_at, quantity, quantity * 10),
             )
+        for sold_at in ["2025-01-10", "2025-03-10", "2025-05-10"]:
+            conn.execute(
+                """
+                INSERT INTO product_sales
+                    (organization_id, store_id, product_id, sold_at, quantity, gross_amount)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (ORG_ID, STORE_ID, slow_covered_id, sold_at, 1, 10),
+            )
         conn.execute(
             """
             INSERT INTO inventory_snapshots
@@ -400,6 +833,14 @@ def smoke_replenishment_sparse_guardrail() -> None:
             VALUES (?, ?, ?, ?, ?)
             """,
             (ORG_ID, STORE_ID, product_id, "2026-01-11", 0),
+        )
+        conn.execute(
+            """
+            INSERT INTO inventory_snapshots
+                (organization_id, store_id, product_id, snapshot_date, quantity_on_hand)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, STORE_ID, slow_covered_id, "2026-01-11", 5),
         )
         result = api_replenishment(conn, period={"period_days": "all", "date_from": "", "date_to": "", "label": "Todo periodo"})
         by_product = {row["product_id"]: row for row in result["rows"]}
@@ -409,6 +850,75 @@ def smoke_replenishment_sparse_guardrail() -> None:
         check(row["target_coverage_days"] <= 30, "Rajada esparsa nao deveria usar cobertura longa automatica.")
         check(row["order_up_to"] <= 400, "Alvo de pedido ignorou limite por evidencia de demanda.")
         check(row["suggested_quantity"] <= 400, "Sugestao de pedido ignorou limite por evidencia de demanda.")
+        covered_row = by_product[slow_covered_id]
+        check(covered_row["stock_units"] > covered_row["order_up_to"], "Fixture de produto lento nao ficou com estoque acima do alvo.")
+        check(covered_row["suggested_quantity"] == 0, "Produto lento com estoque acima do alvo nao deveria sugerir uma caixa.")
+    finally:
+        conn.close()
+
+
+def smoke_supplier_cycle_drives_replenishment_v2() -> None:
+    conn = open_memory_db()
+    try:
+        conn.execute("INSERT INTO organizations (id, name) VALUES (?, ?)", (ORG_ID, "Loja Smoke"))
+        conn.execute("INSERT INTO stores (id, organization_id, name) VALUES (?, ?, ?)", (STORE_ID, ORG_ID, "Matriz"))
+        supplier_id = "supplier_cycle_smoke"
+        product_id = "product_cycle_smoke"
+        conn.execute(
+            """
+            INSERT INTO suppliers
+                (id, organization_id, name, normalized_name, minimum_order_value, average_lead_time_days, order_review_cycle_days)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (supplier_id, ORG_ID, "Fornecedor Ciclo", "fornecedor_ciclo", 300, 10, 14),
+        )
+        conn.execute(
+            """
+            INSERT INTO products (id, organization_id, source_code, name, normalized_name, unit)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (product_id, ORG_ID, "CICLO1", "Produto Ciclo Fornecedor", "produto_ciclo_fornecedor", "UN"),
+        )
+        conn.execute(
+            """
+            INSERT INTO product_settings
+                (organization_id, product_id, preferred_supplier_id, package_size, target_coverage_days)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, product_id, supplier_id, 1, 90),
+        )
+        first_day = date(2026, 1, 1)
+        for offset in range(90):
+            sold_at = first_day + timedelta(days=offset)
+            conn.execute(
+                """
+                INSERT INTO product_sales
+                    (organization_id, store_id, product_id, sold_at, quantity, gross_amount)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (ORG_ID, STORE_ID, product_id, sold_at.isoformat(), 2, 40),
+            )
+        conn.execute(
+            """
+            INSERT INTO inventory_snapshots
+                (organization_id, store_id, product_id, snapshot_date, quantity_on_hand)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, STORE_ID, product_id, "2026-03-31", 75),
+        )
+        conn.execute(
+            """
+            INSERT INTO cost_snapshots (organization_id, product_id, snapshot_date, purchase_cost, total_cost)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, product_id, "2026-03-31", 10, 10),
+        )
+        result = api_replenishment_v2(conn, period={"period_days": "all", "date_from": "", "date_to": "", "label": "Todo periodo"})
+        row = {item["product_id"]: item for item in result["rows"]}[product_id]
+        check(row["order_horizon_source"] == "supplier_cycle", "Reposicao V2 deixou cobertura automatica vencer o ciclo do fornecedor.")
+        check(row["order_horizon_days"] <= 30, "Reposicao V2 alongou fornecedor facil para uma cobertura longa.")
+        check(row["suggested_quantity"] == 0, "Produto coberto ate a proxima rodada do fornecedor entrou em compra.")
+        check(row["projected_coverage_days"] > row["order_horizon_days"], "Fixture nao ficou coberto ate a proxima rodada.")
     finally:
         conn.close()
 
@@ -612,7 +1122,7 @@ def smoke_quotes(conn: sqlite3.Connection) -> None:
     item_id = detail["items"][0]["id"]
     check(detail["items"][0]["purchase_unit"] == "CX", "Unidade de compra da cotacao nao foi preservada.")
     check(float(detail["items"][0]["purchase_package_size"]) == 6.0, "Embalagem de compra da cotacao nao foi preservada.")
-    check(int(detail["items"][0]["coverage_target_days"]) == 45, "Cobertura alvo da cotacao nao foi preservada.")
+    check(int(detail["items"][0]["coverage_target_days"]) == 45, "Cobertura da cotacao nao foi preservada.")
     upsert_quote_item(
         conn,
         {
@@ -630,7 +1140,7 @@ def smoke_quotes(conn: sqlite3.Connection) -> None:
     assert_quote_detail_contract(detail)
     check(detail["items"][0]["purchase_unit"] == "FD", "Upsert nao atualizou unidade de compra da cotacao.")
     check(float(detail["items"][0]["purchase_package_size"]) == 3.0, "Upsert nao atualizou embalagem de compra da cotacao.")
-    check(int(detail["items"][0]["coverage_target_days"]) == 30, "Upsert nao atualizou cobertura alvo da cotacao.")
+    check(int(detail["items"][0]["coverage_target_days"]) == 30, "Upsert nao atualizou cobertura da cotacao.")
     check(detail["items"][0]["notes"] == "validade longa", "Upsert nao preservou observacao do item.")
     conn.execute(
         """
@@ -664,10 +1174,11 @@ def smoke_quotes(conn: sqlite3.Connection) -> None:
         conn,
         {
             "id": "quote_smoke",
+            "auto_confirm_order": False,
             "items": [
                 {
                     "item_id": item_id,
-                    "quoted_unit_price": 11.5,
+                    "confirmed_quantity": 6,
                     "quoted_package_size": 6,
                     "quoted_lead_time_days": 4,
                     "availability": "available",
@@ -678,6 +1189,7 @@ def smoke_quotes(conn: sqlite3.Connection) -> None:
     check(response["status"] == "responded", "Resposta de cotacao nao marcou status responded.")
     assert_quote_detail_contract(response)
     check(response["response_summary"]["responded_count"] == 1, "Resumo da cotacao nao contou item respondido.")
+    check(float(response["items"][0]["confirmed_quantity"]) == 6.0, "Resposta nao preservou quantidade confirmada.")
     learned = conn.execute(
         """
         SELECT last_purchase_cost, package_size, lead_time_days
@@ -689,7 +1201,9 @@ def smoke_quotes(conn: sqlite3.Connection) -> None:
         (ORG_ID, SUPPLIER_ID, PRODUCT_FAST),
     ).fetchone()
     check(learned is not None, "Resposta de cotacao nao gerou aprendizado fornecedor-produto.")
-    check(float(learned["last_purchase_cost"]) == 11.5, "Custo aprendido da cotacao ficou incorreto.")
+    check(learned["last_purchase_cost"] is None, "Resposta de cotacao nao deve aprender preco de compra.")
+    check(float(learned["package_size"]) == 6.0, "Embalagem aprendida da cotacao ficou incorreta.")
+    check(int(learned["lead_time_days"]) == 4, "Prazo aprendido da cotacao ficou incorreto.")
 
 
 def smoke_supplier_workbench_contract(conn: sqlite3.Connection) -> None:
@@ -697,7 +1211,8 @@ def smoke_supplier_workbench_contract(conn: sqlite3.Connection) -> None:
     assert_supplier_workbench_suppliers_contract(suppliers)
     supplier_row = next((row for row in suppliers if row["supplier_id"] == SUPPLIER_ID), None)
     check(supplier_row is not None, "Lista da mesa de fornecedores nao retornou fornecedor do fixture.")
-    check(supplier_row["open_quote_count"] >= 1, "Lista da mesa de fornecedores nao contou cotacao em aberto.")
+    open_or_pending = (supplier_row.get("open_quote_count") or 0) + (supplier_row.get("pending_order_count") or 0)
+    check(open_or_pending >= 1, "Lista da mesa de fornecedores nao contou cotacao em aberto nem pedido pendente.")
     check("alert_count" in supplier_row, "Lista da mesa de fornecedores nao trouxe alert_count.")
     workbench = api_supplier_workbench(conn, SUPPLIER_ID, 90)
     assert_supplier_workbench_contract(workbench)
@@ -734,41 +1249,45 @@ def smoke_quote_pdf(conn: sqlite3.Connection) -> None:
     check(filename.endswith(".pdf"), "PDF de cotacao nao retornou nome de arquivo PDF.")
     check(body.startswith(b"%PDF-1.4"), "PDF de cotacao nao retornou cabecalho PDF.")
     check(b"Produto Giro Rapido" in body, "PDF de cotacao nao inclui nome do produto.")
-    check(b"P001" in body, "PDF de cotacao nao inclui referencia/codigo do produto.")
+    check(b"MANUAL-P1" in body, "PDF de cotacao nao inclui referencia normalizada do fornecedor.")
     check(b"Preco" not in body and b"Prazo" not in body, "PDF de cotacao incluiu campos de resposta do fornecedor.")
 
 
 def smoke_purchase_order_cycle(conn: sqlite3.Connection) -> None:
-    quote = api_quote_detail(conn, "quote_smoke")
-    item = quote["items"][0]
-    order_payload = {
-        "id": "quote_smoke",
-        "items": [
-            {
-                "item_id": item["id"],
-                "decision": "buy",
-                "final_quantity": 6,
-                "unit_price": item.get("quoted_unit_price") or 11.5,
-                "package_size": item.get("quoted_package_size") or 6,
-            }
-        ],
-        "notes": "Pedido ficticio para smoke check.",
-    }
-    quote_with_order = close_purchase_order(conn, order_payload)
-    order = quote_with_order.get("purchase_order")
-    check(order is not None, "Fechamento de cotacao nao gerou pedido de compra.")
+    sent_quote = update_quote_request(conn, {"id": "quote_smoke", "status": "sent"})
+    check(sent_quote.get("purchase_order") is None, "Envio da cotacao nao deve gerar pedido provisorio.")
+    responded_quote = update_quote_response(
+        conn,
+        {
+            "id": "quote_smoke",
+            "items": [
+                {
+                    "item_id": sent_quote["items"][0]["id"],
+                    "supplier_reference": "000RESP-000001",
+                    "confirmed_quantity": 6,
+                    "quoted_package_size": 6,
+                    "quoted_lead_time_days": 4,
+                    "availability": "available",
+                }
+            ],
+        },
+    )
+    check(responded_quote.get("purchase_order") is not None, "Resposta da cotacao deve gerar pedido aprovado automaticamente.")
+    check(responded_quote["items"][0]["supplier_reference"] == "RESP-1", "Resposta nao normalizou referencia do fornecedor no item.")
+    order = responded_quote["purchase_order"]
+    check(order["status"] == "approved", "Pedido gerado pela resposta nao ficou aprovado.")
     assert_purchase_order_detail_contract(order)
-    check(order["status"] == "approved", "Pedido gerado nao ficou aprovado.")
-    check(order["approved_item_count"] == 1, "Pedido gerado nao contou item aprovado.")
-    check(float(order["total_amount"]) == 69.0, "Total do pedido gerado ficou incorreto.")
+    check(order["approved_item_count"] == 1, "Pedido aprovado automaticamente nao contou item aprovado.")
+    check(float(order["total_amount"]) == 72.0, "Total do pedido aprovado automaticamente ficou incorreto.")
     assert_purchase_orders_contract(api_purchase_orders(conn, "open"))
     assert_purchase_order_detail_contract(api_purchase_order_detail(conn, order["id"]))
+
     replenishment_with_open_order = api_replenishment(conn, period={"period_days": "all", "date_from": "", "date_to": "", "label": "Todo periodo"})
     assert_replenishment_contract(replenishment_with_open_order)
     fast_row = {row["product_id"]: row for row in replenishment_with_open_order["rows"]}[PRODUCT_FAST]
     check(fast_row["open_order_quantity"] == 6.0, "Reposicao nao considerou quantidade em pedido aberto.")
     check(fast_row["projected_stock_units"] == 6.0, "Reposicao nao somou pedido aberto ao estoque projetado.")
-    check(fast_row["suggested_quantity"] == 126.0, "Reposicao nao abateu pedido aberto da nova sugestao complementar.")
+    check(fast_row["suggested_quantity"] == 36.0, "Reposicao nao abateu pedido aberto da nova sugestao complementar.")
 
     received = receive_purchase_order(
         conn,
@@ -842,8 +1361,14 @@ def smoke_http_server() -> None:
         try:
             index = urllib.request.urlopen(f"{base_url}/", timeout=10).read()
             check(b"<html" in index.lower() and len(index) > 1000, "Pagina inicial nao retornou HTML esperado.")
+            for spa_route, marker in {"/implantacao": b"implementationSteps", "/distribuicao": b"distributionSummary"}.items():
+                page = urllib.request.urlopen(f"{base_url}{spa_route}", timeout=10).read()
+                check(marker in page, f"Rota SPA nao retornou a tela esperada: {spa_route}")
 
             routes = {
+                "/api/app-config": "app_name",
+                "/api/installation": "installation",
+                "/api/onboarding": "steps",
                 "/api/health": "checks",
                 "/api/summary": "kpis",
                 "/api/intelligence/maturity": "score",
@@ -851,6 +1376,8 @@ def smoke_http_server() -> None:
                 "/api/products/stock": None,
                 f"/api/product?id={PRODUCT_FAST}": "settings",
                 "/api/replenishment?period_days=all": "summary",
+                "/api/replenishment-v2?period_days=all": "summary",
+                "/api/replenishment-v2/compare?period_days=all": "summary",
                 "/api/commercial/intelligence?period_days=all": "summary",
                 "/api/customers/top?period_days=all": None,
                 "/api/services/top?period_days=all": None,
@@ -870,9 +1397,13 @@ def smoke_http_server() -> None:
                 payload = get_json(route)
                 if required_key:
                     check(required_key in payload, f"Rota HTTP sem chave esperada {required_key}: {route}")
+            assert_app_config_contract(get_json("/api/app-config"))
+            assert_installation_contract(get_json("/api/installation"))
+            assert_onboarding_contract(get_json("/api/onboarding"))
             assert_summary_contract(get_json("/api/summary?period_days=all"))
             assert_health_contract(get_json("/api/health"))
             assert_replenishment_contract(get_json("/api/replenishment?period_days=all"))
+            assert_replenishment_v2_contract(get_json("/api/replenishment-v2?period_days=all"))
             assert_supplier_workbench_suppliers_contract(get_json("/api/supplier-workbench/suppliers"))
             assert_supplier_workbench_contract(get_json(f"/api/supplier-workbench?supplier_id={SUPPLIER_ID}&window_days=90"))
             assert_pricing_contract(get_json("/api/pricing?period_days=all"))
@@ -1026,6 +1557,7 @@ def smoke_http_server() -> None:
 
             sent_quote = post_json("/api/quotes/status", {"id": "quote_smoke", "status": "sent"})
             check(sent_quote.get("status") == "sent", "POST /api/quotes/status nao marcou cotacao como enviada.")
+            check(sent_quote.get("purchase_order") is None, "POST /api/quotes/status nao deve gerar pedido provisorio.")
             item_id = sent_quote["items"][0]["id"]
             quote_response = post_json(
                 "/api/quotes/response",
@@ -1034,7 +1566,7 @@ def smoke_http_server() -> None:
                     "items": [
                         {
                             "item_id": item_id,
-                            "quoted_unit_price": 11.5,
+                            "confirmed_quantity": 6,
                             "quoted_package_size": 6,
                             "quoted_lead_time_days": 4,
                             "availability": "available",
@@ -1042,25 +1574,9 @@ def smoke_http_server() -> None:
                     ],
                 },
             )
-            check(quote_response.get("status") == "responded", "POST /api/quotes/response nao marcou cotacao respondida.")
-            item_id = quote_response["items"][0]["id"]
-            closed_quote = post_json(
-                "/api/purchase-orders/close",
-                {
-                    "id": "quote_smoke",
-                    "items": [
-                        {
-                            "item_id": item_id,
-                            "decision": "buy",
-                            "final_quantity": 6,
-                            "unit_price": 11.5,
-                            "package_size": 6,
-                        }
-                    ],
-                },
-            )
-            order = closed_quote.get("purchase_order")
-            check(order and order.get("status") == "approved", "POST /api/purchase-orders/close nao gerou pedido aprovado.")
+            check(quote_response.get("status") == "approved", "POST /api/quotes/response nao aprovou a cotacao respondida.")
+            order = quote_response.get("purchase_order")
+            check(order and order.get("status") == "approved", "POST /api/quotes/response deve gerar pedido aprovado automaticamente.")
             assert_purchase_order_detail_contract(order)
             assert_purchase_orders_contract(get_json("/api/purchase-orders?status=open"))
             order_detail = get_json(f"/api/purchase-order?id={order['id']}")
@@ -1135,8 +1651,13 @@ def smoke_http_server() -> None:
 
 
 def run() -> None:
+    smoke_code_normalization()
     smoke_schema_and_import_bootstrap()
+    smoke_corrupt_product_code_quarantine()
+    smoke_import_preserves_app_controlled_fields()
+    smoke_product_profile_upsert()
     smoke_static_assets()
+    smoke_new_tenant_isolation()
     smoke_skills()
     smoke_imported_settings_guardrails()
     smoke_erp_context_materialization()
@@ -1148,6 +1669,8 @@ def run() -> None:
         smoke_summary_period_contract(conn)
         smoke_replenishment(conn)
         smoke_replenishment_sparse_guardrail()
+        smoke_supplier_cycle_drives_replenishment_v2()
+        run_replenishment_v2_scenarios()
         smoke_pricing(conn)
         smoke_customer_import_contracts(conn)
         smoke_quotes(conn)
@@ -1161,8 +1684,13 @@ def run() -> None:
 
 def main() -> int:
     checks = [
+        "normalizacao codigos",
         "schema/importacao",
+        "quarentena produto corrompido",
+        "importacao preserva edicoes locais",
+        "cadastro produto standalone",
         "assets/contratos frontend",
+        "isolamento tenant novo",
         "skills",
         "configuracao importada",
         "materializacao ERP contextual",
@@ -1171,6 +1699,8 @@ def main() -> int:
         "resumo por periodo",
         "reposicao",
         "guardrail reposicao",
+        "ciclo fornecedor na compra",
+        "cenarios motor v2",
         "precificacao",
         "clientes/importacao contratos",
         "cotacao",

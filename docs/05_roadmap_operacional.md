@@ -35,7 +35,7 @@ explicavel e facil de implantar.
 - Cadastro de fornecedores.
 - Regras por fornecedor: pedido minimo, prazo medio, contato, observacoes e valor
   alvo para condicao comercial.
-- Configuracao por produto: caixa/fardo, cobertura alvo, bloqueio, categoria,
+- Configuracao por produto: caixa/fardo, ciclo calculado, bloqueio, categoria,
   subcategoria, vencimento, peso e observacoes.
 - Pedido por fornecedor em rascunho.
 - Decisao de mix no pedido: tirar produto da rotina ou forcar mais uma compra. **Primeira versao implementada.**

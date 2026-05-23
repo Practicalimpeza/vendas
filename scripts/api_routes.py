@@ -4,11 +4,14 @@ import sqlite3
 
 from action_center import api_actions_today, update_action_status
 from api_contracts import api_health
-from commercial import api_commercial_intelligence, api_customers, api_services
+from app_config import app_public_config
+from commercial import api_commercial_intelligence, api_customer_mix, api_customers, api_services
 from company_profile import api_company_profile, update_company_profile
 from db_helpers import parse_int, scalar_text
 from erp_import_flow import api_erp_import_commit, api_erp_import_preview, api_import_reference_folder, api_import_refresh_local, api_imports
+from installation_state import api_installation_state
 from nexo_skills_runtime import api_nexo_skills
+from onboarding import api_onboarding
 from operational_decisions import record_operational_decision, record_quick_action
 from pricing import api_pricing, update_product_pricing
 from product_views import (
@@ -16,9 +19,11 @@ from product_views import (
     api_product_detail,
     api_summary,
     api_top_products,
+    upsert_product_profile,
     update_product_purchase_settings,
     update_product_supplier_reference,
 )
+from quote_cache import cached_api_payload, invalidate_runtime_caches, replenishment_v2_payload
 from quotes import (
     api_purchase_order_detail,
     api_purchase_orders,
@@ -27,16 +32,20 @@ from quotes import (
     api_quotes,
     api_supplier_workbench,
     api_supplier_workbench_list,
-    close_purchase_order,
+    confirm_purchase_order,
     create_quote_request,
+    discard_pending_purchase_order,
     export_quote_pdf,
+    generate_purchase_order_from_quote,
     receive_purchase_order,
+    update_pending_purchase_order,
     update_quote_request,
     update_quote_response,
     upsert_quote_item,
 )
 from relationship_imports import api_link_commit, api_link_inspect, api_link_preview
 from replenishment import api_replenishment, api_stock
+from replenishment_v2 import api_replenishment_v2_compare
 from supplier_ops import (
     api_brand_suppliers,
     update_brand_supplier,
@@ -44,10 +53,59 @@ from supplier_ops import (
     update_products_mix_decision_bulk,
     update_supplier_profile,
 )
+from whatsapp_crm import (
+    api_whatsapp_conversation_detail,
+    api_whatsapp_conversations,
+    send_whatsapp_message,
+    update_whatsapp_conversation,
+    upsert_whatsapp_agent,
+)
+
+
+CACHEABLE_GET_ROUTES = {
+    "/api/summary",
+    "/api/intelligence/maturity",
+    "/api/products/top",
+    "/api/replenishment",
+    "/api/replenishment-v2",
+    "/api/replenishment-v2/compare",
+    "/api/commercial/intelligence",
+    "/api/actions/today",
+    "/api/customers/top",
+    "/api/services/top",
+    "/api/suppliers/brands",
+    "/api/pricing",
+    "/api/quotes/draft",
+    "/api/supplier-workbench/suppliers",
+    "/api/supplier-workbench",
+    "/api/purchase-orders",
+}
+
+
+def cache_params_for_route(route: str, query: dict, period: dict) -> object:
+    if route in {
+        "/api/intelligence/maturity",
+        "/api/actions/today",
+        "/api/suppliers/brands",
+        "/api/quotes/draft",
+        "/api/supplier-workbench/suppliers",
+    }:
+        return {}
+    if route == "/api/supplier-workbench":
+        return {
+            "supplier_id": scalar_text(query.get("supplier_id")),
+            "window_days": parse_int(scalar_text(query.get("window_days")), 90) or 90,
+        }
+    if route == "/api/purchase-orders":
+        return {"status": scalar_text(query.get("status"))}
+    return {"query": query, "period": period}
 
 
 def get_api_payload(route: str, conn: sqlite3.Connection, query: dict, period: dict) -> object:
     handlers = {
+        "/api/app-config": app_public_config,
+        "/api/installation": api_installation_state,
+        "/api/onboarding": lambda: api_onboarding(conn),
         "/api/health": lambda: api_health(conn),
         "/api/summary": lambda: api_summary(conn, period),
         "/api/intelligence/maturity": lambda: api_maturity(conn),
@@ -56,9 +114,12 @@ def get_api_payload(route: str, conn: sqlite3.Connection, query: dict, period: d
         "/api/products/stock": lambda: api_stock(conn),
         "/api/product": lambda: api_product_detail(conn, scalar_text(query.get("id"))),
         "/api/replenishment": lambda: api_replenishment(conn, period=period),
+        "/api/replenishment-v2": lambda: replenishment_v2_payload(conn, period=period),
+        "/api/replenishment-v2/compare": lambda: api_replenishment_v2_compare(conn, period=period),
         "/api/commercial/intelligence": lambda: api_commercial_intelligence(conn, period),
         "/api/actions/today": lambda: api_actions_today(conn),
         "/api/customers/top": lambda: api_customers(conn, period),
+        "/api/customer/mix": lambda: api_customer_mix(conn, scalar_text(query.get("id")), period),
         "/api/services/top": lambda: api_services(conn, period),
         "/api/imports": lambda: api_imports(conn),
         "/api/company-profile": lambda: api_company_profile(conn),
@@ -75,9 +136,13 @@ def get_api_payload(route: str, conn: sqlite3.Connection, query: dict, period: d
         "/api/quote": lambda: api_quote_detail(conn, scalar_text(query.get("id"))),
         "/api/purchase-orders": lambda: api_purchase_orders(conn, scalar_text(query.get("status"))),
         "/api/purchase-order": lambda: api_purchase_order_detail(conn, scalar_text(query.get("id"))),
+        "/api/whatsapp/conversations": lambda: api_whatsapp_conversations(conn),
+        "/api/whatsapp/conversation": lambda: api_whatsapp_conversation_detail(conn, scalar_text(query.get("id"))),
     }
     if route not in handlers:
         raise KeyError(route)
+    if route in CACHEABLE_GET_ROUTES:
+        return cached_api_payload(conn, route, cache_params_for_route(route, query, period), handlers[route])
     return handlers[route]()
 
 
@@ -94,6 +159,7 @@ def post_api_payload(route: str, conn: sqlite3.Connection, payload: dict) -> obj
         "/api/suppliers/profile": update_supplier_profile,
         "/api/products/mix-decision": update_product_mix_decision,
         "/api/products/mix-decision-bulk": update_products_mix_decision_bulk,
+        "/api/products/upsert": upsert_product_profile,
         "/api/products/purchase-settings": update_product_purchase_settings,
         "/api/products/supplier-reference": update_product_supplier_reference,
         "/api/company-profile": update_company_profile,
@@ -102,15 +168,23 @@ def post_api_payload(route: str, conn: sqlite3.Connection, payload: dict) -> obj
         "/api/quote-item/upsert": upsert_quote_item,
         "/api/quotes/status": update_quote_request,
         "/api/quotes/response": update_quote_response,
-        "/api/purchase-orders/close": close_purchase_order,
+        "/api/quotes/generate-order": generate_purchase_order_from_quote,
+        "/api/purchase-orders/update": update_pending_purchase_order,
+        "/api/purchase-orders/confirm": confirm_purchase_order,
+        "/api/purchase-orders/discard": discard_pending_purchase_order,
         "/api/purchase-orders/receive": receive_purchase_order,
         "/api/actions/status": update_action_status,
         "/api/quick-actions": record_quick_action,
         "/api/operational-decisions": record_operational_decision,
+        "/api/whatsapp/conversations/update": update_whatsapp_conversation,
+        "/api/whatsapp/messages/send": send_whatsapp_message,
+        "/api/whatsapp/agents/upsert": upsert_whatsapp_agent,
     }
     if route not in handlers:
         raise KeyError(route)
-    return handlers[route](conn, payload)
+    result = handlers[route](conn, payload)
+    invalidate_runtime_caches()
+    return result
 
 
 def get_quote_pdf(conn: sqlite3.Connection, query: dict) -> tuple[str, bytes]:

@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import date, timedelta
+
+from app_config import default_organization_slug
 
 
 def scalar_text(value: object) -> str:
     if isinstance(value, list):
         value = value[0] if value else ""
     return str(value or "").strip()
+
+
+def normalize_code(value: object) -> str:
+    text = scalar_text(value)
+    if not text:
+        return ""
+    text = re.sub(r"^0+(?=[0-9A-Za-z])", "", text)
+    return re.sub(r"^([^0-9]*?)0+(?=[1-9])", r"\1", text)
 
 
 def parse_decimal(value: object, default: float | None = 0.0) -> float | None:
@@ -43,7 +54,55 @@ def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> dict:
     return dict(row) if row else {}
 
 
+def app_controlled_fields(conn: sqlite3.Connection, organization_id: str, entity_type: str, entity_id: str) -> set[str]:
+    rows = conn.execute(
+        """
+        SELECT field_name
+        FROM entity_field_controls
+        WHERE organization_id = ?
+          AND entity_type = ?
+          AND entity_id = ?
+          AND control_kind = 'app'
+        """,
+        (organization_id, entity_type, entity_id),
+    ).fetchall()
+    return {row["field_name"] for row in rows}
+
+
+def mark_app_controlled_fields(
+    conn: sqlite3.Connection,
+    *,
+    organization_id: str,
+    entity_type: str,
+    entity_id: str,
+    values: dict[str, object],
+    source_view: str = "",
+    actor_user_id: str = "",
+) -> None:
+    for field_name, value in values.items():
+        conn.execute(
+            """
+            INSERT INTO entity_field_controls
+                (organization_id, entity_type, entity_id, field_name, control_kind,
+                 source_view, actor_user_id, last_local_value, changed_at)
+            VALUES (?, ?, ?, ?, 'app', ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(organization_id, entity_type, entity_id, field_name) DO UPDATE SET
+                control_kind = 'app',
+                source_view = excluded.source_view,
+                actor_user_id = excluded.actor_user_id,
+                last_local_value = excluded.last_local_value,
+                changed_at = CURRENT_TIMESTAMP
+            """,
+            (organization_id, entity_type, entity_id, field_name, source_view, actor_user_id, scalar_text(value)),
+        )
+
+
 def default_organization_id(conn: sqlite3.Connection) -> str:
+    configured = default_organization_slug()
+    if configured:
+        row = conn.execute("SELECT id FROM organizations WHERE id = ?", (configured,)).fetchone()
+        if row:
+            return row["id"]
     row = conn.execute("SELECT id FROM organizations ORDER BY id LIMIT 1").fetchone()
     return row["id"] if row else ""
 
