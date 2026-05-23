@@ -639,6 +639,68 @@
   background: var(--green-soft);
 }
 
+/* ------------------------------------------------ compras: mesa custom */
+.nexo-quote-data-table {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: clip;
+}
+
+.nexo-quote-data-table .purchase-supplier-head {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.nexo-quote-data-table .purchase-sort-button {
+  min-height: 28px;
+  padding: 0 2px 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.nexo-quote-data-table .purchase-sort-button i {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.42;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+}
+
+.nexo-quote-data-table .purchase-sort-button:hover,
+.nexo-quote-data-table .purchase-sort-button.active {
+  border-color: rgba(25, 115, 77, 0.18);
+  background: var(--green-soft);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.nexo-quote-data-table .purchase-sort-button:hover i,
+.nexo-quote-data-table .purchase-sort-button.active i {
+  border-color: rgba(25, 115, 77, 0.2);
+  background: rgba(25, 115, 77, 0.14);
+  color: var(--green);
+  opacity: 1;
+}
+
+.nexo-quote-data-table .purchase-supplier-row {
+  background: var(--surface);
+  border-bottom-color: rgba(221, 228, 223, 0.6);
+}
+
+.nexo-quote-data-table .purchase-supplier-row:hover {
+  background: var(--green-soft);
+}
+
 /* cartões */
 .nexo-dt-cards {
   display: grid;

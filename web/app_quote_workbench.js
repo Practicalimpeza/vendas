@@ -1417,8 +1417,8 @@ function renderQuoteDetail(workbench) {
         </details>
       </div>
     </div>
-    <div class="quote-items-wrap">
-      <table class="quote-items-table">
+    <div class="quote-items-wrap nexo-legacy-shell">
+      <table class="quote-items-table nexo-legacy-table">
         <thead>
           <tr>
             ${quoteSortableHeader("included", "Cotação", "col-inc")}

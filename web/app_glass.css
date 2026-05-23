@@ -401,6 +401,32 @@ select.search:focus {
 .nexo-legacy-table tbody tr:hover td {
   background: var(--neutral-hover);
 }
+.nexo-quote-data-table {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-sheen), var(--glass-shadow);
+}
+.nexo-quote-data-table .purchase-supplier-head,
+.nexo-quote-data-table .purchase-actions-head {
+  background: rgba(246, 249, 247, 0.94);
+  border-bottom-color: var(--glass-hairline);
+}
+.nexo-quote-data-table .purchase-sort-button:hover,
+.nexo-quote-data-table .purchase-sort-button.active {
+  background: rgba(255, 255, 255, 0.85);
+}
+.nexo-quote-data-table .purchase-sort-button:hover i,
+.nexo-quote-data-table .purchase-sort-button.active i {
+  background: var(--neutral-hover);
+  border-color: rgba(25, 115, 77, 0.3);
+}
+.nexo-quote-data-table .purchase-supplier-row {
+  background: rgba(255, 255, 255, 0.62);
+  border-bottom-color: rgba(17, 28, 22, 0.05);
+}
+.nexo-quote-data-table .purchase-supplier-row:hover {
+  background: var(--neutral-hover);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .nexo-dt-in {

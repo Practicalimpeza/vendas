@@ -440,12 +440,13 @@ function quoteSupplierHeader(label, sortKey) {
   const active = (state.quoteSupplierSort || "supplier") === sortKey;
   const dir = active ? (state.quoteSupplierSortDir || quoteSupplierDefaultSortDir(sortKey)) : quoteSupplierDefaultSortDir(sortKey);
   const ariaSort = !active ? "none" : dir === "asc" ? "ascending" : "descending";
-  const marker = active ? (dir === "asc" ? "^" : "v") : "";
+  const marker = active ? (dir === "asc" ? "&#8593;" : "&#8595;") : "&#8597;";
+  const sortDirAttr = active ? ` data-sort-dir="${escapeAttr(dir)}"` : "";
   const help = QUOTE_SUPPLIER_HELP[sortKey] || "";
   const helpAttrs = help ? ` data-help="${escapeAttr(help)}"` : "";
   return `
     <span role="columnheader" aria-sort="${ariaSort}">
-      <button class="purchase-sort-button ${active ? "active" : ""}" type="button" data-quote-supplier-sort="${escapeAttr(sortKey)}" aria-pressed="${active ? "true" : "false"}"${helpAttrs}>
+      <button class="purchase-sort-button ${active ? "active" : ""}" type="button" data-quote-supplier-sort="${escapeAttr(sortKey)}" aria-pressed="${active ? "true" : "false"}"${sortDirAttr}${helpAttrs}>
         <span>${escapeHtml(label)}</span>
         <i aria-hidden="true">${marker}</i>
       </button>
@@ -521,7 +522,7 @@ function quoteSupplierRows(rows) {
     })
     .join("");
   return `
-    <div class="purchase-supplier-table" role="table" aria-label="Fornecedores na mesa de compra">
+    <div class="purchase-supplier-table nexo-quote-data-table" role="table" aria-label="Fornecedores na mesa de compra">
       <div class="purchase-supplier-head" role="row">
         ${quoteSupplierHeader("Fornecedor", "supplier")}
         ${quoteSupplierHeader("Sugerido", "value")}

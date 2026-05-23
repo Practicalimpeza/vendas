@@ -43,7 +43,7 @@ function scheduleIdleTask(callback) {
 }
 
 function tableEnhancementRoot() {
-  return document.querySelector(".view.active") || document;
+  return document.querySelector("#modalOverlay:not([hidden])") || document.querySelector(".view.active") || document;
 }
 
 function scheduleTableFilter(table) {
