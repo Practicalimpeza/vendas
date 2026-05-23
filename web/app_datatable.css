@@ -110,6 +110,21 @@
   height: 16px;
   color: var(--muted);
 }
+.nexo-dt-btn svg,
+.nexo-dt-mode button svg,
+.nexo-dt-chip svg,
+.nexo-dt-rowaction svg,
+.nexo-dt-th-caret svg,
+.nexo-dt-drag svg {
+  display: block;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+.nexo-dt-btn svg,
+.nexo-dt-mode button svg {
+  width: 16px;
+  height: 16px;
+}
 .nexo-dt-btn:hover {
   border-color: rgba(25, 115, 77, 0.4);
   background: var(--green-soft);
@@ -180,6 +195,11 @@
   font-weight: 800;
 }
 .nexo-dt-chip i {
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+.nexo-dt-chip svg {
   width: 13px;
   height: 13px;
   color: var(--muted);
@@ -269,6 +289,15 @@
 .nexo-dt thead th.sortable:hover {
   background: var(--green-soft);
 }
+.nexo-dt-th.sortable .nexo-dt-th-label::after {
+  content: "\2195";
+}
+.nexo-dt-th.sort-asc .nexo-dt-th-label::after {
+  content: "\2191";
+}
+.nexo-dt-th.sort-desc .nexo-dt-th-label::after {
+  content: "\2193";
+}
 .nexo-dt thead th.sortable:hover .nexo-dt-th-label {
   color: var(--ink);
 }
@@ -278,20 +307,22 @@
   font-weight: 800;
 }
 .nexo-dt-th-caret {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   flex: 0 0 auto;
-  border: 0;
-  border-radius: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease, background 0.12s ease;
+  transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
-.nexo-dt-th-caret i {
+.nexo-dt-th-caret i,
+.nexo-dt-th-caret svg {
   width: 14px;
   height: 14px;
 }
@@ -301,6 +332,7 @@
 }
 .nexo-dt-th-caret:hover {
   background: rgba(25, 115, 77, 0.14);
+  border-color: rgba(25, 115, 77, 0.2);
   color: var(--green);
 }
 .nexo-dt-th.filtered .nexo-dt-th-caret {
@@ -509,6 +541,11 @@
   height: 14px;
   color: var(--muted);
 }
+.nexo-dt-rowaction svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
 .nexo-dt-rowaction:hover {
   border-color: var(--green);
   background: var(--green);
@@ -516,6 +553,90 @@
 }
 .nexo-dt-rowaction:hover i {
   color: #fff;
+}
+.nexo-dt-rowaction:hover svg {
+  color: #fff;
+}
+
+/* ------------------------------------------------ tabela manual aprimorada */
+.nexo-legacy-shell {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.data-table-toolbar + .nexo-legacy-shell {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top: 0;
+}
+
+.nexo-legacy-table {
+  width: 100%;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.nexo-legacy-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  transition: background 0.14s ease;
+}
+
+.nexo-legacy-table th.sortable-th {
+  cursor: pointer;
+  user-select: none;
+}
+
+.nexo-legacy-table th.sortable-th::after {
+  content: "\2195";
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.4;
+  vertical-align: middle;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+}
+
+.nexo-legacy-table th.sortable-th:hover {
+  background: var(--green-soft);
+  color: var(--ink);
+}
+
+.nexo-legacy-table th.sortable-th:hover::after {
+  border-color: rgba(25, 115, 77, 0.2);
+  background: rgba(25, 115, 77, 0.14);
+  color: var(--green);
+  opacity: 1;
+}
+
+.nexo-legacy-table th.sortable-th[data-sort-dir="asc"]::after {
+  content: "\2191";
+  color: var(--green);
+  opacity: 1;
+}
+
+.nexo-legacy-table th.sortable-th[data-sort-dir="desc"]::after {
+  content: "\2193";
+  color: var(--green);
+  opacity: 1;
+}
+
+.nexo-legacy-table tbody tr:hover td {
+  background: var(--green-soft);
 }
 
 /* cartões */

@@ -366,6 +366,42 @@ select.search:focus {
   box-shadow: var(--glass-sheen), 0 8px 22px rgba(17, 28, 22, 0.07);
 }
 
+/* ------------------------------------------------ tabelas manuais no mesmo dialeto */
+.data-table-toolbar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.12));
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--glass-hairline);
+  border-radius: 16px 16px 0 0;
+  box-shadow: var(--glass-sheen), 0 8px 22px rgba(17, 28, 22, 0.05);
+}
+.nexo-legacy-shell {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-sheen), var(--glass-shadow);
+}
+.data-table-toolbar + .nexo-legacy-shell {
+  border-top-color: transparent;
+}
+.nexo-legacy-table th {
+  background: rgba(246, 249, 247, 0.94);
+  border-bottom: 1px solid var(--glass-hairline);
+}
+.nexo-legacy-table th.sortable-th:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+.nexo-legacy-table th.sortable-th:hover::after {
+  background: var(--neutral-hover);
+  border-color: rgba(25, 115, 77, 0.3);
+}
+.nexo-legacy-table td {
+  border-bottom: 1px solid rgba(17, 28, 22, 0.05);
+}
+.nexo-legacy-table tbody tr:hover td {
+  background: var(--neutral-hover);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nexo-dt-in {
     animation: none;

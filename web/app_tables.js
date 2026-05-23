@@ -113,7 +113,8 @@ function enhanceDataTables(root = document) {
     if (!wrap || !headerRow || !tbody || table.dataset.enhancedTable === "true" || table.closest(".nexo-dt")) return;
     const skipToolbar = wrap.classList.contains("supplier-directory");
     table.dataset.enhancedTable = "true";
-    wrap.classList.add("table-shell");
+    table.classList.add("nexo-legacy-table");
+    wrap.classList.add("table-shell", "nexo-legacy-shell");
     const options = Array.from(headerRow.cells)
       .map((cell, index) => `<option value="${index}">${escapeHtml(cell.textContent.trim() || `Coluna ${index + 1}`)}</option>`)
       .join("");
