@@ -127,6 +127,7 @@ function createDataTable(mount, config) {
   const presets = config.presets || [];
   const segments = config.segments || [];
   const rowActions = config.rowActions || [];
+  const tableRowActions = config.tableRowActions === true;
 
   const view = loadViewState();
   let records = [];
@@ -443,7 +444,7 @@ function createDataTable(mount, config) {
     const colsHtml = cols
       .map((col) => `<col data-dt-colw="${escapeAttr(col.id)}"${view.widths[col.id] ? ` style="width:${Math.round(view.widths[col.id])}px"` : ""}>`)
       .join("");
-    const actionsCol = rowActions.length ? `<col class="nexo-dt-actions-col">` : "";
+    const actionsCol = tableRowActions && rowActions.length ? `<col class="nexo-dt-actions-col">` : "";
     els.colgroup.innerHTML = colsHtml + actionsCol;
   }
 
@@ -466,7 +467,7 @@ function createDataTable(mount, config) {
         return `<th class="${cls}" data-dt-col="${escapeAttr(col.id)}" aria-sort="${aria}" draggable="true"${tip}><div class="nexo-dt-th-inner"><span class="nexo-dt-th-label"${col.sortable ? ' data-dt-sortlabel tabindex="0"' : ""}>${escapeHtml(col.label)}${badge}</span>${caret}</div><span class="nexo-dt-resize" data-dt-resize draggable="false" aria-hidden="true"></span></th>`;
       })
       .join("");
-    const actionsTh = rowActions.length ? `<th class="nexo-dt-actions-th" aria-label="Ações"></th>` : "";
+    const actionsTh = tableRowActions && rowActions.length ? `<th class="nexo-dt-actions-th" aria-label="Ações"></th>` : "";
     els.theadRow.innerHTML = ths + actionsTh;
   }
 
@@ -529,7 +530,7 @@ function createDataTable(mount, config) {
   function renderBody() {
     els.table.classList.toggle("nexo-dt-compact", view.density === "compact");
     const cols = visibleColumns();
-    const span = cols.length + (rowActions.length ? 1 : 0) || 1;
+    const span = cols.length + (tableRowActions && rowActions.length ? 1 : 0) || 1;
     if (!filtered.length) {
       els.tbody.innerHTML = `<tr class="nexo-dt-empty"><td colspan="${span}"><strong>${escapeHtml(config.emptyTitle || "Nada encontrado")}</strong><span>${escapeHtml(config.emptyHint || "Ajuste a busca ou os filtros.")}</span></td></tr>`;
       return;
@@ -556,9 +557,9 @@ function createDataTable(mount, config) {
         return `<td class="${col.align === "num" ? "num" : ""}">${inner}</td>`;
       })
       .join("");
-    if (rowActions.length) html += `<td class="nexo-dt-actions-cell">${rowActionsHtml()}</td>`;
+    if (tableRowActions && rowActions.length) html += `<td class="nexo-dt-actions-cell">${rowActionsHtml()}</td>`;
     tr.innerHTML = html;
-    if (rowActions.length) bindRowActions(tr, record.row);
+    if (tableRowActions && rowActions.length) bindRowActions(tr, record.row);
     if (config.onRowClick) {
       tr.addEventListener("click", (event) => {
         if (event.target.closest("a, button, input, select, textarea, label, [data-dt-stop]")) return;

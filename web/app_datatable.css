@@ -207,6 +207,14 @@
 .nexo-dt-chip:hover {
   border-color: var(--green);
 }
+.nexo-dt-chip.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+.nexo-dt-chip.active b {
+  color: var(--green);
+}
 .nexo-dt-chip.ghost {
   border-style: dashed;
   border-color: var(--line);

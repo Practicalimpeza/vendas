@@ -396,6 +396,19 @@ async function boot() {
     await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId);
   });
   document.querySelector("#quoteSuppliersTable").addEventListener("click", async (event) => {
+    const filterButton = event.target.closest("[data-quote-supplier-filter]");
+    if (filterButton?.dataset.quoteSupplierFilter) {
+      const lens = filterButton.dataset.quoteSupplierFilter;
+      const current = (state.quoteSupplierLenses || [])[0] || "all";
+      const next = current === lens ? "all" : lens;
+      state.quoteSupplierLenses = next === "all" ? [] : [next];
+      state.quoteSupplierChip = next;
+      state.quoteSupplierChipPinned = next !== "all";
+      state.quoteSupplierPreviewId = "";
+      state.quoteSupplierPopupOpen = false;
+      renderQuotes({ preserveScroll: false, summaryOnly: true });
+      return;
+    }
     const sortButton = event.target.closest("[data-quote-supplier-sort]");
     if (sortButton?.dataset.quoteSupplierSort) {
       setQuoteSupplierSort(sortButton.dataset.quoteSupplierSort, { toggle: true });

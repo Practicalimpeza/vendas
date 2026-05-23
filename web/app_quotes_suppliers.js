@@ -454,9 +454,27 @@ function quoteSupplierHeader(label, sortKey) {
   `;
 }
 
+function quoteSupplierTableFilters(rows = state.quoteSuppliers || []) {
+  const active = new Set(activeQuoteSupplierLenses());
+  const counts = quoteSupplierLensCounts(rows);
+  const chips = quoteSupplierLensDefinitions()
+    .map((lens) => {
+      const isActive = lens.key === "all" ? active.has("all") : active.has(lens.key);
+      const count = counts[lens.key] ?? 0;
+      return `
+        <button class="nexo-dt-chip ${isActive ? "active" : ""}" type="button" data-quote-supplier-filter="${escapeAttr(lens.key)}" aria-pressed="${isActive ? "true" : "false"}">
+          <b>${escapeHtml(lens.label)}</b>
+          <span>${number(count)}</span>
+        </button>
+      `;
+    })
+    .join("");
+  return `<div class="nexo-dt-chips quote-table-filters" data-quote-table-filters>${chips}</div>`;
+}
+
 function quoteSupplierRows(rows) {
   if (!rows.length) {
-    return `<div class="quote-empty">Nenhum fornecedor aparece com esta busca ou filtro.</div>`;
+    return `${quoteSupplierTableFilters()}<div class="quote-empty">Nenhum fornecedor aparece com esta busca ou filtro.</div>`;
   }
   const body = rows
     .map((row) => {
@@ -513,15 +531,12 @@ function quoteSupplierRows(rows) {
             <strong>${number(openTotal)}</strong>
             <em>${openQuoteCount ? openQuoteState?.shortLabel || `${number(openQuoteCount)} cotação` : pendingOrderCount ? `${number(pendingOrderCount)} pedido` : "abertos"}</em>
           </span>
-          <span class="ps-col ps-actions">
-            <button class="ps-action" type="button" data-quote-supplier-preview="${supplierId}">Ver</button>
-            <button class="ps-action primary" type="button" data-quote-supplier-open="${supplierId}">${openQuoteCount ? openQuoteState?.actionLabel || "Retomar" : "Criar cotação"}</button>
-          </span>
         </div>
       `;
     })
     .join("");
   return `
+    ${quoteSupplierTableFilters()}
     <div class="purchase-supplier-table nexo-quote-data-table" role="table" aria-label="Fornecedores na mesa de compra">
       <div class="purchase-supplier-head" role="row">
         ${quoteSupplierHeader("Fornecedor", "supplier")}
@@ -532,7 +547,6 @@ function quoteSupplierRows(rows) {
         ${quoteSupplierHeader("Ciclo", "cycle")}
         ${quoteSupplierHeader("Ruptura", "risk")}
         ${quoteSupplierHeader("Aberto", "open_quote")}
-        <span class="purchase-actions-head">Ações</span>
       </div>
       <div class="purchase-supplier-body">${body}</div>
     </div>

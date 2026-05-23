@@ -8816,7 +8816,7 @@ th.sortable-th[data-sort-dir="desc"]::after {
 .purchase-supplier-head,
 .purchase-supplier-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1.3fr) minmax(104px, .68fr) minmax(104px, .68fr) minmax(96px, .58fr) minmax(76px, .46fr) minmax(70px, .42fr) minmax(76px, .42fr) minmax(72px, .4fr) minmax(176px, .86fr);
+  grid-template-columns: minmax(190px, 1.3fr) minmax(104px, .68fr) minmax(104px, .68fr) minmax(96px, .58fr) minmax(76px, .46fr) minmax(70px, .42fr) minmax(76px, .42fr) minmax(72px, .4fr);
   align-items: center;
   gap: 12px;
 }
