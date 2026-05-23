@@ -4,14 +4,14 @@
    Carregado por ultimo: sobrepoe app.css/app_datatable.css.
    =================================================================== */
 :root {
-  --glass-border: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.7);
   --glass-hairline: rgba(17, 28, 22, 0.07);
-  --glass-blur: blur(20px) saturate(1.4);
-  --glass-blur-strong: blur(30px) saturate(1.5);
-  --glass-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.5));
-  --glass-surface-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.66));
-  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --glass-shadow: 0 18px 50px rgba(17, 28, 22, 0.1);
+  --glass-blur: blur(22px) saturate(1.6);
+  --glass-blur-strong: blur(32px) saturate(1.7);
+  --glass-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.32));
+  --glass-surface-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.6));
+  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 2px 6px rgba(17, 28, 22, 0.04), 0 22px 48px rgba(17, 28, 22, 0.13);
   --glass-shadow-lg: 0 34px 90px rgba(17, 28, 22, 0.26);
   --glass-radius: 18px;
   --neutral-hover: rgba(17, 28, 22, 0.05);
@@ -19,10 +19,20 @@
   --shadow: var(--glass-shadow);
 }
 
-/* fundo um pouco mais presente para o vidro refratar */
-body::before {
-  opacity: 0.7;
-  filter: saturate(1.35);
+/* fundo: aurora suave e colorida — remove o quadriculado feio e dá o que o
+   vidro precisa para refratar (sem fundo colorido, o vidro fica invisível) */
+body::before,
+body::after {
+  display: none !important;
+}
+body {
+  background:
+    radial-gradient(1500px 720px at 50% -24%, rgba(255, 255, 255, 0.85), transparent 52%),
+    radial-gradient(1200px 920px at 4% 42%, rgba(20, 150, 112, 0.15), transparent 58%),
+    radial-gradient(1120px 880px at 100% 16%, rgba(48, 140, 190, 0.1), transparent 56%),
+    radial-gradient(1260px 1020px at 90% 122%, rgba(26, 165, 124, 0.15), transparent 60%),
+    linear-gradient(160deg, #eef4f1 0%, #e7f0ef 52%, #eef4ef 100%) !important;
+  background-attachment: fixed !important;
 }
 
 /* --------------------------------------------------- superficies de vidro */
@@ -42,10 +52,10 @@ body::before {
 
 /* KPIs: gradiente translucido (sem blur proprio — muitos elementos) */
 .kpi {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.56));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.42));
   border: 1px solid var(--glass-border);
   border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 10px 26px rgba(17, 28, 22, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 12px 30px rgba(17, 28, 22, 0.09);
 }
 .kpi::before {
   opacity: 0.7;
@@ -127,21 +137,110 @@ select.search:focus {
   border-color: var(--green);
 }
 
+/* ============================ superficies do DASHBOARD no mesmo vidro
+   (operator-panel / bi-kpi-strip / operator-control-bar tinham vidro proprio
+   muito opaco — por isso pareciam branco chapado sobre o fundo claro)      */
+.operator-panel,
+.bi-kpi-strip,
+.workspace:has(#dashboard.active) .operator-control-bar {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.3)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.85) !important;
+  border-radius: 20px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 2px 8px rgba(12, 40, 30, 0.05),
+    0 26px 56px rgba(12, 40, 30, 0.16) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(1.7) !important;
+  backdrop-filter: blur(26px) saturate(1.7) !important;
+}
+.bi-signal-grid {
+  background: rgba(255, 255, 255, 0.42) !important;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(1.7) !important;
+  backdrop-filter: blur(26px) saturate(1.7) !important;
+}
+.bi-signal {
+  background: transparent !important;
+}
+
+/* KPIs como CARTÕES separados (em vez de faixa única com divisórias) */
+.bi-kpi-strip {
+  gap: 12px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+.bi-kpi-strip .kpi {
+  min-height: 96px !important;
+  padding: 14px 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.85) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.4)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 12px 30px rgba(12, 40, 30, 0.1) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+  backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+.bi-kpi-strip .kpi::before {
+  border-radius: 12px 0 0 12px;
+}
+
+/* CABEÇALHO dos painéis com mais identidade (barra de acento + divisória) */
+.panel-head {
+  gap: 12px;
+}
+.panel-head h2 {
+  position: relative;
+  padding-left: 14px;
+}
+.panel-head h2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 17px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #2cbd84, var(--green));
+}
+.operator-panel header {
+  position: relative;
+  margin-bottom: 13px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.08);
+}
+.operator-panel header span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--green) !important;
+}
+.operator-panel header span::before {
+  content: "";
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #2cbd84, var(--green));
+}
+
 /* ====================================================== DOCK (sidebar) */
 .sidebar {
   bottom: 20px;
   padding: 8px;
   gap: 5px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.05)),
-    linear-gradient(135deg, rgba(10, 28, 20, 0.66), rgba(10, 28, 20, 0.5));
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.46));
+  border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 22px;
-  box-shadow: 0 24px 70px rgba(17, 28, 22, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
-  -webkit-backdrop-filter: blur(32px) saturate(1.7);
-  backdrop-filter: blur(32px) saturate(1.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 18px 50px rgba(17, 28, 22, 0.18);
+  -webkit-backdrop-filter: blur(30px) saturate(1.7);
+  backdrop-filter: blur(30px) saturate(1.7);
 }
-/* itens uniformes, quadrados arredondados (mais moderno) */
+/* itens uniformes, quadrados arredondados, ícones escuros (dock claro) */
 .nav-item,
 .nav-item[data-view="dashboard"] {
   width: 44px;
@@ -151,7 +250,7 @@ select.search:focus {
   border-radius: 13px;
   background: transparent;
   box-shadow: none;
-  color: rgba(255, 255, 255, 0.74);
+  color: var(--muted);
 }
 .nav-item svg,
 .nav-item[data-view="dashboard"] svg {
@@ -162,28 +261,24 @@ select.search:focus {
 .nav-item:focus-visible,
 .nav-item[data-view="dashboard"]:hover,
 .nav-item[data-view="dashboard"]:focus-visible {
-  background: rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  color: #fff;
+  background: rgba(17, 28, 22, 0.06);
+  box-shadow: none;
+  color: var(--ink);
 }
+/* item ativo: pílula verde da marca */
 .nav-item.active,
 .nav-item[data-view="dashboard"].active {
-  color: var(--ink);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.85));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 8px 20px rgba(17, 28, 22, 0.2);
+  color: #fff;
+  background: linear-gradient(180deg, #1c855a, var(--green));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 16px rgba(25, 115, 77, 0.34);
   pointer-events: none;
 }
-/* ponto de acento verde sob o item ativo */
 .nav-item.active::after {
-  content: "";
-  position: absolute;
-  bottom: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--green);
+  display: none;
+}
+.nav-badge {
+  background: var(--amber);
+  color: #fff;
 }
 
 /* ----------------------------------------------------- DataTable vidro */
