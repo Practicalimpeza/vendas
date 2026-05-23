@@ -156,6 +156,50 @@ function quoteSupplierMatchesLenses(row, context) {
   });
 }
 
+function quoteSupplierColumnFilters() {
+  return state.quoteSupplierColumnFilters || {};
+}
+
+function quoteSupplierColumnFilterValue(key) {
+  return quoteSupplierColumnFilters()[key] || "";
+}
+
+function quoteSupplierMatchesColumnFilters(row, context) {
+  const filters = quoteSupplierColumnFilters();
+  const supplierTerm = (filters.supplier || "").trim().toLowerCase();
+  if (supplierTerm && ![row.supplier_name, row.contact_name, row.contact_phone].join(" ").toLowerCase().includes(supplierTerm)) return false;
+  const meta = supplierMinimumMeta(row);
+  const estimated = Number(row.estimated_value || 0);
+  const urgent = Number(row.urgent_count || 0);
+  const alerts = Number(row.alert_count || 0);
+  const cycle = Number(row.supplier_days_to_order || 0);
+  const openQuotes = Number(row.open_quote_count || 0);
+  const openOrders = Number(row.pending_order_count || 0);
+  if (filters.value === "positive" && estimated <= 0) return false;
+  if (filters.value === "high" && (estimated <= 0 || estimated < Number(context.highValueThreshold || 0))) return false;
+  if (filters.value === "zero" && estimated > 0) return false;
+  if (filters.minimum === "configured" && meta.minimum <= 0) return false;
+  if (filters.minimum === "missing" && meta.minimum > 0) return false;
+  if (filters.minimum === "met" && !(meta.minimum > 0 && meta.total >= meta.minimum)) return false;
+  if (filters.gap === "missing" && !(meta.minimum > 0 && meta.total < meta.minimum)) return false;
+  if (filters.gap === "ok" && !(meta.minimum > 0 && meta.total >= meta.minimum)) return false;
+  if (filters.gap === "none" && meta.minimum > 0) return false;
+  if (filters.pct === "under_65" && !(meta.minimum > 0 && meta.pct < 65)) return false;
+  if (filters.pct === "near" && !(meta.minimum > 0 && meta.pct >= 65 && meta.pct < 100)) return false;
+  if (filters.pct === "met" && !(meta.minimum > 0 && meta.pct >= 100)) return false;
+  if (filters.cycle === "long" && cycle < 60) return false;
+  if (filters.cycle === "short" && !(cycle > 0 && cycle < 60)) return false;
+  if (filters.cycle === "none" && cycle > 0) return false;
+  if (filters.risk === "rupture" && urgent <= 0) return false;
+  if (filters.risk === "signals" && urgent <= 0 && alerts <= 0) return false;
+  if (filters.risk === "none" && (urgent > 0 || alerts > 0)) return false;
+  if (filters.open === "quote" && openQuotes <= 0) return false;
+  if (filters.open === "order" && openOrders <= 0) return false;
+  if (filters.open === "any" && openQuotes + openOrders <= 0) return false;
+  if (filters.open === "none" && openQuotes + openOrders > 0) return false;
+  return true;
+}
+
 function supplierSignalChips(row) {
   const meta = supplierMinimumMeta(row);
   const signals = [];
@@ -472,9 +516,51 @@ function quoteSupplierTableFilters(rows = state.quoteSuppliers || []) {
   return `<div class="nexo-dt-chips quote-table-filters" data-quote-table-filters>${chips}</div>`;
 }
 
+function quoteSupplierSelectFilter(key, options, label) {
+  const current = quoteSupplierColumnFilterValue(key);
+  const opts = options
+    .map(([value, text]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(text)}</option>`)
+    .join("");
+  return `<label class="purchase-column-filter"><span>${escapeHtml(label)}</span><select data-quote-supplier-col-filter="${escapeAttr(key)}">${opts}</select></label>`;
+}
+
+function quoteSupplierColumnFiltersRow() {
+  return `
+    <div class="purchase-supplier-filter-row" role="row" aria-label="Filtros por coluna">
+      <label class="purchase-column-filter">
+        <span>Fornecedor</span>
+        <input data-quote-supplier-col-filter="supplier" type="search" value="${escapeAttr(quoteSupplierColumnFilterValue("supplier"))}" placeholder="nome ou contato" />
+      </label>
+      ${quoteSupplierSelectFilter("value", [["", "Todos"], ["positive", "Com valor"], ["high", "Alto valor"], ["zero", "Sem sugestão"]], "Sugerido")}
+      ${quoteSupplierSelectFilter("minimum", [["", "Todos"], ["configured", "Com mínimo"], ["missing", "Sem mínimo"], ["met", "Mínimo ok"]], "Mínimo")}
+      ${quoteSupplierSelectFilter("gap", [["", "Todos"], ["missing", "Falta mínimo"], ["ok", "OK"], ["none", "Sem mínimo"]], "Situação")}
+      ${quoteSupplierSelectFilter("pct", [["", "Todos"], ["under_65", "< 65%"], ["near", "65-99%"], ["met", ">= 100%"]], "% mínimo")}
+      ${quoteSupplierSelectFilter("cycle", [["", "Todos"], ["short", "< 60d"], ["long", ">= 60d"], ["none", "Sem ciclo"]], "Ciclo")}
+      ${quoteSupplierSelectFilter("risk", [["", "Todos"], ["rupture", "Ruptura"], ["signals", "Com sinais"], ["none", "Sem sinal"]], "Ruptura")}
+      ${quoteSupplierSelectFilter("open", [["", "Todos"], ["any", "Qualquer"], ["quote", "Cotação"], ["order", "Pedido"], ["none", "Nenhum"]], "Aberto")}
+    </div>
+  `;
+}
+
 function quoteSupplierRows(rows) {
   if (!rows.length) {
-    return `${quoteSupplierTableFilters()}<div class="quote-empty">Nenhum fornecedor aparece com esta busca ou filtro.</div>`;
+    return `
+      ${quoteSupplierTableFilters()}
+      <div class="purchase-supplier-table nexo-quote-data-table" role="table" aria-label="Fornecedores na mesa de compra">
+        <div class="purchase-supplier-head" role="row">
+          ${quoteSupplierHeader("Fornecedor", "supplier")}
+          ${quoteSupplierHeader("Sugerido", "value")}
+          ${quoteSupplierHeader("Mínimo", "minimum")}
+          ${quoteSupplierHeader("Mínimo", "minimum_gap")}
+          ${quoteSupplierHeader("% mínimo", "minimum_pct")}
+          ${quoteSupplierHeader("Ciclo", "cycle")}
+          ${quoteSupplierHeader("Ruptura", "risk")}
+          ${quoteSupplierHeader("Aberto", "open_quote")}
+        </div>
+        ${quoteSupplierColumnFiltersRow()}
+        <div class="quote-empty">Nenhum fornecedor aparece com esta busca ou filtro.</div>
+      </div>
+    `;
   }
   const body = rows
     .map((row) => {
@@ -548,6 +634,7 @@ function quoteSupplierRows(rows) {
         ${quoteSupplierHeader("Ruptura", "risk")}
         ${quoteSupplierHeader("Aberto", "open_quote")}
       </div>
+      ${quoteSupplierColumnFiltersRow()}
       <div class="purchase-supplier-body">${body}</div>
     </div>
   `;

@@ -407,9 +407,15 @@ select.search:focus {
   box-shadow: var(--glass-sheen), var(--glass-shadow);
 }
 .nexo-quote-data-table .purchase-supplier-head,
-.nexo-quote-data-table .purchase-actions-head {
+.nexo-quote-data-table .purchase-actions-head,
+.nexo-quote-data-table .purchase-supplier-filter-row {
   background: rgba(246, 249, 247, 0.94);
   border-bottom-color: var(--glass-hairline);
+}
+.nexo-quote-data-table .purchase-column-filter input,
+.nexo-quote-data-table .purchase-column-filter select {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: var(--glass-border);
 }
 .nexo-quote-data-table .purchase-sort-button:hover,
 .nexo-quote-data-table .purchase-sort-button.active {

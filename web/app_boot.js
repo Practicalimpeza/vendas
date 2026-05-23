@@ -361,6 +361,7 @@ async function boot() {
     const search = document.querySelector("#quoteSupplierSearch");
     if (search) search.value = "";
     state.quoteSupplierLenses = [];
+    state.quoteSupplierColumnFilters = {};
     state.quoteSupplierChip = "all";
     state.quoteSupplierChipPinned = false;
     state.quoteSupplierPreviewId = "";
@@ -371,6 +372,22 @@ async function boot() {
     if (sort) sort.value = "supplier";
     renderQuotes({ preserveScroll: false, withDashboard: true });
   });
+  const applyQuoteSupplierColumnFilter = (event) => {
+    const field = event.target.closest("[data-quote-supplier-col-filter]");
+    if (!field) return;
+    const key = field.dataset.quoteSupplierColFilter;
+    const next = { ...(state.quoteSupplierColumnFilters || {}) };
+    const value = field.value.trim();
+    if (value) next[key] = value;
+    else delete next[key];
+    state.quoteSupplierColumnFilters = next;
+    state.quoteSupplierPreviewId = "";
+    state.quoteSupplierPopupOpen = false;
+    if (event.type === "input") scheduleRenderQuotes(180);
+    else renderQuotes({ preserveScroll: false, summaryOnly: true });
+  };
+  document.querySelector("#quoteSuppliersTable")?.addEventListener("input", applyQuoteSupplierColumnFilter);
+  document.querySelector("#quoteSuppliersTable")?.addEventListener("change", applyQuoteSupplierColumnFilter);
   document.querySelector("#quoteSupplierChips").addEventListener("click", (event) => {
     const chipBtn = event.target.closest("[data-lens], [data-chip]");
     if (chipBtn) {

@@ -1454,7 +1454,7 @@ function renderQuotes(options = {}) {
   const context = quoteSupplierContext(state.quoteSuppliers || []);
   let suppliers = (state.quoteSuppliers || []).filter((row) => {
     const searchOk = !search || supplierSearchText(row).includes(search);
-    return searchOk && quoteSupplierMatchesLenses(row, context);
+    return searchOk && quoteSupplierMatchesLenses(row, context) && quoteSupplierMatchesColumnFilters(row, context);
   });
   suppliers = sortQuoteSuppliers(suppliers, context);
   const grid = document.querySelector("#quoteSuppliersTable");
