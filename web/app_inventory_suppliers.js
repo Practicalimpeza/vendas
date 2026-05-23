@@ -608,6 +608,7 @@ function ensureSuppliersTable() {
     emptyTitle: "Nenhum fornecedor encontrado",
     emptyHint: "Revise a busca, o filtro ou importe mais dados de fornecedores.",
     initialSort: [{ id: "revenue", dir: "desc" }],
+    rowActions: [{ id: "editar", label: "Editar", icon: "pencil", title: "Editar cadastro do fornecedor", onClick: (g) => openSupplierProfileModal(g.supplier_id || "") }],
   });
   return suppliersTable;
 }

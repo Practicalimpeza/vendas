@@ -1,12 +1,12 @@
 /* ===================================================================
-   Nexo DataTable — identidade do motor de tabela (v2)
-   menu por coluna · visão geral · colunas/reordenar · presets
+   Nexo DataTable — identidade do motor de tabela (v3)
+   menu por coluna · resize/drag/congelar · ações no hover · cartões
    =================================================================== */
 .nexo-dt {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -20,14 +20,14 @@
   flex-wrap: wrap;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--green-soft), var(--surface) 78%);
+  background: linear-gradient(180deg, var(--green-soft), var(--surface) 80%);
 }
 .nexo-dt-search {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1 1 260px;
-  min-width: 200px;
+  flex: 1 1 240px;
+  min-width: 190px;
 }
 .nexo-dt-search > i {
   position: absolute;
@@ -59,6 +59,35 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+.nexo-dt-mode {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.nexo-dt-mode button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.nexo-dt-mode button i {
+  width: 16px;
+  height: 16px;
+}
+.nexo-dt-mode button + button {
+  border-left: 1px solid var(--line);
+}
+.nexo-dt-mode button.active {
+  background: var(--green-soft);
+  color: var(--green);
 }
 .nexo-dt-btn {
   display: inline-flex;
@@ -169,7 +198,7 @@
 
 /* ---------------------------------------------------------- tabela */
 .nexo-dt-scroll {
-  max-height: min(68vh, 780px);
+  max-height: min(70vh, 800px);
   overflow: auto;
 }
 .nexo-dt table {
@@ -178,6 +207,9 @@
   border-spacing: 0;
   min-width: 0;
 }
+.nexo-dt table[hidden] {
+  display: none;
+}
 .nexo-dt thead th {
   position: sticky;
   top: 0;
@@ -185,13 +217,15 @@
   background: var(--surface-2);
   border-bottom: 1px solid var(--line);
   padding: 0;
+  transition: background 0.14s ease;
 }
 .nexo-dt-th {
+  position: relative;
   padding: 0;
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   white-space: nowrap;
   user-select: none;
@@ -201,7 +235,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 9px 12px;
+  padding: 11px 14px;
 }
 .nexo-dt-th.num {
   text-align: right;
@@ -212,9 +246,7 @@
 .nexo-dt-th-label {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 6px;
-  padding: 2px 2px;
+  gap: 5px;
 }
 .nexo-dt-th.sortable .nexo-dt-th-label {
   cursor: pointer;
@@ -234,9 +266,11 @@
   opacity: 1;
   color: var(--green);
 }
-.nexo-dt-th.sortable .nexo-dt-th-label:hover {
+.nexo-dt thead th.sortable:hover {
+  background: var(--green-soft);
+}
+.nexo-dt thead th.sortable:hover .nexo-dt-th-label {
   color: var(--ink);
-  background: rgba(25, 115, 77, 0.08);
 }
 .nexo-dt-sort-order {
   color: var(--green);
@@ -261,45 +295,105 @@
   width: 14px;
   height: 14px;
 }
-.nexo-dt-th:hover .nexo-dt-th-caret,
+.nexo-dt thead th:hover .nexo-dt-th-caret,
 .nexo-dt-th.filtered .nexo-dt-th-caret {
   opacity: 1;
 }
 .nexo-dt-th-caret:hover {
-  background: rgba(25, 115, 77, 0.12);
+  background: rgba(25, 115, 77, 0.14);
   color: var(--green);
 }
 .nexo-dt-th.filtered .nexo-dt-th-caret {
   color: var(--green);
-  position: relative;
 }
 .nexo-dt-th.filtered .nexo-dt-th-caret::after {
   content: "";
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 6px;
+  right: 6px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--green);
 }
 
+/* alça de redimensionamento */
+.nexo-dt-resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+}
+.nexo-dt-resize::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 22%;
+  height: 56%;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.nexo-dt thead th:hover .nexo-dt-resize::after {
+  background: var(--line);
+}
+.nexo-dt-resize:hover::after {
+  background: var(--green);
+}
+.nexo-dt-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* arraste do cabeçalho */
+.nexo-dt-th.nexo-dt-dragging {
+  opacity: 0.45;
+}
+.nexo-dt-th.nexo-dt-droptarget-before::before,
+.nexo-dt-th.nexo-dt-droptarget-after::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--green);
+  z-index: 6;
+}
+.nexo-dt-th.nexo-dt-droptarget-before::before {
+  left: -1px;
+}
+.nexo-dt-th.nexo-dt-droptarget-after::after {
+  right: -1px;
+}
+
+/* corpo */
 .nexo-dt tbody td {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid rgba(221, 228, 223, 0.6);
   color: var(--ink);
   font-size: 14px;
   vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .nexo-dt tbody td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .nexo-dt-row {
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 .nexo-dt-row:hover {
   background: var(--green-soft);
+}
+.nexo-dt-row:hover td:first-child {
+  box-shadow: inset 3px 0 0 var(--green);
 }
 .nexo-dt-row.clickable-row {
   cursor: pointer;
@@ -312,13 +406,14 @@
   font-size: 13px;
 }
 .nexo-dt-compact .nexo-dt-th-inner {
-  padding: 6px 12px;
+  padding: 7px 12px;
 }
 .nexo-dt-empty td {
-  padding: 42px 18px !important;
+  padding: 46px 18px !important;
   text-align: center;
 }
-.nexo-dt-empty strong {
+.nexo-dt-empty strong,
+.nexo-dt-empty.cards strong {
   display: block;
   margin-bottom: 4px;
   font-size: 15px;
@@ -326,6 +421,166 @@
 .nexo-dt-empty span {
   color: var(--muted);
   font-size: 13px;
+}
+.nexo-dt-empty.cards {
+  grid-column: 1 / -1;
+  padding: 46px 18px;
+  text-align: center;
+}
+
+/* animação de entrada */
+.nexo-dt-in {
+  animation: nexo-dt-fade 0.22s ease;
+}
+@keyframes nexo-dt-fade {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* congelar 1ª coluna */
+.nexo-dt-freeze thead th:first-child,
+.nexo-dt-freeze tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  border-right: 1px solid var(--line);
+}
+.nexo-dt-freeze tbody td:first-child {
+  background: var(--surface);
+}
+.nexo-dt-freeze thead th:first-child {
+  z-index: 4;
+}
+.nexo-dt-freeze .nexo-dt-row:hover td:first-child {
+  background: var(--green-soft);
+}
+
+/* ações no hover da linha */
+.nexo-dt-actions-th,
+.nexo-dt-actions-cell {
+  position: sticky;
+  right: 0;
+  width: 1px;
+  white-space: nowrap;
+  padding: 0 10px;
+}
+.nexo-dt-actions-th {
+  background: var(--surface-2);
+  z-index: 3;
+}
+.nexo-dt-actions-cell {
+  background: var(--surface);
+}
+.nexo-dt-row:hover .nexo-dt-actions-cell {
+  background: var(--green-soft);
+}
+.nexo-dt-rowactions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.nexo-dt-row:hover .nexo-dt-rowactions {
+  opacity: 1;
+}
+.nexo-dt-rowaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.nexo-dt-rowaction i {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+.nexo-dt-rowaction:hover {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+.nexo-dt-rowaction:hover i {
+  color: #fff;
+}
+
+/* cartões */
+.nexo-dt-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+.nexo-dt-cards[hidden] {
+  display: none;
+}
+.nexo-dt-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 14px;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+}
+.nexo-dt-card:hover {
+  border-color: rgba(25, 115, 77, 0.4);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+.nexo-dt-card-title {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.nexo-dt-card-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+.nexo-dt-card-grid > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.nexo-dt-card-grid dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.nexo-dt-card-grid dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nexo-dt-card-actions {
+  display: flex;
+  gap: 6px;
 }
 
 /* ---------------------------------------------------- popovers/menus */
@@ -347,7 +602,7 @@
   width: min(420px, calc(100vw - 24px));
 }
 .nexo-dt-columns {
-  width: min(320px, calc(100vw - 24px));
+  width: min(330px, calc(100vw - 24px));
 }
 .nexo-dt-colmenu-pop {
   width: min(280px, calc(100vw - 24px));
@@ -516,7 +771,14 @@
   font-weight: 800;
 }
 
-/* painel Colunas (reordenar) */
+/* painel Colunas */
+.nexo-dt-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .nexo-dt-density {
   display: inline-flex;
   border: 1px solid var(--line);
@@ -536,6 +798,15 @@
 .nexo-dt-density button.active {
   background: var(--green);
   color: #fff;
+}
+.nexo-dt-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
 }
 .nexo-dt-colboxes {
   margin: 0;
@@ -643,6 +914,7 @@
   font-weight: 700;
   padding: 7px 13px;
   cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 .nexo-dt-seg:hover {
   border-color: var(--green);

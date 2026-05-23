@@ -1,24 +1,26 @@
 /*
- * Nexo DataTable — motor de tabela orientado a dados (v2).
+ * Nexo DataTable — motor de tabela orientado a dados (v3).
  *
- * Interação principal: cada cabeçalho de coluna tem um menu próprio
- * (ordenar + filtrar aquela coluna), no estilo de planilha. A toolbar
- * traz busca global, um painel de "Visão geral" (resumo da seleção,
- * segmentos rápidos, visões salvas, filtros ativos) e o gerenciador de
- * colunas (mostrar/ocultar, reordenar por arraste e densidade).
+ * Interação principal: menu por coluna (ordenar + filtrar). Liberdade de
+ * manipulação: redimensionar coluna arrastando a borda, reordenar arrastando
+ * o cabeçalho, congelar a 1ª coluna. Ações rápidas no hover da linha. Visão
+ * em tabela ou em cartões. Painel "Visão geral" com resumo, segmentos e
+ * visões salvas. Estado persistido por usuário.
  *
  *   const table = createDataTable("#mount", {
  *     key, columns, rows, rowKey, rowAttrs, onRowClick,
  *     searchPlaceholder, emptyTitle, emptyHint, initialSort,
  *     toolbarExtra, onToolbar,
- *     summary: (rows) => [{ label, value, tone }],
- *     segments: [{ id, label, hint, filters, sort, search }],
- *     presets:  [{ id, name, hint, columns: [ids], sort, filters, density }],
+ *     summary, segments, presets,
+ *     rowActions: [{ id, label, icon, title, onClick(row) }],
+ *     card: (row) => html,        // opcional; senão usa colunas visíveis
+ *     cardTitle: (row) => html,   // opcional
  *   });
  */
 
-const DT_WINDOW = 160;
-const DT_CHUNK = 280;
+const DT_WINDOW = 140;
+const DT_CHUNK = 240;
+const DT_MIN_COL = 64;
 const DT_STORAGE_PREFIX = "nexo:dt:";
 const DT_NUMERIC_TYPES = new Set(["number", "int", "money", "percent"]);
 
@@ -107,7 +109,6 @@ function dtNormalizeColumns(columns) {
         optional: col.optional !== false,
         hidden: Boolean(col.hidden),
         emptyText: col.emptyText,
-        unit: col.unit || "",
         tip: col.tip || "",
       };
     });
@@ -125,12 +126,14 @@ function createDataTable(mount, config) {
   const rowKey = config.rowKey || ((row) => row.id);
   const presets = config.presets || [];
   const segments = config.segments || [];
+  const rowActions = config.rowActions || [];
 
   const view = loadViewState();
   let records = [];
   let filtered = [];
   let renderToken = 0;
   let openMenu = null;
+  let resizing = null;
 
   container.classList.add("nexo-dt");
   container.dataset.dtKey = key;
@@ -140,12 +143,15 @@ function createDataTable(mount, config) {
     search: container.querySelector("[data-dt-search]"),
     chips: container.querySelector("[data-dt-chips]"),
     count: container.querySelector("[data-dt-count]"),
-    tbody: container.querySelector("tbody"),
-    theadRow: container.querySelector("thead tr"),
-    scroll: container.querySelector(".nexo-dt-scroll"),
     table: container.querySelector("table"),
+    colgroup: container.querySelector("colgroup"),
+    theadRow: container.querySelector("thead tr"),
+    tbody: container.querySelector("tbody"),
+    cards: container.querySelector("[data-dt-cards]"),
+    scroll: container.querySelector(".nexo-dt-scroll"),
     overviewBtn: container.querySelector("[data-dt-open='overview']"),
     columnsBtn: container.querySelector("[data-dt-open='columns']"),
+    modeBtns: container.querySelectorAll("[data-dt-mode]"),
     toolbarExtra: container.querySelector("[data-dt-extra]"),
   };
   els.table.dataset.enhancedTable = "true";
@@ -164,14 +170,16 @@ function createDataTable(mount, config) {
       stored = {};
     }
     const hiddenFromCols = columns.filter((col) => col.hidden).map((col) => col.id);
-    const defOrder = columns.map((col) => col.id);
     return {
       q: typeof stored.q === "string" ? stored.q : "",
       sort: Array.isArray(stored.sort) ? stored.sort.filter((item) => columnById.has(item.id)) : (config.initialSort || []),
       filters: stored.filters && typeof stored.filters === "object" ? stored.filters : {},
       hidden: Array.isArray(stored.hidden) ? stored.hidden.filter((id) => columnById.has(id)) : hiddenFromCols,
-      order: Array.isArray(stored.order) ? sanitizeOrder(stored.order) : defOrder,
+      order: Array.isArray(stored.order) ? sanitizeOrder(stored.order) : columns.map((col) => col.id),
+      widths: stored.widths && typeof stored.widths === "object" ? stored.widths : {},
       density: stored.density === "compact" ? "compact" : "comfortable",
+      freeze: Boolean(stored.freeze),
+      mode: stored.mode === "cards" ? "cards" : "table",
     };
   }
 
@@ -192,10 +200,20 @@ function createDataTable(mount, config) {
     try {
       localStorage.setItem(
         storageKey,
-        JSON.stringify({ q: view.q, sort: view.sort, filters: view.filters, hidden: view.hidden, order: view.order, density: view.density }),
+        JSON.stringify({
+          q: view.q,
+          sort: view.sort,
+          filters: view.filters,
+          hidden: view.hidden,
+          order: view.order,
+          widths: view.widths,
+          density: view.density,
+          freeze: view.freeze,
+          mode: view.mode,
+        }),
       );
     } catch (error) {
-      /* sem persistência: segue só em memória */
+      /* sem persistência */
     }
   }
 
@@ -232,6 +250,11 @@ function createDataTable(mount, config) {
   }
 
   function shellHtml() {
+    const modeToggle = `
+      <div class="nexo-dt-mode" role="group" aria-label="Modo de visualização">
+        <button type="button" data-dt-mode="table" class="${view.mode === "table" ? "active" : ""}" title="Tabela"><i data-lucide="table-2"></i></button>
+        <button type="button" data-dt-mode="cards" class="${view.mode === "cards" ? "active" : ""}" title="Cartões"><i data-lucide="layout-grid"></i></button>
+      </div>`;
     return `
       <div class="nexo-dt-toolbar">
         <div class="nexo-dt-search">
@@ -239,6 +262,7 @@ function createDataTable(mount, config) {
           <input data-dt-search type="search" placeholder="${escapeAttr(config.searchPlaceholder || "Buscar")}" value="${escapeAttr(view.q)}" aria-label="Buscar na tabela" />
         </div>
         <div class="nexo-dt-tools">
+          ${modeToggle}
           <button class="nexo-dt-btn primary" type="button" data-dt-open="overview" aria-haspopup="true"><i data-lucide="layout-dashboard"></i><span>Visão geral</span></button>
           <button class="nexo-dt-btn" type="button" data-dt-open="columns" aria-haspopup="true"><i data-lucide="settings-2"></i><span>Colunas</span></button>
           <span class="nexo-dt-count" data-dt-count></span>
@@ -248,9 +272,11 @@ function createDataTable(mount, config) {
       <div class="nexo-dt-chips" data-dt-chips hidden></div>
       <div class="nexo-dt-scroll table-wrap">
         <table>
+          <colgroup></colgroup>
           <thead><tr></tr></thead>
           <tbody></tbody>
         </table>
+        <div class="nexo-dt-cards" data-dt-cards hidden></div>
       </div>
     `;
   }
@@ -358,10 +384,20 @@ function createDataTable(mount, config) {
     const query = dtNormalize(view.q);
     filtered = records.filter((record) => recordPasses(record, filters, query));
     applySort();
-    renderHead();
+    syncModeButtons();
     renderChips();
     renderCount();
-    renderBody();
+    if (view.mode === "cards") {
+      els.table.hidden = true;
+      els.cards.hidden = false;
+      renderCards();
+    } else {
+      els.cards.hidden = true;
+      els.table.hidden = false;
+      renderColgroup();
+      renderHead();
+      renderBody();
+    }
     refreshIcons();
   }
 
@@ -399,9 +435,21 @@ function createDataTable(mount, config) {
     return ca.text.localeCompare(cb.text, "pt-BR", { numeric: true, sensitivity: "base" });
   }
 
+  function renderColgroup() {
+    const cols = visibleColumns();
+    const hasWidths = cols.some((col) => view.widths[col.id]);
+    els.table.style.tableLayout = hasWidths ? "fixed" : "auto";
+    els.table.classList.toggle("nexo-dt-freeze", view.freeze);
+    const colsHtml = cols
+      .map((col) => `<col data-dt-colw="${escapeAttr(col.id)}"${view.widths[col.id] ? ` style="width:${Math.round(view.widths[col.id])}px"` : ""}>`)
+      .join("");
+    const actionsCol = rowActions.length ? `<col class="nexo-dt-actions-col">` : "";
+    els.colgroup.innerHTML = colsHtml + actionsCol;
+  }
+
   function renderHead() {
     const sortIndex = new Map(view.sort.map((item, index) => [item.id, { ...item, order: index + 1 }]));
-    els.theadRow.innerHTML = visibleColumns()
+    const ths = visibleColumns()
       .map((col) => {
         const meta = sortIndex.get(col.id);
         const dir = meta ? meta.dir : "";
@@ -413,11 +461,13 @@ function createDataTable(mount, config) {
         const aria = dir ? (dir === "asc" ? "ascending" : "descending") : "none";
         const tip = col.tip ? ` title="${escapeAttr(col.tip)}"` : "";
         const caret = col.sortable || col.filterable
-          ? `<button class="nexo-dt-th-caret" type="button" data-dt-colmenu aria-label="Opções de ${escapeAttr(col.label)}"><i data-lucide="chevron-down"></i></button>`
+          ? `<button class="nexo-dt-th-caret" type="button" data-dt-colmenu draggable="false" aria-label="Opções de ${escapeAttr(col.label)}"><i data-lucide="chevron-down"></i></button>`
           : "";
-        return `<th class="${cls}" data-dt-col="${escapeAttr(col.id)}" aria-sort="${aria}"${tip}><div class="nexo-dt-th-inner"><span class="nexo-dt-th-label"${col.sortable ? ' data-dt-sortlabel tabindex="0"' : ""}>${escapeHtml(col.label)}${badge}</span>${caret}</div></th>`;
+        return `<th class="${cls}" data-dt-col="${escapeAttr(col.id)}" aria-sort="${aria}" draggable="true"${tip}><div class="nexo-dt-th-inner"><span class="nexo-dt-th-label"${col.sortable ? ' data-dt-sortlabel tabindex="0"' : ""}>${escapeHtml(col.label)}${badge}</span>${caret}</div><span class="nexo-dt-resize" data-dt-resize draggable="false" aria-hidden="true"></span></th>`;
       })
       .join("");
+    const actionsTh = rowActions.length ? `<th class="nexo-dt-actions-th" aria-label="Ações"></th>` : "";
+    els.theadRow.innerHTML = ths + actionsTh;
   }
 
   function renderCount() {
@@ -461,25 +511,32 @@ function createDataTable(mount, config) {
 
   /* --------------------------------------------------------- corpo (janela) */
 
-  function renderBody() {
+  function progressiveRender(target, makeNode, onDone) {
     const token = ++renderToken;
-    els.tbody.innerHTML = "";
-    els.table.classList.toggle("nexo-dt-compact", view.density === "compact");
-    const cols = visibleColumns();
-    if (!filtered.length) {
-      els.tbody.innerHTML = `<tr class="nexo-dt-empty"><td colspan="${cols.length || 1}"><strong>${escapeHtml(config.emptyTitle || "Nada encontrado")}</strong><span>${escapeHtml(config.emptyHint || "Ajuste a busca ou os filtros.")}</span></td></tr>`;
-      return;
-    }
+    target.innerHTML = "";
     const renderChunk = (start) => {
       if (token !== renderToken) return;
       const end = Math.min(start === 0 ? DT_WINDOW : start + DT_CHUNK, filtered.length);
       const fragment = document.createDocumentFragment();
-      for (let i = start; i < end; i += 1) fragment.appendChild(buildRowElement(filtered[i], cols));
-      els.tbody.appendChild(fragment);
+      for (let i = start; i < end; i += 1) fragment.appendChild(makeNode(filtered[i], i));
+      target.appendChild(fragment);
       if (end < filtered.length) requestAnimationFrame(() => renderChunk(end));
-      else refreshIcons();
+      else if (onDone) onDone();
     };
     renderChunk(0);
+  }
+
+  function renderBody() {
+    els.table.classList.toggle("nexo-dt-compact", view.density === "compact");
+    const cols = visibleColumns();
+    const span = cols.length + (rowActions.length ? 1 : 0) || 1;
+    if (!filtered.length) {
+      els.tbody.innerHTML = `<tr class="nexo-dt-empty"><td colspan="${span}"><strong>${escapeHtml(config.emptyTitle || "Nada encontrado")}</strong><span>${escapeHtml(config.emptyHint || "Ajuste a busca ou os filtros.")}</span></td></tr>`;
+      return;
+    }
+    els.tbody.classList.remove("nexo-dt-in");
+    progressiveRender(els.tbody, (record) => buildRowElement(record, cols), () => refreshIcons());
+    requestAnimationFrame(() => els.tbody.classList.add("nexo-dt-in"));
     refreshIcons();
   }
 
@@ -492,13 +549,16 @@ function createDataTable(mount, config) {
       tr.setAttribute(name, String(value));
     }
     tr.dataset.dtKey = record.key;
-    tr.innerHTML = cols
+    let html = cols
       .map((col) => {
         const cell = record.cells[col.id];
-        const html = typeof col.render === "function" ? col.render(record.row, cell.raw) : dtDefaultRender(col, cell.raw);
-        return `<td class="${col.align === "num" ? "num" : ""}">${html}</td>`;
+        const inner = typeof col.render === "function" ? col.render(record.row, cell.raw) : dtDefaultRender(col, cell.raw);
+        return `<td class="${col.align === "num" ? "num" : ""}">${inner}</td>`;
       })
       .join("");
+    if (rowActions.length) html += `<td class="nexo-dt-actions-cell">${rowActionsHtml()}</td>`;
+    tr.innerHTML = html;
+    if (rowActions.length) bindRowActions(tr, record.row);
     if (config.onRowClick) {
       tr.addEventListener("click", (event) => {
         if (event.target.closest("a, button, input, select, textarea, label, [data-dt-stop]")) return;
@@ -508,7 +568,83 @@ function createDataTable(mount, config) {
     return tr;
   }
 
+  function rowActionsHtml() {
+    return `<div class="nexo-dt-rowactions" data-dt-stop>${rowActions
+      .map((action) => `<button type="button" class="nexo-dt-rowaction" data-dt-action="${escapeAttr(action.id)}" title="${escapeAttr(action.title || action.label)}">${action.icon ? `<i data-lucide="${escapeAttr(action.icon)}"></i>` : ""}<span>${escapeHtml(action.label)}</span></button>`)
+      .join("")}</div>`;
+  }
+
+  function bindRowActions(scope, row) {
+    scope.querySelectorAll("[data-dt-action]").forEach((btn) =>
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const action = rowActions.find((item) => item.id === btn.dataset.dtAction);
+        if (action && typeof action.onClick === "function") action.onClick(row, event);
+      }),
+    );
+  }
+
+  /* ------------------------------------------------------------- cartões */
+
+  function renderCards() {
+    if (!filtered.length) {
+      els.cards.innerHTML = `<div class="nexo-dt-empty cards"><strong>${escapeHtml(config.emptyTitle || "Nada encontrado")}</strong><span>${escapeHtml(config.emptyHint || "Ajuste a busca ou os filtros.")}</span></div>`;
+      return;
+    }
+    els.cards.classList.remove("nexo-dt-in");
+    progressiveRender(els.cards, (record) => buildCardElement(record), () => refreshIcons());
+    requestAnimationFrame(() => els.cards.classList.add("nexo-dt-in"));
+  }
+
+  function buildCardElement(record) {
+    const wrap = document.createElement(config.onRowClick ? "button" : "div");
+    const attrs = typeof config.rowAttrs === "function" ? config.rowAttrs(record.row) || {} : {};
+    wrap.className = ["nexo-dt-card", attrs.class || ""].filter(Boolean).join(" ");
+    if (wrap.tagName === "BUTTON") wrap.type = "button";
+    for (const [name, value] of Object.entries(attrs)) {
+      if (name === "class") continue;
+      wrap.setAttribute(name, String(value));
+    }
+    if (typeof config.card === "function") {
+      wrap.innerHTML = config.card(record.row);
+    } else {
+      wrap.innerHTML = defaultCardHtml(record);
+    }
+    if (config.onRowClick) wrap.addEventListener("click", (event) => {
+      if (event.target.closest("a, button, input, select, textarea, label, [data-dt-stop]")) return;
+      config.onRowClick(record.row, event);
+    });
+    if (rowActions.length) bindRowActions(wrap, record.row);
+    return wrap;
+  }
+
+  function defaultCardHtml(record) {
+    const cols = visibleColumns();
+    const customTitle = typeof config.cardTitle === "function";
+    const titleCol = customTitle ? null : (cols.find((col) => col.type === "text") || cols[0]);
+    const titleCell = titleCol ? record.cells[titleCol.id] : null;
+    const title = customTitle
+      ? config.cardTitle(record.row)
+      : titleCol
+        ? (typeof titleCol.render === "function" ? titleCol.render(record.row, titleCell.raw) : dtDefaultRender(titleCol, titleCell.raw))
+        : "";
+    const rows = cols
+      .filter((col) => col !== titleCol)
+      .map((col) => {
+        const cell = record.cells[col.id];
+        const value = typeof col.render === "function" ? col.render(record.row, cell.raw) : dtDefaultRender(col, cell.raw);
+        return `<div><dt>${escapeHtml(col.label)}</dt><dd>${value}</dd></div>`;
+      })
+      .join("");
+    const actions = rowActions.length ? `<div class="nexo-dt-card-actions">${rowActionsHtml()}</div>` : "";
+    return `<div class="nexo-dt-card-title">${title}</div><dl class="nexo-dt-card-grid">${rows}</dl>${actions}`;
+  }
+
   /* -------------------------------------------------------------- toolbar */
+
+  function syncModeButtons() {
+    els.modeBtns.forEach((btn) => btn.classList.toggle("active", btn.dataset.dtMode === view.mode));
+  }
 
   function bindToolbar() {
     let searchTimer = null;
@@ -522,6 +658,7 @@ function createDataTable(mount, config) {
     });
 
     els.theadRow.addEventListener("click", (event) => {
+      if (event.target.closest("[data-dt-resize]")) return;
       const caret = event.target.closest("[data-dt-colmenu]");
       const th = event.target.closest("[data-dt-col]");
       if (!th) return;
@@ -541,6 +678,8 @@ function createDataTable(mount, config) {
       const col = columnById.get(th.dataset.dtCol);
       if (col?.sortable) toggleSort(col.id, event.shiftKey);
     });
+    bindResize();
+    bindHeaderReorder();
 
     els.chips.addEventListener("click", (event) => {
       if (event.target.closest("[data-dt-clear-search]")) {
@@ -560,6 +699,13 @@ function createDataTable(mount, config) {
 
     els.overviewBtn.addEventListener("click", () => toggleToolbarMenu("overview", els.overviewBtn));
     els.columnsBtn.addEventListener("click", () => toggleToolbarMenu("columns", els.columnsBtn));
+    els.modeBtns.forEach((btn) =>
+      btn.addEventListener("click", () => {
+        view.mode = btn.dataset.dtMode;
+        saveViewState();
+        apply();
+      }),
+    );
   }
 
   function toggleSort(colId, additive) {
@@ -579,6 +725,128 @@ function createDataTable(mount, config) {
 
   function setSort(colId, dir) {
     view.sort = dir ? [{ id: colId, dir }] : [];
+    saveViewState();
+    apply();
+  }
+
+  /* ---------------------------------------------------- resize de coluna */
+
+  function measureWidths() {
+    visibleColumns().forEach((col) => {
+      if (!view.widths[col.id]) {
+        const th = els.theadRow.querySelector(`th[data-dt-col="${CSS.escape(col.id)}"]`);
+        if (th) view.widths[col.id] = Math.round(th.getBoundingClientRect().width);
+      }
+    });
+  }
+
+  function applyColWidths() {
+    visibleColumns().forEach((col) => {
+      const colEl = els.colgroup.querySelector(`col[data-dt-colw="${CSS.escape(col.id)}"]`);
+      if (colEl && view.widths[col.id]) colEl.style.width = `${Math.round(view.widths[col.id])}px`;
+    });
+  }
+
+  function bindResize() {
+    els.theadRow.addEventListener("pointerdown", (event) => {
+      const handle = event.target.closest("[data-dt-resize]");
+      if (!handle) return;
+      const th = handle.closest("[data-dt-col]");
+      const colId = th?.dataset.dtCol;
+      if (!colId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      measureWidths();
+      els.table.style.tableLayout = "fixed";
+      applyColWidths();
+      const startX = event.clientX;
+      const startW = view.widths[colId] || th.getBoundingClientRect().width;
+      resizing = { colId, startX, startW };
+      els.table.classList.add("nexo-dt-resizing");
+      try {
+        handle.setPointerCapture?.(event.pointerId);
+      } catch (error) {
+        /* pointer capture indisponível: segue sem capturar */
+      }
+      const onMove = (moveEvent) => {
+        if (!resizing) return;
+        const next = Math.max(DT_MIN_COL, Math.round(resizing.startW + (moveEvent.clientX - resizing.startX)));
+        view.widths[colId] = next;
+        const colEl = els.colgroup.querySelector(`col[data-dt-colw="${CSS.escape(colId)}"]`);
+        if (colEl) colEl.style.width = `${next}px`;
+      };
+      const onUp = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        resizing = null;
+        els.table.classList.remove("nexo-dt-resizing");
+        saveViewState();
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    });
+  }
+
+  /* ------------------------------------------------ reordenar cabeçalho */
+
+  function bindHeaderReorder() {
+    let dragged = null;
+    els.theadRow.addEventListener("dragstart", (event) => {
+      if (resizing || event.target.closest("[data-dt-resize], [data-dt-colmenu]")) {
+        event.preventDefault();
+        return;
+      }
+      const th = event.target.closest("th[data-dt-col]");
+      if (!th) return;
+      dragged = th;
+      th.classList.add("nexo-dt-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      try {
+        event.dataTransfer.setData("text/plain", th.dataset.dtCol);
+      } catch (error) {
+        /* ignore */
+      }
+    });
+    els.theadRow.addEventListener("dragover", (event) => {
+      if (!dragged) return;
+      const th = event.target.closest("th[data-dt-col]");
+      if (!th || th === dragged) return;
+      event.preventDefault();
+      const rect = th.getBoundingClientRect();
+      const after = event.clientX > rect.left + rect.width / 2;
+      els.theadRow.querySelectorAll(".nexo-dt-droptarget-before, .nexo-dt-droptarget-after").forEach((el) =>
+        el.classList.remove("nexo-dt-droptarget-before", "nexo-dt-droptarget-after"),
+      );
+      th.classList.add(after ? "nexo-dt-droptarget-after" : "nexo-dt-droptarget-before");
+    });
+    els.theadRow.addEventListener("drop", (event) => {
+      if (!dragged) return;
+      const th = event.target.closest("th[data-dt-col]");
+      if (!th || th === dragged) return;
+      event.preventDefault();
+      const rect = th.getBoundingClientRect();
+      const after = event.clientX > rect.left + rect.width / 2;
+      reorderColumn(dragged.dataset.dtCol, th.dataset.dtCol, after);
+    });
+    els.theadRow.addEventListener("dragend", () => {
+      if (dragged) dragged.classList.remove("nexo-dt-dragging");
+      els.theadRow.querySelectorAll(".nexo-dt-droptarget-before, .nexo-dt-droptarget-after").forEach((el) =>
+        el.classList.remove("nexo-dt-droptarget-before", "nexo-dt-droptarget-after"),
+      );
+      dragged = null;
+    });
+  }
+
+  function reorderColumn(fromId, toId, after) {
+    const order = orderedColumns().map((col) => col.id);
+    const fromIdx = order.indexOf(fromId);
+    if (fromIdx === -1) return;
+    order.splice(fromIdx, 1);
+    let toIdx = order.indexOf(toId);
+    if (toIdx === -1) return;
+    if (after) toIdx += 1;
+    order.splice(toIdx, 0, fromId);
+    view.order = order;
     saveViewState();
     apply();
   }
@@ -661,8 +929,7 @@ function createDataTable(mount, config) {
       closeFloating();
       return;
     }
-    const html = columnMenuHtml(col);
-    openFloating("col", th, html, (pop) => bindColumnMenu(pop, col), "nexo-dt-colmenu-pop");
+    openFloating("col", th, columnMenuHtml(col), (pop) => bindColumnMenu(pop, col), "nexo-dt-colmenu-pop");
     if (openMenu) openMenu.colId = col.id;
   }
 
@@ -692,7 +959,7 @@ function createDataTable(mount, config) {
         closeFloating();
       }),
     );
-    bindFilterControl(pop, col, () => closeFloating());
+    bindFilterControl(pop, col);
     pop.querySelector("[data-dt-col-clear]")?.addEventListener("click", () => {
       delete view.filters[col.id];
       view.sort = view.sort.filter((item) => item.id !== col.id);
@@ -731,7 +998,7 @@ function createDataTable(mount, config) {
     return `<input type="search" class="nexo-dt-text-filter" data-dt-text placeholder="contém…" value="${escapeAttr(term)}">`;
   }
 
-  function bindFilterControl(scope, col, onChange) {
+  function bindFilterControl(scope, col) {
     const minEl = scope.querySelector("[data-dt-min]");
     const maxEl = scope.querySelector("[data-dt-max]");
     if (minEl || maxEl) {
@@ -743,7 +1010,6 @@ function createDataTable(mount, config) {
         else view.filters[col.id] = { kind: "range", min, max };
         saveViewState();
         apply();
-        if (onChange) onChange();
       };
       [minEl, maxEl].filter(Boolean).forEach((el) => el.addEventListener("change", commit));
     }
@@ -794,11 +1060,14 @@ function createDataTable(mount, config) {
       })
       .join("");
     return `
-      <div class="nexo-dt-pop-head">Colunas e densidade</div>
+      <div class="nexo-dt-pop-head">Colunas e layout</div>
       <div class="nexo-dt-pop-body">
-        <div class="nexo-dt-density">
-          <button type="button" class="${view.density === "comfortable" ? "active" : ""}" data-dt-density="comfortable">Conforto</button>
-          <button type="button" class="${view.density === "compact" ? "active" : ""}" data-dt-density="compact">Compacta</button>
+        <div class="nexo-dt-toggle-row">
+          <div class="nexo-dt-density">
+            <button type="button" class="${view.density === "comfortable" ? "active" : ""}" data-dt-density="comfortable">Conforto</button>
+            <button type="button" class="${view.density === "compact" ? "active" : ""}" data-dt-density="compact">Compacta</button>
+          </div>
+          <label class="nexo-dt-switch"><input type="checkbox" data-dt-freeze${view.freeze ? " checked" : ""}><span>Congelar 1ª coluna</span></label>
         </div>
         <p class="nexo-dt-hint">Arraste para reordenar. Marque para mostrar.</p>
         <ul class="nexo-dt-colboxes">${items}</ul>
@@ -825,9 +1094,15 @@ function createDataTable(mount, config) {
         els.table.classList.toggle("nexo-dt-compact", view.density === "compact");
       }),
     );
+    pop.querySelector("[data-dt-freeze]")?.addEventListener("change", (event) => {
+      view.freeze = event.target.checked;
+      saveViewState();
+      apply();
+    });
     pop.querySelector("[data-dt-cols-reset]")?.addEventListener("click", () => {
       view.hidden = columns.filter((col) => col.hidden).map((col) => col.id);
       view.order = columns.map((col) => col.id);
+      view.widths = {};
       saveViewState();
       apply();
       reopenToolbarMenu("columns");
@@ -901,7 +1176,10 @@ function createDataTable(mount, config) {
     pop.querySelectorAll("[data-dt-seg]").forEach((btn) =>
       btn.addEventListener("click", () => {
         const seg = segments.find((s) => s.id === btn.dataset.dtSeg);
-        if (seg) applyView({ filters: seg.filters || {}, sort: seg.sort, q: seg.search });
+        if (seg) {
+          if (seg.columns) applyPreset(seg);
+          else applyView({ filters: seg.filters || {}, sort: seg.sort, q: seg.search });
+        }
         closeFloating();
       }),
     );
@@ -933,7 +1211,20 @@ function createDataTable(mount, config) {
         return;
       }
       const list = loadUserViews();
-      list.push({ id: `v${Date.now()}`, name, state: { hidden: [...view.hidden], order: [...view.order], sort: JSON.parse(JSON.stringify(view.sort)), filters: JSON.parse(JSON.stringify(view.filters)), density: view.density } });
+      list.push({
+        id: `v${Date.now()}`,
+        name,
+        state: {
+          hidden: [...view.hidden],
+          order: [...view.order],
+          sort: JSON.parse(JSON.stringify(view.sort)),
+          filters: JSON.parse(JSON.stringify(view.filters)),
+          widths: { ...view.widths },
+          density: view.density,
+          freeze: view.freeze,
+          mode: view.mode,
+        },
+      });
       saveUserViews(list);
       reopenToolbarMenu("overview");
     });
@@ -955,7 +1246,10 @@ function createDataTable(mount, config) {
     if ("order" in partial) view.order = sanitizeOrder(partial.order || []);
     if ("sort" in partial) view.sort = (partial.sort || []).filter((item) => columnById.has(item.id));
     if ("filters" in partial) view.filters = JSON.parse(JSON.stringify(partial.filters || {}));
+    if ("widths" in partial) view.widths = { ...(partial.widths || {}) };
     if ("density" in partial && partial.density) view.density = partial.density;
+    if ("freeze" in partial) view.freeze = Boolean(partial.freeze);
+    if ("mode" in partial && partial.mode) view.mode = partial.mode;
     if ("q" in partial) {
       view.q = partial.q || "";
       els.search.value = view.q;

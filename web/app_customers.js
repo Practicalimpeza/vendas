@@ -33,6 +33,7 @@ function ensureCustomersTable() {
     emptyTitle: "Nenhum cliente no período",
     emptyHint: "Aumente o recorte ou confira a importação de vendas.",
     initialSort: [{ id: "revenue", dir: "desc" }],
+    rowActions: [{ id: "mix", label: "Ver mix", icon: "layers", title: "Mix de produtos do cliente", onClick: (row) => openCustomerMix(row.id) }],
   });
   return customersTable;
 }

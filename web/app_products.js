@@ -199,12 +199,28 @@ function ensureProductsTable() {
     rowKey: (row) => row.id,
     rowAttrs: (row) => ({ "data-product-id": row.id, class: "product-row" }),
     onRowClick: (row) => openProductModal(row.id),
+    cardTitle: (row) => `${escapeHtml(row.name || "Produto")}<small style="display:block;color:var(--muted);font-weight:600;font-size:12px">${escapeHtml(productCode(row.source_code))}</small>`,
     emptyTitle: "Nenhum produto encontrado",
     emptyHint: "Revise a busca, os filtros ou o período selecionado.",
     initialSort: [{ id: "revenue", dir: "desc" }],
     summary: productTableSummary,
     presets: productTablePresets(),
     segments: productTableSegments(),
+    rowActions: [
+      { id: "abrir", label: "Abrir", icon: "maximize-2", title: "Abrir detalhe do produto", onClick: (row) => openProductModal(row.id) },
+      {
+        id: "preco",
+        label: "Preço",
+        icon: "tag",
+        title: "Ver preço e margem",
+        onClick: (row) => {
+          if (typeof setView === "function") setView("pricing");
+          window.setTimeout(() => {
+            if (typeof openPricingModal === "function") openPricingModal(row.id);
+          }, 0);
+        },
+      },
+    ],
     toolbarExtra: `
       <button class="secondary-button compact" type="button" id="productNew">Novo produto</button>
       <button class="secondary-button compact" type="button" id="productBulkMix">Editar mix</button>
