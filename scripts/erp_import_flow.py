@@ -1387,6 +1387,13 @@ try {
         script_path = tmp_path / "ler_xls.ps1"
         workbook_path.write_bytes(data)
         script_path.write_text(script, encoding="utf-8")
+        startupinfo = None
+        creationflags = 0
+        if hasattr(subprocess, "STARTUPINFO"):
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
+        creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
         completed = subprocess.run(
             [
                 "powershell",
@@ -1404,6 +1411,8 @@ try {
             encoding="utf-8",
             timeout=180,
             check=False,
+            startupinfo=startupinfo,
+            creationflags=creationflags,
         )
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip()
@@ -1452,20 +1461,20 @@ def parse_xls_planilha(content_base64: str) -> tuple[list[dict], dict]:
         if sheets:
             return sheets, {"format": "xls_xml", "sheet_count": len(sheets)}
 
-    excel_error = None
+    biff_error = None
     try:
-        return parse_xls_with_excel_com(data)
+        return parse_xls_biff(data)
     except Exception as error:
-        excel_error = error
+        biff_error = error
     try:
-        sheets, metadata = parse_xls_biff(data)
-        metadata["excel_com_error"] = str(excel_error)[:300] if excel_error else ""
+        sheets, metadata = parse_xls_with_excel_com(data)
+        metadata["biff_error"] = str(biff_error)[:300] if biff_error else ""
         return sheets, metadata
-    except Exception as biff_error:
+    except Exception as excel_error:
         raise ValueError(
             "Nao foi possivel ler este .xls diretamente. Salve/exporte esta planilha como .xlsx ou .csv e tente novamente. "
-            f"Detalhe tecnico: Excel: {str(excel_error)[:220] if excel_error else 'indisponivel'} | BIFF: {str(biff_error)[:220]}"
-        ) from biff_error
+            f"Detalhe tecnico: BIFF: {str(biff_error)[:220] if biff_error else 'indisponivel'} | Excel: {str(excel_error)[:220]}"
+        ) from excel_error
 
 
 def parse_erp_file_bytes(file_name: str, raw_bytes: bytes) -> tuple[str, list[dict], dict, str, int]:

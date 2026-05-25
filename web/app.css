@@ -155,6 +155,45 @@ body::after {
   text-align: center;
 }
 
+.startup-telemetry {
+  position: relative;
+  width: min(360px, 100%);
+  height: 86px;
+  display: grid;
+  grid-template-columns: 1.1fr 0.8fr 1fr;
+  align-items: end;
+  gap: 8px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(17, 28, 22, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(17, 28, 22, 0.035) 1px, transparent 1px),
+    rgba(247, 250, 248, 0.72);
+  background-size: 22px 22px;
+}
+
+.startup-telemetry span {
+  display: block;
+  border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(180deg, rgba(25, 115, 77, 0.78), rgba(47, 126, 184, 0.68));
+  animation: startupBars 1.4s ease-in-out infinite;
+}
+
+.startup-telemetry span:nth-child(1) { height: 44px; animation-delay: 0s; }
+.startup-telemetry span:nth-child(2) { height: 62px; animation-delay: 0.12s; }
+.startup-telemetry span:nth-child(3) { height: 34px; animation-delay: 0.24s; }
+
+.startup-telemetry i {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  transform: translateX(-100%);
+  animation: startupScan 1.8s ease-in-out infinite;
+}
+
 .startup-progress {
   height: 5px;
   overflow: hidden;
@@ -176,13 +215,28 @@ body::after {
   100% { transform: translateX(245%); }
 }
 
+@keyframes startupBars {
+  0%, 100% { transform: scaleY(0.64); opacity: 0.58; }
+  45% { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes startupScan {
+  0% { transform: translateX(-110%); }
+  58%, 100% { transform: translateX(110%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .startup-screen {
     transition: none;
   }
 
-  .startup-progress span {
+  .startup-progress span,
+  .startup-telemetry span,
+  .startup-telemetry i {
     animation: none;
+  }
+
+  .startup-progress span {
     width: 100%;
   }
 }
@@ -17674,16 +17728,46 @@ body.onboarding-open {
 }
 
 .workspace:has(#dashboard.active) .dashboard-bi {
-  gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
 }
 
-.workspace:has(#dashboard.active) #generalMapHero { order: 1; }
-.workspace:has(#dashboard.active) #kpis { order: 2; }
-.workspace:has(#dashboard.active) #generalMapCards { order: 3; }
-.workspace:has(#dashboard.active) #dashboardCharts { order: 4; }
-.workspace:has(#dashboard.active) #dashboardControlBar { order: 5; }
-.workspace:has(#dashboard.active) #dashboardOperatorBoard { order: 6; }
-.workspace:has(#dashboard.active) #dashboardPotential { order: 7; }
+.workspace:has(#dashboard.active) #generalMapHero {
+  grid-column: span 7;
+  order: 1;
+}
+
+.workspace:has(#dashboard.active) #kpis {
+  grid-column: span 5;
+  order: 2;
+}
+
+.workspace:has(#dashboard.active) #generalMapCards {
+  grid-column: span 4;
+  order: 3;
+}
+
+.workspace:has(#dashboard.active) #dashboardCharts {
+  grid-column: span 8;
+  order: 4;
+}
+
+.workspace:has(#dashboard.active) #dashboardControlBar {
+  grid-column: 1 / -1;
+  order: 5;
+}
+
+.workspace:has(#dashboard.active) #dashboardOperatorBoard {
+  grid-column: 1 / -1;
+  order: 6;
+}
+
+.workspace:has(#dashboard.active) #dashboardPotential {
+  grid-column: 1 / -1;
+  order: 7;
+}
 
 .workspace:has(#dashboard.active) .operator-control-bar {
   display: grid;
@@ -17775,6 +17859,51 @@ body.onboarding-open {
 
 .workspace:has(#dashboard.active) .bi-kpi-strip {
   margin-top: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.workspace:has(#dashboard.active) .bi-kpi-strip .kpi {
+  min-height: 116px;
+  border-right: 0;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.08);
+  padding: 13px 14px;
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.workspace:has(#dashboard.active) .bi-kpi-strip .kpi:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.workspace:has(#dashboard.active) .bi-signal-grid {
+  grid-template-columns: 1fr;
+  gap: 1px;
+  border-radius: 18px;
+}
+
+.workspace:has(#dashboard.active) .bi-signal {
+  min-height: 94px;
+}
+
+.workspace:has(#dashboard.active) .bi-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.workspace:has(#dashboard.active) .bi-panel {
+  min-height: 264px;
+  border-radius: 18px;
+}
+
+.workspace:has(#dashboard.active) .bi-panel-large {
+  grid-column: span 8;
+  min-height: 326px;
+}
+
+.workspace:has(#dashboard.active) .bi-panel-wide,
+.workspace:has(#dashboard.active) .bi-panel:not(.bi-panel-large):not(.bi-panel-wide) {
+  grid-column: span 4;
 }
 
 .workspace:has(#dashboard.active) .operator-board {
@@ -17811,6 +17940,27 @@ body.onboarding-open {
 
   .workspace:has(#dashboard.active) .operator-control-bar {
     grid-template-columns: 1fr;
+  }
+
+  .workspace:has(#dashboard.active) #generalMapHero,
+  .workspace:has(#dashboard.active) #kpis,
+  .workspace:has(#dashboard.active) #generalMapCards,
+  .workspace:has(#dashboard.active) #dashboardCharts,
+  .workspace:has(#dashboard.active) #dashboardControlBar,
+  .workspace:has(#dashboard.active) #dashboardOperatorBoard,
+  .workspace:has(#dashboard.active) #dashboardPotential {
+    grid-column: 1 / -1;
+  }
+
+  .workspace:has(#dashboard.active) .bi-kpi-strip,
+  .workspace:has(#dashboard.active) .bi-signal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace:has(#dashboard.active) .bi-panel,
+  .workspace:has(#dashboard.active) .bi-panel-wide,
+  .workspace:has(#dashboard.active) .bi-panel:not(.bi-panel-large):not(.bi-panel-wide) {
+    grid-column: 1 / -1;
   }
 
   .operator-command-row {
