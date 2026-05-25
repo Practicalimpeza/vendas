@@ -9,7 +9,7 @@
     .sort((a, b) => b.value - a.value);
 }
 
-const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v6";
+const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v8";
 const DASHBOARD_LEGACY_LAYOUT_KEY = "pulso.dashboard.layout.v0";
 const DASHBOARD_BASE_VISIBLE_KEY = "pulso.dashboard.base.visible";
 const DASHBOARD_BLOCK_DEFS = [
@@ -33,8 +33,8 @@ const DASHBOARD_SIZE_LABELS = {
 const DASHBOARD_PRESETS = {
   gestor: {
     label: "Essencial",
-    order: ["indicadores", "mesa", "sinais", "pulso", "analises", "potencial", "ferramentas", "trilhas", "implantacao"],
-    hidden: ["pulso", "sinais", "potencial", "ferramentas", "trilhas", "implantacao"],
+    order: ["pulso", "indicadores", "sinais", "analises", "mesa", "potencial", "ferramentas", "trilhas", "implantacao"],
+    hidden: ["potencial", "ferramentas", "trilhas", "implantacao"],
     sizes: { pulso: "compact", indicadores: "medium", sinais: "medium", mesa: "large", potencial: "medium", analises: "large", ferramentas: "medium", trilhas: "medium", implantacao: "compact" },
   },
   comprador: {
@@ -504,6 +504,101 @@ function operatorDataItem({ label, value, status = "ready", detail = "" }) {
   `;
 }
 
+function dashboardExecutiveKpi({ label, value, detail, color = "", icon = "activity" }) {
+  return `
+    <div class="kpi ${escapeAttr(color)}">
+      <span><i data-lucide="${escapeAttr(icon)}"></i>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <em>${escapeHtml(detail)}</em>
+    </div>
+  `;
+}
+
+function renderDashboardExecutiveKpis({
+  summary,
+  kpis,
+  products,
+  customers,
+  periodLabel,
+  productRevenue,
+  serviceRevenue,
+  totalRevenue,
+  replenishment,
+  urgentStock,
+  buyNowStock,
+  readySuppliers,
+  riskSuppliers,
+  lowMargin,
+  pricing,
+}) {
+  const target = document.querySelector("#kpis");
+  if (!target) return;
+  const productCount = Number(kpis.products || products.length || 0);
+  const customerCount = Number(kpis.customers || customers.length || 0);
+  const periodDays = state.periodDays === "all" ? 0 : Number(state.periodDays || summary?.period?.period_days || 0);
+  const divisorDays = periodDays || Math.max(1, summary?.monthly?.length || 1);
+  const avgDailyRevenue = totalRevenue > 0 ? totalRevenue / Math.max(divisorDays, 1) : 0;
+  const topProductShare = productRevenue > 0
+    ? products.slice(0, 5).reduce((sum, row) => sum + Number(row.revenue || 0), 0) / productRevenue * 100
+    : 0;
+  const topCustomerShare = totalRevenue > 0
+    ? customers.slice(0, 5).reduce((sum, row) => sum + Number(row.revenue || 0), 0) / totalRevenue * 100
+    : 0;
+  const criticalA = Number(replenishment?.summary?.critical_a || 0);
+  const negativeMargin = Number(pricing.summary?.negative_margin || 0);
+  const lowMarginOnly = Number(pricing.summary?.low_margin || 0);
+  const marginOpportunities = Number(pricing.summary?.opportunities || 0);
+  const mainRevenue = totalRevenue ? compactMoney(totalRevenue) : "Sem vendas";
+  const productMix = productRevenue && totalRevenue ? `${Math.round((productRevenue / totalRevenue) * 100)}% produtos` : `${number(productCount)} produtos`;
+  const serviceMix = serviceRevenue && totalRevenue ? `${Math.round((serviceRevenue / totalRevenue) * 100)}% serviços` : `${number(customerCount)} clientes`;
+  const items = [
+    {
+      label: "Receita",
+      value: mainRevenue,
+      detail: totalRevenue ? `${compactMoney(avgDailyRevenue)}/dia corrido; ${productMix} e ${serviceMix}.` : "Importe vendas para abrir a leitura financeira.",
+      color: totalRevenue ? "green" : "amber",
+      icon: "trending-up",
+    },
+    {
+      label: "Sortimento",
+      value: `${number(productCount)} SKUs`,
+      detail: topProductShare ? `Top 5 produtos = ${number(topProductShare)}% da receita de produtos.` : `${number(customerCount)} clientes na base.`,
+      color: "blue",
+      icon: "package-search",
+    },
+    {
+      label: "Ruptura e cobertura",
+      value: `${number(urgentStock)} itens`,
+      detail: urgentStock ? `${number(buyNowStock)} em compra imediata; ${number(criticalA)} classe A críticos.` : "Sem urgência forte no recorte.",
+      color: urgentStock ? "amber" : "green",
+      icon: "boxes",
+    },
+    {
+      label: "Fornecedores",
+      value: `${number(readySuppliers.length)} fornecedores`,
+      detail: `${number(riskSuppliers.length)} com sinal de abastecimento no período.`,
+      color: readySuppliers.length ? "green" : "amber",
+      icon: "truck",
+    },
+    {
+      label: "Margem",
+      value: `${number(lowMargin)} itens`,
+      detail: lowMargin ? `${number(negativeMargin)} negativos, ${number(lowMarginOnly)} abaixo da referência.` : `${number(marginOpportunities)} oportunidades de preço.`,
+      color: lowMargin ? "amber" : "green",
+      icon: "chart-no-axes-combined",
+    },
+    {
+      label: "Carteira",
+      value: `${number(customerCount)} clientes`,
+      detail: topCustomerShare ? `Top 5 clientes = ${number(topCustomerShare)}% da receita.` : `${periodLabel}.`,
+      color: "blue",
+      icon: "users",
+    },
+  ];
+  target.innerHTML = items.map(dashboardExecutiveKpi).join("");
+  if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { "stroke-width": 2.1 } });
+}
+
 function dashboardHeroMetric({ label, value, detail, view = "", layout = false }) {
   const target = layout ? " data-dashboard-open-layout" : view ? ` data-view-target="${escapeAttr(view)}"` : "";
   return `
@@ -600,27 +695,27 @@ function dashboardSignalItems({
   const signals = [
     item({
       priority: totalRevenue ? 82 : 16,
-      label: totalRevenue ? "Receita lida" : "Vendas",
+      label: totalRevenue ? "Receita do período" : "Vendas",
       value: totalRevenue ? compactMoney(totalRevenue) : "a conectar",
-      detail: totalRevenue ? periodLabel : "importe vendas para abrir comparativos",
+      detail: totalRevenue ? `Base financeira ativa em ${periodLabel}.` : "Importe vendas para abrir comparativos.",
       tone: totalRevenue ? "good" : "warn",
       icon: "trending-up",
       view: totalRevenue ? "opportunities" : "imports",
     }),
     item({
       priority: urgentStock ? 110 : readinessSummary.readiness.stock ? 45 : 22,
-      label: "Estoque",
-      value: readinessSummary.readiness.stock ? number(urgentStock) : "a conectar",
-      detail: readinessSummary.readiness.stock ? `${number(excessStock)} em excesso` : "libera cobertura, ruptura e capital parado",
+      label: "Ruptura e cobertura",
+      value: readinessSummary.readiness.stock ? `${number(urgentStock)} itens` : "a conectar",
+      detail: readinessSummary.readiness.stock ? `${number(excessStock)} em excesso; cobertura calculada.` : "Libera cobertura, ruptura e capital parado.",
       tone: urgentStock ? "danger" : readinessSummary.readiness.stock ? "good" : "warn",
       icon: "boxes",
       view: readinessSummary.readiness.stock ? "stock" : "imports",
     }),
     item({
       priority: lowMargin ? 96 : readinessSummary.readiness.costs ? 48 : 26,
-      label: "Preços",
-      value: readinessSummary.readiness.costs ? number(lowMargin) : "custos",
-      detail: readinessSummary.readiness.costs ? `${number(pricing.summary?.opportunities || 0)} pontos de comparação` : "custos liberam margem e preço alvo",
+      label: "Margem e preço",
+      value: readinessSummary.readiness.costs ? `${number(lowMargin)} itens` : "custos",
+      detail: readinessSummary.readiness.costs ? `${number(pricing.summary?.opportunities || 0)} pontos para comparar preço.` : "Custos liberam margem e preço alvo.",
       tone: lowMargin ? "warn" : readinessSummary.readiness.costs ? "good" : "warn",
       icon: "chart-no-axes-combined",
       view: readinessSummary.readiness.costs ? "pricing" : "imports",
@@ -628,8 +723,8 @@ function dashboardSignalItems({
     item({
       priority: riskSuppliers.length ? 76 : readinessSummary.readiness.suppliers ? 42 : 24,
       label: "Fornecedores",
-      value: readinessSummary.readiness.suppliers ? number(readySuppliers.length) : "vínculos",
-      detail: readinessSummary.readiness.suppliers ? `${number(riskSuppliers.length)} com sinais de compra` : "vínculos liberam compra por fornecedor",
+      value: readinessSummary.readiness.suppliers ? `${number(readySuppliers.length)} prontos` : "vínculos",
+      detail: readinessSummary.readiness.suppliers ? `${number(riskSuppliers.length)} com sinal de compra.` : "Vínculos liberam compra por fornecedor.",
       tone: readySuppliers.length ? "good" : "warn",
       icon: "truck",
       view: readinessSummary.readiness.suppliers ? "suppliers" : "imports",
@@ -637,17 +732,17 @@ function dashboardSignalItems({
     item({
       priority: customerRisk || repurchaseDue ? 74 : readinessSummary.readiness.customers ? 40 : 20,
       label: "Clientes",
-      value: readinessSummary.readiness.customers ? number(customerRisk) : "carteira",
-      detail: readinessSummary.readiness.customers ? `${number(repurchaseDue)} recompra provável` : "clientes liberam recompra e relacionamento",
+      value: readinessSummary.readiness.customers ? `${number(customerRisk)} em risco` : "carteira",
+      detail: readinessSummary.readiness.customers ? `${number(repurchaseDue)} com recompra provável.` : "Clientes liberam recompra e relacionamento.",
       tone: customerRisk ? "warn" : readinessSummary.readiness.customers ? "good" : "warn",
       icon: "users",
       view: readinessSummary.readiness.customers ? "customers" : "imports",
     }),
     item({
       priority: readinessSummary.upcomingCount ? 90 : 35,
-      label: "Potencial",
-      value: number(readinessSummary.readyCount),
-      detail: readinessSummary.upcomingCount ? `${number(readinessSummary.upcomingCount)} leituras podem ganhar força` : "principais cruzamentos ativos",
+      label: "Qualidade da leitura",
+      value: `${number(readinessSummary.readyCount)}/${number(readinessSummary.sourceTotal)}`,
+      detail: readinessSummary.upcomingCount ? `${number(readinessSummary.upcomingCount)} fontes ainda ampliam a visão.` : "Principais cruzamentos ativos.",
       tone: readinessSummary.upcomingCount ? "warn" : "good",
       icon: "sparkles",
       view: readinessSummary.upcomingCount ? "imports" : "dashboard",
@@ -802,16 +897,22 @@ function renderGeneralMap({
   const repurchaseDue = Number(state.commercial?.summary?.due_customers || 0);
   const dashboardContext = { summary, products, replenishment, quoteSuppliers, customers, pricing, imports, services };
   const readinessSummary = dashboardReadinessSummary(dashboardContext);
+  const companyName = (typeof companyProfileName === "function" && companyProfileName()) || appName();
+  const customerCount = Number(kpis.customers || customers.length || 0);
+  const supplierCount = quoteSuppliers.length || supplierRows.length || 0;
   const hero = document.querySelector("#generalMapHero");
   if (hero) {
     hero.innerHTML = `
       <div class="bi-hero-copy">
-        <span>${escapeHtml(periodLabel)}</span>
-        <h2>Visão geral</h2>
-        <p>${escapeHtml(totalRevenue ? `${compactMoney(totalRevenue)} no período, com ${number(readinessSummary.sourceCount)} fonte(s) conectada(s).` : "Acompanhe indicadores, sinais e rotinas do período em uma tela mais limpa.")}</p>
+        <span>${escapeHtml(companyName)} · ${escapeHtml(periodLabel)}</span>
+        <h2>${escapeHtml(totalRevenue ? `${compactMoney(totalRevenue)} em receita lida` : "Leitura inicial da empresa")}</h2>
+        <p>${escapeHtml(totalRevenue
+          ? `Base aberta: ${number(kpis.products || products.length || 0)} SKUs vendidos, ${number(customerCount)} clientes, ${number(supplierCount)} fornecedores, ${number(urgentStock)} itens em atenção de estoque e ${number(lowMargin)} itens em leitura de margem.`
+          : "Importe vendas, estoque, custos e clientes para transformar a abertura em uma leitura executiva da operação.")}</p>
       </div>
     `;
   }
+  renderDashboardExecutiveKpis({ summary, kpis, products, customers, periodLabel, productRevenue, serviceRevenue, totalRevenue, replenishment, urgentStock, buyNowStock, readySuppliers, riskSuppliers, lowMargin, pricing });
   const cards = document.querySelector("#generalMapCards");
   if (cards) {
     cards.innerHTML = dashboardSignalItems({ readinessSummary, totalRevenue, periodLabel, readySuppliers, riskSuppliers, urgentStock, excessStock, lowMargin, pricing, customerRisk, repurchaseDue });

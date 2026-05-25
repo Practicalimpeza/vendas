@@ -90,6 +90,7 @@ function renderKpis(kpis) {
         <div class="kpi ${color}">
           <span><i data-lucide="${KPI_ICONS[label] || "activity"}"></i>${label}</span>
           <strong>${value}</strong>
+          <em></em>
         </div>
       `,
     )

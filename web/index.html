@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sistema</title>
     <link rel="icon" href="data:," data-app-icon />
-    <link rel="stylesheet" href="/app.css?v=20260523dt4" />
+    <link rel="stylesheet" href="/app.css?v=20260525ux2" />
     <link rel="stylesheet" href="/app_datatable.css?v=20260523dt9" />
     <link rel="stylesheet" href="/app_glass.css?v=20260523glass11" />
   </head>
@@ -78,16 +78,16 @@
             </button>
             <div class="topbar-context">
               <span id="viewQuestion">Como a empresa está se comportando?</span>
-              <strong id="viewNextAction">Explore os indicadores e abra o módulo certo.</strong>
+              <strong id="viewNextAction">Padrão em 30 dias; use janelas maiores para tendência.</strong>
             </div>
             <div class="period-selector" aria-label="Período das análises">
-              <button class="period-btn" type="button" data-period-days="30">30d</button>
+              <button class="period-btn active" type="button" data-period-days="30">30d</button>
               <button class="period-btn" type="button" data-period-days="90">90d</button>
-              <button class="period-btn active" type="button" data-period-days="180">6m</button>
+              <button class="period-btn" type="button" data-period-days="180">6m</button>
               <button class="period-btn" type="button" data-period-days="365">12m</button>
               <button class="period-btn" type="button" data-period-days="all">Tudo</button>
             </div>
-            <span class="period-label" id="periodLabel">Últimos 6 meses</span>
+            <span class="period-label" id="periodLabel">Últimos 30 dias</span>
             <div class="user-menu" id="userMenu" hidden></div>
           </div>
         </header>
@@ -101,6 +101,9 @@
         </div>
 
           <section id="dashboard" class="view active dashboard-bi">
+          <section class="bi-hero" id="generalMapHero" data-dashboard-block="pulso" data-dashboard-label="Pulso"></section>
+          <div class="bi-kpi-strip" id="kpis" data-dashboard-block="indicadores" data-dashboard-label="Indicadores"></div>
+          <section class="bi-signal-grid" id="generalMapCards" data-dashboard-block="sinais" data-dashboard-label="Sinais"></section>
           <section class="operator-control-bar" id="dashboardControlBar" aria-label="Controles da mesa">
             <div>
               <span>Mesa do operador</span>
@@ -122,9 +125,6 @@
               </button>
             </div>
           </section>
-          <section class="bi-hero" id="generalMapHero" data-dashboard-block="pulso" data-dashboard-label="Pulso"></section>
-          <div class="bi-kpi-strip" id="kpis" data-dashboard-block="indicadores" data-dashboard-label="Indicadores"></div>
-          <section class="bi-signal-grid" id="generalMapCards" data-dashboard-block="sinais" data-dashboard-label="Sinais"></section>
           <section class="operator-board" id="dashboardOperatorBoard" aria-label="Mesa de operação" data-dashboard-block="mesa" data-dashboard-label="Mesa">
             <article class="operator-panel">
               <header>
@@ -1209,12 +1209,12 @@
     <script src="/vendor/echarts.min.js?v=5.5.1" async onload="window.nexoEchartsLoaded = true; window.nexoChartsReady?.()"></script>
     <script src="/vendor/lucide.min.js?v=0.468.0" async onload="window.lucide?.createIcons({ attrs: { 'stroke-width': 2.1 } })"></script>
     <script src="/app_core.js?v=20260509a"></script>
-    <script src="/app_state.js?v=20260522b"></script>
+    <script src="/app_state.js?v=20260525ux2"></script>
     <script src="/app_charts.js?v=20260509a"></script>
     <script src="/app_tables.js?v=20260523dt3"></script>
     <script src="/app_datatable.js?v=20260523dt7"></script>
-    <script src="/app_ui.js?v=20260522a"></script>
-    <script src="/app_dashboard.js?v=20260525a"></script>
+    <script src="/app_ui.js?v=20260525ux2"></script>
+    <script src="/app_dashboard.js?v=20260525ux2"></script>
     <script src="/app_products.js?v=20260522dt5"></script>
     <script src="/app_period_data.js?v=20260522a"></script>
     <script src="/app_quotes_suppliers.js?v=20260523c"></script>

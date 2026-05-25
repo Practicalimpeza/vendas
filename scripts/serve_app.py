@@ -96,16 +96,16 @@ def prewarm_runtime_caches(db_path: Path) -> None:
         time.sleep(2.0)
         conn = connect(db_path)
         try:
-            query_180 = {"period_days": ["180"]}
-            period_180 = resolve_period(conn, query_180, 180)
+            query_default = {"period_days": ["30"]}
+            period_default = resolve_period(conn, query_default, 30)
             for route, query, period in (
-                ("/api/summary", query_180, period_180),
-                ("/api/replenishment", query_180, period_180),
-                ("/api/replenishment-v2", query_180, period_180),
-                ("/api/commercial/intelligence", query_180, period_180),
-                ("/api/pricing", query_180, period_180),
-                ("/api/supplier-workbench/suppliers", {}, period_180),
-                ("/api/actions/today", {}, period_180),
+                ("/api/summary", query_default, period_default),
+                ("/api/replenishment", query_default, period_default),
+                ("/api/replenishment-v2", query_default, period_default),
+                ("/api/commercial/intelligence", query_default, period_default),
+                ("/api/pricing", query_default, period_default),
+                ("/api/supplier-workbench/suppliers", {}, period_default),
+                ("/api/actions/today", {}, period_default),
             ):
                 try:
                     get_api_payload(route, conn, query, period)

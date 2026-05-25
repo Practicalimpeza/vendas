@@ -73,7 +73,7 @@
   importOnboardingFocus: false,
   importOnboardingFocused: false,
   quickActions: new Map(),
-  periodDays: "180",
+  periodDays: "30",
   hideCurrentMonthRevenue: false,
   monthlyChart: null,
   generalCharts: {},
@@ -242,10 +242,10 @@ const SUPPLIER_WORKBENCH_SUPPLIER_KEYS = [
 const VIEW_META = {
   dashboard: {
     label: "Visão",
-    eyebrow: "Mesa do operador",
-    subtitle: "Uma mesa para ler a empresa, comparar sinais e abrir as ferramentas certas.",
-    question: "O que vale observar agora?",
-    next: "Use os sinais como ponto de partida para investigar, comparar e decidir.",
+    eyebrow: "Leitura da empresa",
+    subtitle: "Receita, mix, estoque, clientes, compras e margem em uma leitura única.",
+    question: "Como a empresa está agora?",
+    next: "Padrão em 30 dias; 90d, 6m e 12m servem para tendência e sazonalidade.",
   },
   quotes: {
     label: "Compras",
