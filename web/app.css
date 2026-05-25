@@ -17933,12 +17933,12 @@ body.onboarding-open {
 
 .workspace:has(#dashboard.active) #kpis {
   grid-column: 9 / -1;
-  order: 3;
+  order: 4;
 }
 
 .workspace:has(#dashboard.active) #generalMapCards {
   grid-column: 9 / -1;
-  order: 4;
+  order: 3;
 }
 
 .workspace:has(#dashboard.active) #dashboardControlBar {
@@ -18270,6 +18270,117 @@ body.onboarding-open {
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.workspace:has(#dashboard.active) .retail-intelligence-panel {
+  min-width: 0;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(17, 28, 22, 0.055);
+}
+
+.retail-intelligence-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.08);
+}
+
+.retail-intelligence-panel > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.retail-intelligence-panel > header span,
+.retail-intelligence-card span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.retail-intelligence-panel > header strong {
+  font-size: 15px;
+  line-height: 1.14;
+}
+
+.retail-intelligence-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.retail-intelligence-card {
+  appearance: none;
+  min-width: 0;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfcfb;
+  color: var(--ink);
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.retail-intelligence-card.locked {
+  background: #fffaf0;
+  border-color: rgba(217, 119, 6, 0.18);
+}
+
+.retail-intelligence-card:hover {
+  border-color: rgba(25, 115, 77, 0.26);
+  box-shadow: 0 10px 24px rgba(17, 28, 22, 0.06);
+}
+
+.retail-intelligence-card svg {
+  width: 18px;
+  height: 18px;
+  color: #2f7eb8;
+}
+
+.retail-intelligence-card.locked svg {
+  color: #a16207;
+}
+
+.retail-intelligence-card div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.retail-intelligence-card strong {
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.retail-intelligence-card em,
+.retail-intelligence-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.28;
+}
+
+.retail-intelligence-card small {
+  color: #6b4e10;
+  font-weight: 750;
+}
+
+.retail-intelligence-card b {
+  align-self: start;
+  justify-self: end;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .workspace:has(#dashboard.active) .bi-grid {

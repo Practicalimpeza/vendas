@@ -553,6 +553,112 @@ function dashboardBar({ label, value, detail, progress = 0, tone = "neutral" }) 
   `;
 }
 
+function dashboardRetailKpiConcepts({ readinessSummary, totalRevenue, productCount, customerCount, lowMargin, urgentStock, sourceCoverage }) {
+  const ready = readinessSummary.readiness || {};
+  return [
+    {
+      area: "Resultado",
+      metric: "Receita, ticket e tendência",
+      value: totalRevenue ? compactMoney(totalRevenue) : "desbloquear",
+      decision: "Mostra ritmo de venda, sazonalidade e produtividade comercial.",
+      importNeed: ready.sales ? "Adicionar histórico melhora comparação e tendência." : "Importar vendas com data, item, quantidade, valor e cliente.",
+      icon: "trending-up",
+      ready: ready.sales,
+      view: ready.sales ? "opportunities" : "imports",
+    },
+    {
+      area: "Rentabilidade",
+      metric: "Margem bruta e preço alvo",
+      value: ready.costs ? `${number(lowMargin)} alertas` : "sem CMV",
+      decision: "Separa faturamento de lucro e mostra onde preço ou custo corroem resultado.",
+      importNeed: ready.costs ? "Histórico de preço e custo amplia leitura de tendência." : "Importar custos/CMV por produto e, se possível, histórico de preços.",
+      icon: "chart-no-axes-combined",
+      ready: ready.costs,
+      view: ready.costs ? "pricing" : "imports",
+    },
+    {
+      area: "Clientes",
+      metric: "Recorrência, carteira e LTV",
+      value: customerCount ? `${number(customerCount)} clientes` : "sem carteira",
+      decision: "Mostra quem compra, quem volta, quem está sumindo e quanto vale cada relação.",
+      importNeed: ready.customers && ready.history ? "Contatos e histórico enriquecem CRM." : "Importar clientes, vendas por cliente e histórico de compras.",
+      icon: "users",
+      ready: ready.customers && ready.sales,
+      view: ready.customers ? "customers" : "imports",
+    },
+    {
+      area: "Produtos",
+      metric: "Mix, curva ABC e concentração",
+      value: productCount ? `${number(productCount)} SKUs` : "sem mix",
+      decision: "Mostra dependência de poucos produtos, categorias fortes e itens estratégicos.",
+      importNeed: ready.products && ready.sales ? "Custos e estoque transformam ABC em lucro e capital." : "Importar cadastro de produtos e vendas por item.",
+      icon: "package-search",
+      ready: ready.products && ready.sales,
+      view: ready.products ? "products" : "imports",
+    },
+    {
+      area: "Capital",
+      metric: "GMROI, giro e sell-through",
+      value: ready.stock && ready.costs && ready.sales ? "calculável" : "incompleto",
+      decision: "Mostra se o dinheiro parado em estoque volta como margem ou vira excesso.",
+      importNeed: ready.stock && ready.costs && ready.sales ? "Estoque histórico melhora giro e sell-through." : "Importar estoque, custos e histórico de vendas por SKU.",
+      icon: "coins",
+      ready: ready.stock && ready.costs && ready.sales,
+      view: ready.stock ? "stock" : "imports",
+    },
+    {
+      area: "Abastecimento",
+      metric: "Cobertura, ruptura e compra",
+      value: ready.stock ? `${number(urgentStock)} sinais` : "sem estoque",
+      decision: "Mostra o risco de faltar, sobrar ou comprar sem necessidade.",
+      importNeed: ready.suppliers && ready.stock ? "Pedidos em aberto e prazos melhoram sugestão de compra." : "Importar saldo de estoque, fornecedores, mínimos, prazos e pedidos em aberto.",
+      icon: "truck",
+      ready: ready.stock && ready.suppliers,
+      view: ready.stock ? "stock" : "imports",
+    },
+    {
+      area: "Dados",
+      metric: "Maturidade da base",
+      value: `${number(sourceCoverage)}%`,
+      decision: "Mostra o que o sistema já consegue explicar e o que ainda está cego.",
+      importNeed: readinessSummary.upcomingCount ? "Priorizar os dados que desbloqueiam decisões de margem, cliente e capital." : "Base ampla para a leitura executiva.",
+      icon: "database",
+      ready: sourceCoverage >= 70,
+      view: "imports",
+    },
+  ];
+}
+
+function dashboardRetailIntelligencePanel(concepts = []) {
+  const ordered = concepts
+    .slice()
+    .sort((a, b) => Number(a.ready) - Number(b.ready))
+    .slice(0, 6);
+  return `
+    <header>
+      <div>
+        <span>Mapa de gestão</span>
+        <strong>Inteligência que o software deve entregar</strong>
+      </div>
+      <button class="secondary-button compact" type="button" data-view-target="imports">Ver importações</button>
+    </header>
+    <div class="retail-intelligence-list">
+      ${ordered.map((item) => `
+        <button class="retail-intelligence-card ${item.ready ? "ready" : "locked"}" type="button" data-view-target="${escapeAttr(item.view || "imports")}">
+          <i data-lucide="${escapeAttr(item.icon || "activity")}"></i>
+          <div>
+            <span>${escapeHtml(item.area)}</span>
+            <strong>${escapeHtml(item.metric)}</strong>
+            <em>${escapeHtml(item.decision)}</em>
+            <small>${escapeHtml(item.importNeed)}</small>
+          </div>
+          <b>${escapeHtml(item.value)}</b>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderDashboardExecutiveKpis({
   summary,
   kpis,
@@ -569,6 +675,7 @@ function renderDashboardExecutiveKpis({
   riskSuppliers,
   lowMargin,
   pricing,
+  readinessSummary,
 }) {
   const target = document.querySelector("#kpis");
   if (!target) return;
@@ -585,8 +692,11 @@ function renderDashboardExecutiveKpis({
     : 0;
   const criticalA = Number(replenishment?.summary?.critical_a || 0);
   const negativeMargin = Number(pricing.summary?.negative_margin || 0);
-  const lowMarginOnly = Number(pricing.summary?.low_margin || 0);
   const marginOpportunities = Number(pricing.summary?.opportunities || 0);
+  const sourceCoverage = readinessSummary?.sourceTotal
+    ? Math.round((readinessSummary.sourceCount / readinessSummary.sourceTotal) * 100)
+    : 0;
+  const revenuePerCustomer = totalRevenue && customerCount ? totalRevenue / customerCount : 0;
   const mainRevenue = totalRevenue ? compactMoney(totalRevenue) : "Sem vendas";
   const productMix = productRevenue && totalRevenue ? `${Math.round((productRevenue / totalRevenue) * 100)}% produtos` : `${number(productCount)} produtos`;
   const serviceMix = serviceRevenue && totalRevenue ? `${Math.round((serviceRevenue / totalRevenue) * 100)}% serviços` : `${number(customerCount)} clientes`;
@@ -599,39 +709,39 @@ function renderDashboardExecutiveKpis({
       icon: "trending-up",
     },
     {
-      label: "Sortimento",
-      value: `${number(productCount)} SKUs`,
-      detail: topProductShare ? `Top 5 produtos = ${number(topProductShare)}% da receita de produtos.` : `${number(customerCount)} clientes na base.`,
-      color: "blue",
-      icon: "package-search",
-    },
-    {
-      label: "Ruptura e cobertura",
-      value: `${number(urgentStock)} itens`,
-      detail: urgentStock ? `${number(buyNowStock)} em compra imediata; ${number(criticalA)} classe A críticos.` : "Sem urgência forte no recorte.",
-      color: urgentStock ? "amber" : "green",
-      icon: "boxes",
-    },
-    {
-      label: "Fornecedores",
-      value: `${number(readySuppliers.length)} fornecedores`,
-      detail: `${number(riskSuppliers.length)} com sinal de abastecimento no período.`,
-      color: readySuppliers.length ? "green" : "amber",
-      icon: "truck",
-    },
-    {
-      label: "Margem",
-      value: `${number(lowMargin)} itens`,
-      detail: lowMargin ? `${number(negativeMargin)} negativos, ${number(lowMarginOnly)} abaixo da referência.` : `${number(marginOpportunities)} oportunidades de preço.`,
-      color: lowMargin ? "amber" : "green",
+      label: "Rentabilidade",
+      value: pricing.summary ? `${number(lowMargin)} alertas` : "CMV pendente",
+      detail: pricing.summary ? `${number(negativeMargin)} negativos; ${number(marginOpportunities)} oportunidades de preço.` : "Importar custos separa venda de lucro.",
+      color: lowMargin ? "amber" : pricing.summary ? "green" : "blue",
       icon: "chart-no-axes-combined",
     },
     {
-      label: "Carteira",
+      label: "Clientes",
       value: `${number(customerCount)} clientes`,
-      detail: topCustomerShare ? `Top 5 clientes = ${number(topCustomerShare)}% da receita.` : `${periodLabel}.`,
+      detail: revenuePerCustomer ? `${compactMoney(revenuePerCustomer)} por cliente; Top 5 = ${number(topCustomerShare)}%.` : "Importar carteira e histórico libera recompra.",
       color: "blue",
       icon: "users",
+    },
+    {
+      label: "Produtos e mix",
+      value: `${number(productCount)} SKUs`,
+      detail: topProductShare ? `Top 5 produtos = ${number(topProductShare)}% da receita de produtos.` : `${productMix} e ${serviceMix}.`,
+      color: topProductShare > 45 ? "amber" : "blue",
+      icon: "package-search",
+    },
+    {
+      label: "Capital em estoque",
+      value: pricing.summary && urgentStock ? `${number(urgentStock)} sinais` : "GMROI alvo",
+      detail: pricing.summary ? `${number(buyNowStock)} compra imediata; ${number(criticalA)} classe A críticos.` : "Custos + estoque destravam GMROI, giro e sell-through.",
+      color: urgentStock ? "amber" : pricing.summary ? "green" : "blue",
+      icon: "coins",
+    },
+    {
+      label: "Maturidade",
+      value: `${number(sourceCoverage)}% dados`,
+      detail: readinessSummary?.upcomingCount ? `${number(readinessSummary.upcomingCount)} inteligências pedem mais dados.` : "Base ampla para visão executiva.",
+      color: sourceCoverage >= 70 ? "green" : "amber",
+      icon: "database",
     },
   ];
   target.innerHTML = items.map(dashboardExecutiveKpi).join("");
@@ -968,6 +1078,15 @@ function renderGeneralMap({
   const heroSubtitle = totalRevenue
     ? `${number(productCount)} SKUs vendidos, ${number(customerCount)} clientes, ${number(supplierCount)} fornecedores e ${number(readinessSummary.sourceCount)} fontes reconhecidas.`
     : "Importe vendas, estoque, custos e clientes para transformar a abertura em leitura executiva.";
+  const retailConcepts = dashboardRetailKpiConcepts({
+    readinessSummary,
+    totalRevenue,
+    productCount,
+    customerCount,
+    lowMargin,
+    urgentStock,
+    sourceCoverage,
+  });
   const hero = document.querySelector("#generalMapHero");
   if (hero) {
     hero.innerHTML = `
@@ -1015,10 +1134,12 @@ function renderGeneralMap({
       </div>
     `;
   }
-  renderDashboardExecutiveKpis({ summary, kpis, products, customers, periodLabel, productRevenue, serviceRevenue, totalRevenue, replenishment, urgentStock, buyNowStock, readySuppliers, riskSuppliers, lowMargin, pricing });
+  renderDashboardExecutiveKpis({ summary, kpis, products, customers, periodLabel, productRevenue, serviceRevenue, totalRevenue, replenishment, urgentStock, buyNowStock, readySuppliers, riskSuppliers, lowMargin, pricing, readinessSummary });
   const cards = document.querySelector("#generalMapCards");
   if (cards) {
-    cards.innerHTML = dashboardSignalItems({ readinessSummary, totalRevenue, periodLabel, readySuppliers, riskSuppliers, urgentStock, excessStock, lowMargin, pricing, customerRisk, repurchaseDue });
+    cards.classList.remove("bi-signal-grid");
+    cards.classList.add("retail-intelligence-panel");
+    cards.innerHTML = dashboardRetailIntelligencePanel(retailConcepts);
   }
   const movements = document.querySelector("#operatorMovements");
   if (movements) {
