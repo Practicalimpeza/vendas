@@ -955,13 +955,15 @@ function renderGeneralMap({
   const negativeMargin = Number(pricing.summary?.negative_margin || 0);
   const marginOpportunities = Number(pricing.summary?.opportunities || 0);
   const stockHealthPct = stockUniverse ? Math.round((stockOk / Math.max(stockUniverse, 1)) * 100) : 0;
+  const revenuePerCustomer = totalRevenue && customerCount ? totalRevenue / customerCount : 0;
   const sourceCoverage = readinessSummary.sourceTotal
     ? Math.round((readinessSummary.sourceCount / readinessSummary.sourceTotal) * 100)
     : 0;
   const revenueTone = totalRevenue ? "good" : "warn";
-  const stockTone = urgentStock ? "danger" : stockUniverse ? "good" : "warn";
+  const supplyTone = urgentStock ? "danger" : riskSuppliers.length ? "warn" : stockUniverse ? "good" : "neutral";
+  const mixTone = topProductShare > 45 ? "warn" : productCount ? "good" : "neutral";
+  const dataTone = sourceCoverage >= 70 ? "good" : "warn";
   const marginTone = lowMargin ? "warn" : readinessSummary.readiness.costs ? "good" : "neutral";
-  const supplierTone = riskSuppliers.length ? "warn" : readySuppliers.length ? "good" : "neutral";
   const customerTone = customerRisk ? "warn" : customerCount ? "good" : "neutral";
   const heroSubtitle = totalRevenue
     ? `${number(productCount)} SKUs vendidos, ${number(customerCount)} clientes, ${number(supplierCount)} fornecedores e ${number(readinessSummary.sourceCount)} fontes reconhecidas.`
@@ -991,17 +993,17 @@ function renderGeneralMap({
           <header>
             <div>
               <span>Painel de saúde</span>
-              <strong>Operação no recorte atual</strong>
+              <strong>Leitura do negócio no recorte</strong>
             </div>
             <em>${escapeHtml(periodLabel)}</em>
           </header>
           <div class="retail-health-grid">
-            ${dashboardHealthTile({ label: "Venda diária", value: totalRevenue ? compactMoney(avgDailyRevenue) : "sem base", detail: totalRevenue ? "média do período selecionado" : "depende de vendas importadas", tone: revenueTone, icon: "trending-up", view: "opportunities" })}
-            ${dashboardHealthTile({ label: "Ruptura", value: stockUniverse ? `${number(urgentStock)} itens` : "sem estoque", detail: stockUniverse ? `${number(criticalA)} classe A críticos` : "importe estoque para cobertura", tone: stockTone, icon: "boxes", view: stockUniverse ? "stock" : "imports" })}
+            ${dashboardHealthTile({ label: "Vendas", value: totalRevenue ? compactMoney(avgDailyRevenue) : "sem base", detail: totalRevenue ? `${compactMoney(totalRevenue)} no recorte` : "depende de vendas importadas", tone: revenueTone, icon: "trending-up", view: "opportunities" })}
             ${dashboardHealthTile({ label: "Margem", value: readinessSummary.readiness.costs ? `${number(lowMargin)} itens` : "sem custo", detail: readinessSummary.readiness.costs ? `${number(negativeMargin)} negativos; ${number(marginOpportunities)} oportunidades` : "custos liberam preço alvo", tone: marginTone, icon: "chart-no-axes-combined", view: readinessSummary.readiness.costs ? "pricing" : "imports" })}
-            ${dashboardHealthTile({ label: "Fornecimento", value: `${number(riskSuppliers.length)} sinais`, detail: readySuppliers.length ? `${number(readySuppliers.length)} fornecedores acionáveis` : "vínculos e mínimos em leitura", tone: supplierTone, icon: "truck", view: readinessSummary.readiness.suppliers ? "suppliers" : "imports" })}
-            ${dashboardHealthTile({ label: "Carteira", value: `${number(customerCount)} clientes`, detail: customerRisk || repurchaseDue ? `${number(customerRisk)} risco; ${number(repurchaseDue)} recompra` : "base pronta para segmentar", tone: customerTone, icon: "users", view: customerCount ? "customers" : "imports" })}
-            ${dashboardHealthTile({ label: "Cobertura", value: stockUniverse ? `${number(stockHealthPct)}% ok` : `${number(sourceCoverage)}% dados`, detail: stockUniverse ? `${number(stockOk)} itens sem alerta forte` : "fontes conectadas", tone: stockTone, icon: "activity", view: stockUniverse ? "stock" : "imports" })}
+            ${dashboardHealthTile({ label: "Carteira", value: `${number(customerCount)} clientes`, detail: revenuePerCustomer ? `${compactMoney(revenuePerCustomer)}/cliente; ${number(repurchaseDue)} recompra` : "base pronta para segmentar", tone: customerTone, icon: "users", view: customerCount ? "customers" : "imports" })}
+            ${dashboardHealthTile({ label: "Mix", value: totalRevenue ? `${number(productMixPct)}% produtos` : `${number(productCount)} SKUs`, detail: topProductShare ? `Top 5 produtos = ${number(topProductShare)}%` : `${number(services.length)} serviços na base`, tone: mixTone, icon: "chart-pie", view: "products" })}
+            ${dashboardHealthTile({ label: "Abastecimento", value: stockUniverse ? `${number(urgentStock)} itens` : "sem estoque", detail: stockUniverse ? `${number(riskSuppliers.length)} fornecedores com sinal` : "estoque libera cobertura", tone: supplyTone, icon: "truck", view: stockUniverse ? "stock" : "imports" })}
+            ${dashboardHealthTile({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes reconhecidas`, tone: dataTone, icon: "database", view: readinessSummary.upcomingCount ? "imports" : "dashboard" })}
           </div>
           <div class="retail-benchmark-grid">
             ${dashboardBenchmark({ label: "Concentração Top 5 produtos", value: topProductShare ? `${number(topProductShare)}%` : "n/d", detail: topProduct.name || "sem ranking", tone: topProductShare > 45 ? "warn" : "neutral" })}
