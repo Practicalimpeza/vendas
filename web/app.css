@@ -18450,3 +18450,578 @@ body.onboarding-open {
     grid-template-columns: 1fr;
   }
 }
+
+/* Cockpit v2: mesa BI integrada, sem reaproveitar a grade antiga de graficos. */
+.workspace:has(#dashboard.active) #dashboardCharts.retail-cockpit-board {
+  grid-column: 1 / -1;
+  order: 2;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  background: #f8faf9;
+  box-shadow: 0 14px 34px rgba(17, 28, 22, 0.06);
+}
+
+.workspace:has(#dashboard.active) #kpis,
+.workspace:has(#dashboard.active) #generalMapCards {
+  display: none !important;
+}
+
+#dashboard .bi-hero {
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.cockpit-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+  padding: 17px 18px 13px;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.08);
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+}
+
+.cockpit-topbar > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cockpit-topbar span,
+.cockpit-score-cell span,
+.cockpit-zone header span,
+.cockpit-pillar span,
+.cockpit-data-tile span,
+.cockpit-unlock-row span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cockpit-topbar h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.cockpit-topbar p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cockpit-period-stack {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 160px;
+}
+
+.cockpit-period-stack strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.cockpit-scorebar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  background: #ffffff;
+}
+
+.cockpit-score-cell {
+  min-width: 0;
+  min-height: 86px;
+  padding: 11px 12px;
+  border-right: 1px solid rgba(17, 28, 22, 0.075);
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
+.cockpit-score-cell:last-child {
+  border-right: 0;
+}
+
+.cockpit-score-cell svg {
+  width: 16px;
+  height: 16px;
+  color: #2f7eb8;
+}
+
+.cockpit-score-cell.good svg,
+.cockpit-score-cell.good strong {
+  color: var(--green);
+}
+
+.cockpit-score-cell.warn svg,
+.cockpit-score-cell.warn strong {
+  color: #a16207;
+}
+
+.cockpit-score-cell strong {
+  color: var(--ink);
+  font-size: 19px;
+  line-height: 1.05;
+}
+
+.cockpit-score-cell em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.28;
+}
+
+.cockpit-zone {
+  min-width: 0;
+  min-height: 206px;
+  border: 1px solid rgba(17, 28, 22, 0.075);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.cockpit-zone header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.07);
+}
+
+.cockpit-zone header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cockpit-zone header strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.cockpit-zone header em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.cockpit-wide,
+.cockpit-result {
+  grid-column: span 8;
+  min-height: 360px;
+}
+
+.cockpit-health,
+.cockpit-unlocks {
+  grid-column: span 4;
+  min-height: 360px;
+}
+
+.cockpit-mix,
+.cockpit-capital,
+.cockpit-customers,
+.cockpit-products,
+.cockpit-data,
+.cockpit-services {
+  grid-column: span 4;
+}
+
+.cockpit-result-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 12px;
+  min-height: 0;
+}
+
+.cockpit-result-body aside {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.cockpit-result-body aside .cockpit-score-cell {
+  min-height: 82px;
+  border: 1px solid rgba(17, 28, 22, 0.075);
+  border-radius: 8px;
+}
+
+.cockpit-trend {
+  min-width: 0;
+  min-height: 260px;
+}
+
+.cockpit-trend-svg {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  overflow: visible;
+}
+
+.cockpit-trend-svg rect {
+  fill: #dfeee7;
+}
+
+.cockpit-trend-svg .cockpit-line {
+  fill: none;
+  stroke: #12261c;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cockpit-trend-svg circle {
+  fill: #ffffff;
+  stroke: #12261c;
+  stroke-width: 2;
+}
+
+.cockpit-trend-svg text {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.cockpit-pillar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cockpit-pillar {
+  appearance: none;
+  min-width: 0;
+  min-height: 93px;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  padding: 9px;
+  background: #fbfcfb;
+  color: var(--ink);
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cockpit-pillar svg {
+  width: 16px;
+  height: 16px;
+  color: #2f7eb8;
+}
+
+.cockpit-pillar.good strong,
+.cockpit-pillar.good svg {
+  color: var(--green);
+}
+
+.cockpit-pillar.warn strong,
+.cockpit-pillar.warn svg {
+  color: #a16207;
+}
+
+.cockpit-pillar strong {
+  font-size: 17px;
+  line-height: 1.05;
+}
+
+.cockpit-pillar em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.24;
+}
+
+.cockpit-segment-row,
+.cockpit-stock-stack article {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.cockpit-segment-row > div,
+.cockpit-stock-stack article {
+  min-width: 0;
+}
+
+.cockpit-segment-row > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cockpit-segment-row span,
+.cockpit-stock-stack span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.cockpit-segment-row strong,
+.cockpit-stock-stack strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.cockpit-segment-row i,
+.cockpit-stock-stack i,
+.cockpit-rank-row i {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(17, 28, 22, 0.08);
+  overflow: hidden;
+}
+
+.cockpit-segment-row i::before,
+.cockpit-stock-stack i::before,
+.cockpit-rank-row i::before {
+  content: "";
+  display: block;
+  width: var(--value);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.cockpit-segment-row.blue i::before,
+.cockpit-stock-stack .blue i::before {
+  background: #2f7eb8;
+}
+
+.cockpit-stock-stack .warn i::before {
+  background: #f59e0b;
+}
+
+.cockpit-stock-stack .danger i::before {
+  background: #ef4444;
+}
+
+.cockpit-segment-row em,
+.cockpit-locked-line span {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.cockpit-locked-line {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px dashed rgba(17, 28, 22, 0.16);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.cockpit-locked-line strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.cockpit-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.cockpit-rank-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.06);
+}
+
+.cockpit-rank-row:last-child {
+  border-bottom: 0;
+}
+
+.cockpit-rank-row > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.cockpit-rank-row div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.cockpit-rank-row strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-rank-row em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cockpit-kpi-column {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.cockpit-kpi-column .cockpit-score-cell {
+  min-height: 82px;
+  border: 1px solid rgba(17, 28, 22, 0.075);
+  border-radius: 8px;
+}
+
+.cockpit-data-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.cockpit-data-tile {
+  appearance: none;
+  min-width: 0;
+  min-height: 76px;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfcfb;
+  color: var(--ink);
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cockpit-data-tile.locked {
+  border-color: rgba(217, 119, 6, 0.2);
+  background: #fffaf0;
+}
+
+.cockpit-data-tile strong {
+  font-size: 13px;
+}
+
+.cockpit-data-tile em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.2;
+}
+
+.cockpit-unlock-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cockpit-unlock-row {
+  appearance: none;
+  min-width: 0;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  padding: 9px;
+  background: #fbfcfb;
+  color: var(--ink);
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cockpit-unlock-row.locked {
+  border-color: rgba(217, 119, 6, 0.18);
+  background: #fffaf0;
+}
+
+.cockpit-unlock-row svg {
+  width: 17px;
+  height: 17px;
+  color: #2f7eb8;
+}
+
+.cockpit-unlock-row div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.cockpit-unlock-row strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.14;
+}
+
+.cockpit-unlock-row em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.25;
+}
+
+.cockpit-unlock-row b {
+  color: var(--ink);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.cockpit-empty {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 1180px) {
+  .workspace:has(#dashboard.active) #dashboardCharts.retail-cockpit-board {
+    grid-template-columns: 1fr;
+  }
+
+  .cockpit-wide,
+  .cockpit-result,
+  .cockpit-health,
+  .cockpit-unlocks,
+  .cockpit-mix,
+  .cockpit-capital,
+  .cockpit-customers,
+  .cockpit-products,
+  .cockpit-data,
+  .cockpit-services {
+    grid-column: 1 / -1;
+  }
+
+  .cockpit-scorebar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cockpit-result-body,
+  .cockpit-split {
+    grid-template-columns: 1fr;
+  }
+}

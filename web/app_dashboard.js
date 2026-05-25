@@ -9,7 +9,7 @@
     .sort((a, b) => b.value - a.value);
 }
 
-const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v9";
+const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v11";
 const DASHBOARD_LEGACY_LAYOUT_KEY = "pulso.dashboard.layout.v0";
 const DASHBOARD_BASE_VISIBLE_KEY = "pulso.dashboard.base.visible";
 const DASHBOARD_BLOCK_DEFS = [
@@ -34,7 +34,7 @@ const DASHBOARD_PRESETS = {
   gestor: {
     label: "Essencial",
     order: ["pulso", "analises", "indicadores", "sinais", "mesa", "potencial", "ferramentas", "trilhas", "implantacao"],
-    hidden: ["potencial", "ferramentas", "trilhas", "implantacao"],
+    hidden: ["indicadores", "sinais", "mesa", "potencial", "ferramentas", "trilhas", "implantacao"],
     sizes: { pulso: "large", indicadores: "medium", sinais: "medium", mesa: "large", potencial: "medium", analises: "large", ferramentas: "medium", trilhas: "medium", implantacao: "compact" },
   },
   comprador: {
@@ -659,6 +659,295 @@ function dashboardRetailIntelligencePanel(concepts = []) {
   `;
 }
 
+function dashboardScoreCell({ label, value, detail, tone = "neutral", icon = "activity" }) {
+  return `
+    <article class="cockpit-score-cell ${escapeAttr(tone)}">
+      <i data-lucide="${escapeAttr(icon)}"></i>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <em>${escapeHtml(detail || "")}</em>
+    </article>
+  `;
+}
+
+function dashboardPillar({ label, value, detail, tone = "neutral", icon = "activity", view = "" }) {
+  const target = view ? ` data-view-target="${escapeAttr(view)}"` : "";
+  return `
+    <button class="cockpit-pillar ${escapeAttr(tone)}" type="button"${target}>
+      <i data-lucide="${escapeAttr(icon)}"></i>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <em>${escapeHtml(detail || "")}</em>
+    </button>
+  `;
+}
+
+function dashboardFormatBucket(raw) {
+  if (!raw) return "";
+  const value = String(raw);
+  const parts = value.split("-");
+  if (parts.length >= 3) return `${parts[2]}/${parts[1]}`;
+  if (parts.length >= 2) {
+    const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+    const idx = Math.max(0, Math.min(11, Number(parts[1]) - 1));
+    return `${months[idx]}/${parts[0].slice(2)}`;
+  }
+  return value;
+}
+
+function dashboardTrendSvg(rows = []) {
+  const displayRows = rows.slice(-12);
+  if (!displayRows.length) {
+    return `<div class="cockpit-empty">Importe vendas com data para formar a série histórica.</div>`;
+  }
+  const values = displayRows.map((row) => Number(row.product_revenue || 0) + Number(row.service_revenue || 0));
+  const max = Math.max(...values, 1);
+  const width = 640;
+  const height = 210;
+  const step = displayRows.length > 1 ? width / (displayRows.length - 1) : width;
+  const points = values.map((value, index) => {
+    const x = displayRows.length > 1 ? index * step : width / 2;
+    const y = height - (value / max) * (height - 28) - 14;
+    return [Number(x.toFixed(2)), Number(y.toFixed(2)), value, displayRows[index]];
+  });
+  const path = points.map(([x, y], index) => `${index ? "L" : "M"} ${x} ${y}`).join(" ");
+  const bars = points.map(([x, , value], index) => {
+    const barWidth = Math.max(18, Math.min(38, width / Math.max(displayRows.length, 1) * 0.54));
+    const barHeight = Math.max(3, (value / max) * (height - 38));
+    const bx = displayRows.length > 1 ? x - barWidth / 2 : x - barWidth / 2;
+    const by = height - barHeight - 10;
+    return `<rect x="${bx.toFixed(2)}" y="${by.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" rx="3"></rect>`;
+  }).join("");
+  const labels = points.map(([x, , , row], index) => {
+    if (index !== 0 && index !== points.length - 1 && index % 2 !== 0) return "";
+    return `<text x="${x}" y="${height + 20}" text-anchor="middle">${escapeHtml(dashboardFormatBucket(row.month))}</text>`;
+  }).join("");
+  return `
+    <svg class="cockpit-trend-svg" viewBox="0 0 ${width} ${height + 28}" role="img" aria-label="Receita por período">
+      <g class="cockpit-bars">${bars}</g>
+      <path class="cockpit-line" d="${path}"></path>
+      <g class="cockpit-points">${points.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4"></circle>`).join("")}</g>
+      <g class="cockpit-axis">${labels}</g>
+    </svg>
+  `;
+}
+
+function dashboardSegmentBar({ label, value, max, detail = "", tone = "green" }) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (Number(value || 0) / max) * 100)) : 0;
+  return `
+    <article class="cockpit-segment-row ${escapeAttr(tone)}" style="--value:${pct}%">
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(compactMoney(value || 0))}</strong>
+      </div>
+      <i></i>
+      <em>${escapeHtml(detail)}</em>
+    </article>
+  `;
+}
+
+function dashboardRankRows(rows = [], formatter = compactMoney) {
+  if (!rows.length) return `<div class="cockpit-empty">Sem dados suficientes.</div>`;
+  const max = Math.max(...rows.map((row) => Number(row.value || 0)), 1);
+  return rows.slice(0, 5).map((row, index) => {
+    const pct = Math.max(4, Math.min(100, (Number(row.value || 0) / max) * 100));
+    return `
+      <article class="cockpit-rank-row" style="--value:${pct}%">
+        <span>${number(index + 1)}</span>
+        <div>
+          <strong>${escapeHtml(row.label || "Sem classificação")}</strong>
+          <i></i>
+        </div>
+        <em>${escapeHtml(formatter(Number(row.value || 0)))}</em>
+      </article>
+    `;
+  }).join("");
+}
+
+function dashboardDataMatrix(readinessSummary) {
+  const items = [
+    ["Vendas", "sales", "Receita, ticket e tendência"],
+    ["Custos", "costs", "Margem, CMV e preço alvo"],
+    ["Clientes", "customers", "Recorrência e carteira"],
+    ["Produtos", "products", "Mix, curva ABC e categorias"],
+    ["Estoque", "stock", "Capital, giro e cobertura"],
+    ["Fornecedores", "suppliers", "Abastecimento e negociação"],
+    ["Histórico", "history", "Sazonalidade e comparação"],
+    ["Canais", "services", "Produto, serviço e canais"],
+  ];
+  const readiness = readinessSummary.readiness || {};
+  return items.map(([label, key, detail]) => `
+    <button class="cockpit-data-tile ${readiness[key] ? "ready" : "locked"}" type="button" data-view-target="${readiness[key] ? "dashboard" : "imports"}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(readiness[key] ? "ativo" : "bloqueado")}</strong>
+      <em>${escapeHtml(detail)}</em>
+    </button>
+  `).join("");
+}
+
+function dashboardUnlockRows(concepts = []) {
+  return concepts
+    .slice()
+    .sort((a, b) => Number(a.ready) - Number(b.ready))
+    .slice(0, 5)
+    .map((item) => `
+      <button class="cockpit-unlock-row ${item.ready ? "ready" : "locked"}" type="button" data-view-target="${escapeAttr(item.view || "imports")}">
+        <i data-lucide="${escapeAttr(item.icon || "activity")}"></i>
+        <div>
+          <span>${escapeHtml(item.area)}</span>
+          <strong>${escapeHtml(item.metric)}</strong>
+          <em>${escapeHtml(item.importNeed)}</em>
+        </div>
+        <b>${escapeHtml(item.value)}</b>
+      </button>
+    `).join("");
+}
+
+function renderDashboardCockpit({
+  summary,
+  totalRevenue,
+  productRevenue,
+  serviceRevenue,
+  avgDailyRevenue,
+  productMixPct,
+  serviceMixPct,
+  productRows,
+  customerRowsData,
+  serviceRowsData,
+  brandRows,
+  stockOk,
+  urgentStock,
+  buyNowStock,
+  attentionStock,
+  excessStock,
+  lowMargin,
+  negativeMargin,
+  marginOpportunities,
+  customerCount,
+  customerRisk,
+  repurchaseDue,
+  sourceCoverage,
+  readinessSummary,
+  retailConcepts,
+}) {
+  const target = document.querySelector("#dashboardCharts");
+  if (!target) return;
+  target.classList.add("retail-cockpit-board");
+  const monthlyRows = monthlyRowsForDisplay(summary.monthly || [], summary.monthly_granularity);
+  const monthlyValues = monthlyRows.map((row) => Number(row.product_revenue || 0) + Number(row.service_revenue || 0));
+  const last = monthlyValues.at(-1) || 0;
+  const previous = monthlyValues.length > 1 ? monthlyValues.at(-2) || 0 : 0;
+  const delta = previous ? ((last - previous) / previous) * 100 : 0;
+  const revenueMax = Math.max(productRevenue, serviceRevenue, 1);
+  const stockTotal = Math.max(buyNowStock + attentionStock + excessStock + stockOk, 1);
+  const productConcentration = totalRevenue ? productRows.reduce((sum, row) => sum + Number(row.value || 0), 0) / Math.max(productRevenue, 1) * 100 : 0;
+  const customerConcentration = totalRevenue ? customerRowsData.reduce((sum, row) => sum + Number(row.value || 0), 0) / Math.max(totalRevenue, 1) * 100 : 0;
+  const pillars = [
+    dashboardPillar({ label: "Resultado", value: totalRevenue ? compactMoney(totalRevenue) : "sem vendas", detail: previous ? `${number(delta)}% vs período anterior` : `${compactMoney(avgDailyRevenue)}/dia`, tone: totalRevenue ? "good" : "warn", icon: "trending-up", view: "opportunities" }),
+    dashboardPillar({ label: "Rentabilidade", value: lowMargin ? `${number(lowMargin)} alertas` : "em leitura", detail: `${number(negativeMargin)} negativos; ${number(marginOpportunities)} oportunidades`, tone: lowMargin ? "warn" : "good", icon: "chart-no-axes-combined", view: "pricing" }),
+    dashboardPillar({ label: "Clientes", value: `${number(customerCount)} ativos`, detail: `${number(customerRisk)} em risco; ${number(repurchaseDue)} recompra`, tone: customerRisk ? "warn" : "good", icon: "users", view: "customers" }),
+    dashboardPillar({ label: "Mix", value: `${number(productMixPct)}% produtos`, detail: `${number(serviceMixPct)}% serviços; Top 5 = ${number(productConcentration)}%`, tone: productConcentration > 45 ? "warn" : "good", icon: "chart-pie", view: "products" }),
+    dashboardPillar({ label: "Capital", value: `${number(excessStock)} excesso`, detail: `${number(urgentStock)} sinais de abastecimento`, tone: urgentStock || excessStock ? "warn" : "good", icon: "coins", view: "stock" }),
+    dashboardPillar({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes`, tone: sourceCoverage >= 70 ? "good" : "warn", icon: "database", view: "imports" }),
+  ].join("");
+  target.innerHTML = `
+    <section class="cockpit-zone cockpit-wide cockpit-result">
+      <header>
+        <div>
+          <span>Resultado e margem</span>
+          <strong>Receita por período com leitura de tendência</strong>
+        </div>
+        <em>${previous ? `${number(delta)}% vs período anterior` : "Histórico ainda curto"}</em>
+      </header>
+      <div class="cockpit-result-body">
+        <div class="cockpit-trend">${dashboardTrendSvg(monthlyRows)}</div>
+        <aside>
+          ${dashboardScoreCell({ label: "Receita", value: totalRevenue ? compactMoney(totalRevenue) : "sem vendas", detail: `${compactMoney(avgDailyRevenue)}/dia`, tone: totalRevenue ? "good" : "warn", icon: "trending-up" })}
+          ${dashboardScoreCell({ label: "Margem", value: lowMargin ? `${number(lowMargin)} alertas` : "sob leitura", detail: "CMV, preço e custo explicam lucro bruto.", tone: lowMargin ? "warn" : "neutral", icon: "badge-percent" })}
+          ${dashboardScoreCell({ label: "Clientes", value: `${number(customerCount)}`, detail: "base ativa no recorte", tone: customerCount ? "good" : "warn", icon: "users" })}
+        </aside>
+      </div>
+    </section>
+
+    <section class="cockpit-zone cockpit-health">
+      <header>
+        <div>
+          <span>Saúde da empresa</span>
+          <strong>Matriz executiva</strong>
+        </div>
+      </header>
+      <div class="cockpit-pillar-grid">${pillars}</div>
+    </section>
+
+    <section class="cockpit-zone cockpit-mix">
+      <header><div><span>Mix e canais</span><strong>Composição da receita</strong></div></header>
+      ${dashboardSegmentBar({ label: "Produtos", value: productRevenue, max: revenueMax, detail: `${number(productMixPct)}% da receita`, tone: "green" })}
+      ${dashboardSegmentBar({ label: "Serviços", value: serviceRevenue, max: revenueMax, detail: `${number(serviceMixPct)}% da receita`, tone: "blue" })}
+      <div class="cockpit-locked-line"><strong>Canais e lojas</strong><span>Importe canal/loja para comparar balcão, B2B, e-commerce e filiais.</span></div>
+    </section>
+
+    <section class="cockpit-zone cockpit-capital">
+      <header><div><span>Estoque como capital</span><strong>Giro, cobertura e dinheiro parado</strong></div></header>
+      <div class="cockpit-stock-stack">
+        ${[
+          ["Comprar agora", buyNowStock, "danger"],
+          ["Acompanhar", attentionStock, "warn"],
+          ["Excesso", excessStock, "blue"],
+          ["Sem alerta", stockOk, "green"],
+        ].map(([label, value, tone]) => `
+          <article class="${tone}" style="--value:${Math.max(3, Math.min(100, (Number(value || 0) / stockTotal) * 100))}%">
+            <span>${escapeHtml(label)}</span>
+            <strong>${number(value)}</strong>
+            <i></i>
+          </article>
+        `).join("")}
+      </div>
+      <div class="cockpit-locked-line"><strong>GMROI / sell-through</strong><span>Custos + estoque histórico + vendas por SKU liberam eficiência do capital.</span></div>
+    </section>
+
+    <section class="cockpit-zone cockpit-customers">
+      <header><div><span>Clientes</span><strong>Carteira, concentração e recorrência</strong></div></header>
+      <div class="cockpit-split">
+        <div>${dashboardRankRows(customerRowsData, compactMoney)}</div>
+        <div class="cockpit-kpi-column">
+          ${dashboardScoreCell({ label: "Top 5 clientes", value: `${number(customerConcentration)}%`, detail: "peso na receita do recorte", tone: customerConcentration > 45 ? "warn" : "neutral", icon: "users" })}
+          ${dashboardScoreCell({ label: "Recompra", value: number(repurchaseDue), detail: `${number(customerRisk)} clientes em risco`, tone: customerRisk ? "warn" : "good", icon: "repeat-2" })}
+        </div>
+      </div>
+    </section>
+
+    <section class="cockpit-zone cockpit-products">
+      <header><div><span>Produtos e sortimento</span><strong>Curva, concentração e cauda longa</strong></div></header>
+      <div class="cockpit-split">
+        <div>${dashboardRankRows(productRows, compactMoney)}</div>
+        <div>${dashboardRankRows(brandRows.slice(0, 5), compactMoney)}</div>
+      </div>
+    </section>
+
+    <section class="cockpit-zone cockpit-data">
+      <header><div><span>Dados e maturidade</span><strong>O que o cockpit já enxerga</strong></div></header>
+      <div class="cockpit-data-grid">${dashboardDataMatrix(readinessSummary)}</div>
+    </section>
+
+    <section class="cockpit-zone cockpit-unlocks">
+      <header>
+        <div>
+          <span>Inteligências bloqueadas</span>
+          <strong>Por que importar mais dados</strong>
+        </div>
+        <button class="secondary-button compact" type="button" data-view-target="imports">Importações</button>
+      </header>
+      <div class="cockpit-unlock-list">${dashboardUnlockRows(retailConcepts)}</div>
+    </section>
+
+    <section class="cockpit-zone cockpit-services">
+      <header><div><span>Serviços e recorrência</span><strong>Produto + serviço na mesma leitura</strong></div></header>
+      ${dashboardRankRows(serviceRowsData, compactMoney)}
+      <div class="cockpit-locked-line"><strong>Custo/hora de serviço</strong><span>Importe custo ou tempo para separar receita de rentabilidade.</span></div>
+    </section>
+  `;
+}
+
 function renderDashboardExecutiveKpis({
   summary,
   kpis,
@@ -1090,57 +1379,31 @@ function renderGeneralMap({
   const hero = document.querySelector("#generalMapHero");
   if (hero) {
     hero.innerHTML = `
-      <div class="retail-bi-command">
-        <section class="retail-bi-summary">
-          <div class="retail-bi-title">
-            <span>BI varejo · ${escapeHtml(periodLabel)}</span>
-            <h2>${escapeHtml(companyName)}</h2>
-            <p>${escapeHtml(heroSubtitle)}</p>
-          </div>
-          <div class="retail-bi-primary">
-            <span>Receita lida</span>
-            <strong>${escapeHtml(totalRevenue ? compactMoney(totalRevenue) : "sem vendas")}</strong>
-            <em>${escapeHtml(totalRevenue ? `${compactMoney(avgDailyRevenue)}/dia no recorte` : "aguardando importação de vendas")}</em>
-          </div>
-          <div class="retail-bi-bars">
-            ${dashboardBar({ label: "Produtos", value: totalRevenue ? `${number(productMixPct)}%` : number(productCount), detail: totalRevenue ? compactMoney(productRevenue) : "SKUs na base", progress: productMixPct, tone: "good" })}
-            ${dashboardBar({ label: "Serviços", value: totalRevenue ? `${number(serviceMixPct)}%` : number(services.length), detail: totalRevenue ? compactMoney(serviceRevenue) : "serviços na base", progress: serviceMixPct, tone: "blue" })}
-            ${dashboardBar({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes`, progress: sourceCoverage, tone: sourceCoverage >= 70 ? "good" : "warn" })}
-          </div>
-        </section>
-        <section class="retail-bi-panel">
-          <header>
-            <div>
-              <span>Painel de saúde</span>
-              <strong>Leitura do negócio no recorte</strong>
-            </div>
-            <em>${escapeHtml(periodLabel)}</em>
-          </header>
-          <div class="retail-health-grid">
-            ${dashboardHealthTile({ label: "Vendas", value: totalRevenue ? compactMoney(avgDailyRevenue) : "sem base", detail: totalRevenue ? `${compactMoney(totalRevenue)} no recorte` : "depende de vendas importadas", tone: revenueTone, icon: "trending-up", view: "opportunities" })}
-            ${dashboardHealthTile({ label: "Margem", value: readinessSummary.readiness.costs ? `${number(lowMargin)} itens` : "sem custo", detail: readinessSummary.readiness.costs ? `${number(negativeMargin)} negativos; ${number(marginOpportunities)} oportunidades` : "custos liberam preço alvo", tone: marginTone, icon: "chart-no-axes-combined", view: readinessSummary.readiness.costs ? "pricing" : "imports" })}
-            ${dashboardHealthTile({ label: "Carteira", value: `${number(customerCount)} clientes`, detail: revenuePerCustomer ? `${compactMoney(revenuePerCustomer)}/cliente; ${number(repurchaseDue)} recompra` : "base pronta para segmentar", tone: customerTone, icon: "users", view: customerCount ? "customers" : "imports" })}
-            ${dashboardHealthTile({ label: "Mix", value: totalRevenue ? `${number(productMixPct)}% produtos` : `${number(productCount)} SKUs`, detail: topProductShare ? `Top 5 produtos = ${number(topProductShare)}%` : `${number(services.length)} serviços na base`, tone: mixTone, icon: "chart-pie", view: "products" })}
-            ${dashboardHealthTile({ label: "Abastecimento", value: stockUniverse ? `${number(urgentStock)} itens` : "sem estoque", detail: stockUniverse ? `${number(riskSuppliers.length)} fornecedores com sinal` : "estoque libera cobertura", tone: supplyTone, icon: "truck", view: stockUniverse ? "stock" : "imports" })}
-            ${dashboardHealthTile({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes reconhecidas`, tone: dataTone, icon: "database", view: readinessSummary.upcomingCount ? "imports" : "dashboard" })}
-          </div>
-          <div class="retail-benchmark-grid">
-            ${dashboardBenchmark({ label: "Concentração Top 5 produtos", value: topProductShare ? `${number(topProductShare)}%` : "n/d", detail: topProduct.name || "sem ranking", tone: topProductShare > 45 ? "warn" : "neutral" })}
-            ${dashboardBenchmark({ label: "Concentração Top 5 clientes", value: topCustomerShare ? `${number(topCustomerShare)}%` : "n/d", detail: topCustomer.name || "sem ranking", tone: topCustomerShare > 45 ? "warn" : "neutral" })}
-            ${dashboardBenchmark({ label: "Sortimento vendido", value: `${number(productCount)} SKUs`, detail: `${number(customerCount)} clientes compraram`, tone: "neutral" })}
-            ${dashboardBenchmark({ label: "Capital em estoque", value: stockUniverse ? `${number(excessStock)} excesso` : "n/d", detail: stockUniverse ? `${number(stockUniverse)} itens avaliados` : "aguardando estoque", tone: excessStock ? "warn" : "neutral" })}
-          </div>
-        </section>
+      <div class="cockpit-topbar">
+        <div>
+          <span>Cockpit varejo · ${escapeHtml(periodLabel)}</span>
+          <h2>${escapeHtml(companyName)}</h2>
+          <p>${escapeHtml(heroSubtitle)}</p>
+        </div>
+        <div class="cockpit-period-stack">
+          <strong>${escapeHtml(totalRevenue ? compactMoney(totalRevenue) : "sem vendas")}</strong>
+          <span>Receita no recorte</span>
+        </div>
+      </div>
+      <div class="cockpit-scorebar">
+        ${dashboardScoreCell({ label: "Receita", value: totalRevenue ? compactMoney(totalRevenue) : "sem vendas", detail: `${compactMoney(avgDailyRevenue)}/dia`, tone: totalRevenue ? "good" : "warn", icon: "trending-up" })}
+        ${dashboardScoreCell({ label: "Rentabilidade", value: lowMargin ? `${number(lowMargin)} alertas` : "em leitura", detail: `${number(marginOpportunities)} oportunidades`, tone: lowMargin ? "warn" : "neutral", icon: "badge-percent" })}
+        ${dashboardScoreCell({ label: "Clientes", value: number(customerCount), detail: `${number(repurchaseDue)} recompra; ${number(customerRisk)} risco`, tone: customerRisk ? "warn" : "good", icon: "users" })}
+        ${dashboardScoreCell({ label: "Mix", value: `${number(productMixPct)}% produtos`, detail: `${number(serviceMixPct)}% serviços`, tone: "neutral", icon: "chart-pie" })}
+        ${dashboardScoreCell({ label: "Capital", value: `${number(excessStock)} excesso`, detail: `${number(urgentStock)} sinais de estoque`, tone: urgentStock || excessStock ? "warn" : "good", icon: "coins" })}
+        ${dashboardScoreCell({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes`, tone: sourceCoverage >= 70 ? "good" : "warn", icon: "database" })}
       </div>
     `;
   }
-  renderDashboardExecutiveKpis({ summary, kpis, products, customers, periodLabel, productRevenue, serviceRevenue, totalRevenue, replenishment, urgentStock, buyNowStock, readySuppliers, riskSuppliers, lowMargin, pricing, readinessSummary });
-  const cards = document.querySelector("#generalMapCards");
-  if (cards) {
-    cards.classList.remove("bi-signal-grid");
-    cards.classList.add("retail-intelligence-panel");
-    cards.innerHTML = dashboardRetailIntelligencePanel(retailConcepts);
-  }
+  const legacyKpis = document.querySelector("#kpis");
+  if (legacyKpis) legacyKpis.innerHTML = "";
+  const legacyCards = document.querySelector("#generalMapCards");
+  if (legacyCards) legacyCards.innerHTML = "";
   const movements = document.querySelector("#operatorMovements");
   if (movements) {
     const movementItems = [
@@ -1165,21 +1428,33 @@ function renderGeneralMap({
   if (presets) {
     presets.innerHTML = dashboardShortcutButtons();
   }
-  renderGeneralDoughnut("#generalRevenueMix", ["Produtos", "Serviços"], [productRevenue, serviceRevenue], ["#18a058", "#2f7eb8"], money);
-  renderGeneralDoughnut("#generalStockChart", ["Comprar agora", "Acompanhar", "Excesso", "Sem alerta"], [buyNowStock, attentionStock, excessStock, stockOk], ["#ef4444", "#f59e0b", "#2f7eb8", "#18a058"], number);
-  renderGeneralDoughnut("#generalCustomerProfile", ["Risco", "Recompra", "Demais clientes"], [customerRisk, repurchaseDue, Math.max(0, customers.length - customerRisk - repurchaseDue)], ["#f59e0b", "#2f7eb8", "#18a058"], number);
-  renderBiBars("#generalPurchaseChart", quoteSuppliers.slice().sort((a, b) => Number(b.estimated_value || 0) - Number(a.estimated_value || 0)).map((row) => ({ label: row.supplier_name, value: row.estimated_value })), compactMoney);
-  renderBiBars("#generalTopProducts", productRows, compactMoney);
-  renderBiBars("#generalTopCustomers", customerRowsData, compactMoney);
-  renderBiBars("#generalTopBrands", brandRows, compactMoney);
-  renderBiBars("#generalTopServices", serviceRowsData, compactMoney);
-  renderBiBars("#generalMarginChart", [
-    { label: "Margem negativa", value: Number(pricing.summary?.negative_margin || 0) },
-    { label: "Margem baixa", value: Number(pricing.summary?.low_margin || 0) },
-    { label: "Sem custo", value: Number(pricing.summary?.missing_cost || 0) },
-    { label: "Oportunidades", value: Number(pricing.summary?.opportunities || 0) },
-  ], number);
-  renderBiScore("#generalDataQuality", quality.score == null ? 72 : quality.score, quality.status === "ready" ? "Base consistente" : "Base em leitura", quality.next_step || "Custos, estoque, vendas e cadastros ampliam as ferramentas da mesa.");
+  renderDashboardCockpit({
+    summary,
+    totalRevenue,
+    productRevenue,
+    serviceRevenue,
+    avgDailyRevenue,
+    productMixPct,
+    serviceMixPct,
+    productRows,
+    customerRowsData,
+    serviceRowsData,
+    brandRows,
+    stockOk,
+    urgentStock,
+    buyNowStock,
+    attentionStock,
+    excessStock,
+    lowMargin,
+    negativeMargin,
+    marginOpportunities,
+    customerCount,
+    customerRisk,
+    repurchaseDue,
+    sourceCoverage,
+    readinessSummary,
+    retailConcepts,
+  });
   if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { "stroke-width": 2.1 } });
 }
 
