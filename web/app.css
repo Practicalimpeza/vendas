@@ -17917,7 +17917,7 @@ body.onboarding-open {
 /* BI desktop profissional da Visao Geral. */
 .workspace:has(#dashboard.active) .dashboard-bi {
   grid-auto-flow: dense;
-  gap: 12px;
+  gap: 14px;
 }
 
 .workspace:has(#dashboard.active) #generalMapHero {
@@ -17949,11 +17949,11 @@ body.onboarding-open {
   min-height: 0;
   max-height: none;
   padding: 0;
-  border: 1px solid rgba(17, 28, 22, 0.1);
+  border: 1px solid rgba(17, 28, 22, 0.09);
   border-radius: 8px;
   background: #ffffff;
   color: var(--ink);
-  box-shadow: 0 18px 44px rgba(17, 28, 22, 0.08);
+  box-shadow: 0 12px 30px rgba(17, 28, 22, 0.06);
   overflow: hidden;
 }
 
@@ -17967,20 +17967,16 @@ body.onboarding-open {
 
 .retail-bi-command {
   display: grid;
-  grid-template-columns: minmax(300px, 0.88fr) minmax(560px, 1.62fr);
-  min-height: 372px;
+  grid-template-columns: minmax(310px, 0.78fr) minmax(620px, 1.72fr);
+  min-height: 306px;
 }
 
 .retail-bi-summary {
   display: grid;
   align-content: space-between;
-  gap: 18px;
-  padding: 22px;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(135deg, #0d2118 0%, #174d39 58%, #21455f 100%);
-  background-size: 42px 42px, 42px 42px, auto;
+  gap: 14px;
+  padding: 20px 22px;
+  background: linear-gradient(145deg, #102019 0%, #183226 58%, #263948 100%);
   color: #ffffff;
 }
 
@@ -18025,13 +18021,28 @@ body.onboarding-open {
 
 .retail-bi-primary {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .retail-bi-primary strong {
-  font-size: clamp(38px, 4.6vw, 58px);
-  line-height: 0.94;
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1;
   letter-spacing: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.retail-bi-primary span,
+.retail-bi-primary em {
+  grid-column: 1;
 }
 
 .retail-bi-bars {
@@ -18083,10 +18094,9 @@ body.onboarding-open {
 .retail-bi-panel {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 12px;
-  padding: 14px;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8faf9 100%);
 }
 
 .retail-bi-panel header {
@@ -18117,16 +18127,16 @@ body.onboarding-open {
 .retail-health-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .retail-health-tile {
   appearance: none;
   min-width: 0;
-  min-height: 86px;
+  min-height: 74px;
   border: 1px solid rgba(17, 28, 22, 0.08);
   border-radius: 8px;
-  padding: 10px;
+  padding: 9px 10px;
   background: #ffffff;
   color: var(--ink);
   display: grid;
@@ -18138,7 +18148,7 @@ body.onboarding-open {
 
 .retail-health-tile:hover {
   border-color: rgba(25, 115, 77, 0.25);
-  box-shadow: 0 12px 28px rgba(17, 28, 22, 0.08);
+  box-shadow: 0 10px 24px rgba(17, 28, 22, 0.06);
 }
 
 .retail-health-tile svg {
@@ -18163,21 +18173,21 @@ body.onboarding-open {
 }
 
 .retail-health-tile strong {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.05;
 }
 
 .retail-benchmark-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .retail-benchmark {
   min-width: 0;
   border: 1px solid rgba(17, 28, 22, 0.08);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   background: #fbfcfb;
 }
 
@@ -18188,9 +18198,9 @@ body.onboarding-open {
 
 .retail-benchmark strong {
   display: block;
-  margin: 3px 0 1px;
+  margin: 2px 0 1px;
   color: var(--ink);
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1.05;
 }
 
@@ -18201,7 +18211,7 @@ body.onboarding-open {
   border-radius: 8px;
   padding: 0;
   background: #ffffff;
-  box-shadow: 0 14px 34px rgba(17, 28, 22, 0.07);
+  box-shadow: 0 10px 24px rgba(17, 28, 22, 0.055);
 }
 
 .workspace:has(#dashboard.active) .bi-kpi-strip .kpi {
@@ -18226,7 +18236,7 @@ body.onboarding-open {
   gap: 0;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 14px 34px rgba(17, 28, 22, 0.07);
+  box-shadow: 0 10px 24px rgba(17, 28, 22, 0.055);
 }
 
 .workspace:has(#dashboard.active) .bi-signal {
@@ -18265,14 +18275,20 @@ body.onboarding-open {
 .workspace:has(#dashboard.active) .bi-grid {
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(17, 28, 22, 0.06);
 }
 
 .workspace:has(#dashboard.active) .bi-panel {
   min-height: 246px;
   border-radius: 8px;
   padding: 14px;
-  background: #ffffff;
-  box-shadow: 0 14px 34px rgba(17, 28, 22, 0.07);
+  border-color: rgba(17, 28, 22, 0.075);
+  background: #fbfcfb;
+  box-shadow: none;
 }
 
 .workspace:has(#dashboard.active) .bi-panel-large {
