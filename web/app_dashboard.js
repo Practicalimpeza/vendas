@@ -9,7 +9,7 @@
     .sort((a, b) => b.value - a.value);
 }
 
-const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v8";
+const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v9";
 const DASHBOARD_LEGACY_LAYOUT_KEY = "pulso.dashboard.layout.v0";
 const DASHBOARD_BASE_VISIBLE_KEY = "pulso.dashboard.base.visible";
 const DASHBOARD_BLOCK_DEFS = [
@@ -33,9 +33,9 @@ const DASHBOARD_SIZE_LABELS = {
 const DASHBOARD_PRESETS = {
   gestor: {
     label: "Essencial",
-    order: ["pulso", "indicadores", "sinais", "analises", "mesa", "potencial", "ferramentas", "trilhas", "implantacao"],
+    order: ["pulso", "analises", "indicadores", "sinais", "mesa", "potencial", "ferramentas", "trilhas", "implantacao"],
     hidden: ["potencial", "ferramentas", "trilhas", "implantacao"],
-    sizes: { pulso: "compact", indicadores: "medium", sinais: "medium", mesa: "large", potencial: "medium", analises: "large", ferramentas: "medium", trilhas: "medium", implantacao: "compact" },
+    sizes: { pulso: "large", indicadores: "medium", sinais: "medium", mesa: "large", potencial: "medium", analises: "large", ferramentas: "medium", trilhas: "medium", implantacao: "compact" },
   },
   comprador: {
     label: "Comprador",
@@ -446,9 +446,12 @@ function biSignal({ label, value, detail, tone = "neutral", icon = "activity", v
   return `
     <button class="bi-signal ${escapeAttr(tone)}" type="button"${target}>
       <i data-lucide="${escapeAttr(icon)}"></i>
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <em>${escapeHtml(detail || "")}</em>
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+        <em>${escapeHtml(detail || "")}</em>
+      </div>
+      <small>abrir</small>
     </button>
   `;
 }
@@ -511,6 +514,42 @@ function dashboardExecutiveKpi({ label, value, detail, color = "", icon = "activ
       <strong>${escapeHtml(value)}</strong>
       <em>${escapeHtml(detail)}</em>
     </div>
+  `;
+}
+
+function dashboardHealthTile({ label, value, detail, tone = "neutral", icon = "activity", view = "" }) {
+  const target = view ? ` data-view-target="${escapeAttr(view)}"` : "";
+  return `
+    <button class="retail-health-tile ${escapeAttr(tone)}" type="button"${target}>
+      <i data-lucide="${escapeAttr(icon)}"></i>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <em>${escapeHtml(detail || "")}</em>
+    </button>
+  `;
+}
+
+function dashboardBenchmark({ label, value, detail, tone = "neutral" }) {
+  return `
+    <article class="retail-benchmark ${escapeAttr(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <em>${escapeHtml(detail || "")}</em>
+    </article>
+  `;
+}
+
+function dashboardBar({ label, value, detail, progress = 0, tone = "neutral" }) {
+  const width = Math.max(0, Math.min(100, Number(progress || 0)));
+  return `
+    <article class="retail-bar ${escapeAttr(tone)}" style="--bar:${width}%">
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+      </div>
+      <i></i>
+      <em>${escapeHtml(detail || "")}</em>
+    </article>
   `;
 }
 
@@ -900,15 +939,77 @@ function renderGeneralMap({
   const companyName = (typeof companyProfileName === "function" && companyProfileName()) || appName();
   const customerCount = Number(kpis.customers || customers.length || 0);
   const supplierCount = quoteSuppliers.length || supplierRows.length || 0;
+  const productCount = Number(kpis.products || products.length || 0);
+  const periodDays = state.periodDays === "all" ? 0 : Number(state.periodDays || summary?.period?.period_days || 0);
+  const divisorDays = periodDays || Math.max(1, summary?.monthly?.length || 1);
+  const avgDailyRevenue = totalRevenue > 0 ? totalRevenue / Math.max(divisorDays, 1) : 0;
+  const productMixPct = totalRevenue > 0 ? Math.round((productRevenue / totalRevenue) * 100) : 0;
+  const serviceMixPct = totalRevenue > 0 ? Math.round((serviceRevenue / totalRevenue) * 100) : 0;
+  const topProductShare = productRevenue > 0
+    ? products.slice(0, 5).reduce((sum, row) => sum + Number(row.revenue || 0), 0) / productRevenue * 100
+    : 0;
+  const topCustomerShare = totalRevenue > 0
+    ? customers.slice(0, 5).reduce((sum, row) => sum + Number(row.revenue || 0), 0) / totalRevenue * 100
+    : 0;
+  const criticalA = Number(replenishment.summary?.critical_a || 0);
+  const negativeMargin = Number(pricing.summary?.negative_margin || 0);
+  const marginOpportunities = Number(pricing.summary?.opportunities || 0);
+  const stockHealthPct = stockUniverse ? Math.round((stockOk / Math.max(stockUniverse, 1)) * 100) : 0;
+  const sourceCoverage = readinessSummary.sourceTotal
+    ? Math.round((readinessSummary.sourceCount / readinessSummary.sourceTotal) * 100)
+    : 0;
+  const revenueTone = totalRevenue ? "good" : "warn";
+  const stockTone = urgentStock ? "danger" : stockUniverse ? "good" : "warn";
+  const marginTone = lowMargin ? "warn" : readinessSummary.readiness.costs ? "good" : "neutral";
+  const supplierTone = riskSuppliers.length ? "warn" : readySuppliers.length ? "good" : "neutral";
+  const customerTone = customerRisk ? "warn" : customerCount ? "good" : "neutral";
+  const heroSubtitle = totalRevenue
+    ? `${number(productCount)} SKUs vendidos, ${number(customerCount)} clientes, ${number(supplierCount)} fornecedores e ${number(readinessSummary.sourceCount)} fontes reconhecidas.`
+    : "Importe vendas, estoque, custos e clientes para transformar a abertura em leitura executiva.";
   const hero = document.querySelector("#generalMapHero");
   if (hero) {
     hero.innerHTML = `
-      <div class="bi-hero-copy">
-        <span>${escapeHtml(companyName)} · ${escapeHtml(periodLabel)}</span>
-        <h2>${escapeHtml(totalRevenue ? `${compactMoney(totalRevenue)} em receita lida` : "Leitura inicial da empresa")}</h2>
-        <p>${escapeHtml(totalRevenue
-          ? `Base aberta: ${number(kpis.products || products.length || 0)} SKUs vendidos, ${number(customerCount)} clientes, ${number(supplierCount)} fornecedores, ${number(urgentStock)} itens em atenção de estoque e ${number(lowMargin)} itens em leitura de margem.`
-          : "Importe vendas, estoque, custos e clientes para transformar a abertura em uma leitura executiva da operação.")}</p>
+      <div class="retail-bi-command">
+        <section class="retail-bi-summary">
+          <div class="retail-bi-title">
+            <span>BI varejo · ${escapeHtml(periodLabel)}</span>
+            <h2>${escapeHtml(companyName)}</h2>
+            <p>${escapeHtml(heroSubtitle)}</p>
+          </div>
+          <div class="retail-bi-primary">
+            <span>Receita lida</span>
+            <strong>${escapeHtml(totalRevenue ? compactMoney(totalRevenue) : "sem vendas")}</strong>
+            <em>${escapeHtml(totalRevenue ? `${compactMoney(avgDailyRevenue)}/dia no recorte` : "aguardando importação de vendas")}</em>
+          </div>
+          <div class="retail-bi-bars">
+            ${dashboardBar({ label: "Produtos", value: totalRevenue ? `${number(productMixPct)}%` : number(productCount), detail: totalRevenue ? compactMoney(productRevenue) : "SKUs na base", progress: productMixPct, tone: "good" })}
+            ${dashboardBar({ label: "Serviços", value: totalRevenue ? `${number(serviceMixPct)}%` : number(services.length), detail: totalRevenue ? compactMoney(serviceRevenue) : "serviços na base", progress: serviceMixPct, tone: "blue" })}
+            ${dashboardBar({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes`, progress: sourceCoverage, tone: sourceCoverage >= 70 ? "good" : "warn" })}
+          </div>
+        </section>
+        <section class="retail-bi-panel">
+          <header>
+            <div>
+              <span>Painel de saúde</span>
+              <strong>Operação no recorte atual</strong>
+            </div>
+            <em>${escapeHtml(periodLabel)}</em>
+          </header>
+          <div class="retail-health-grid">
+            ${dashboardHealthTile({ label: "Venda diária", value: totalRevenue ? compactMoney(avgDailyRevenue) : "sem base", detail: totalRevenue ? "média do período selecionado" : "depende de vendas importadas", tone: revenueTone, icon: "trending-up", view: "opportunities" })}
+            ${dashboardHealthTile({ label: "Ruptura", value: stockUniverse ? `${number(urgentStock)} itens` : "sem estoque", detail: stockUniverse ? `${number(criticalA)} classe A críticos` : "importe estoque para cobertura", tone: stockTone, icon: "boxes", view: stockUniverse ? "stock" : "imports" })}
+            ${dashboardHealthTile({ label: "Margem", value: readinessSummary.readiness.costs ? `${number(lowMargin)} itens` : "sem custo", detail: readinessSummary.readiness.costs ? `${number(negativeMargin)} negativos; ${number(marginOpportunities)} oportunidades` : "custos liberam preço alvo", tone: marginTone, icon: "chart-no-axes-combined", view: readinessSummary.readiness.costs ? "pricing" : "imports" })}
+            ${dashboardHealthTile({ label: "Fornecimento", value: `${number(riskSuppliers.length)} sinais`, detail: readySuppliers.length ? `${number(readySuppliers.length)} fornecedores acionáveis` : "vínculos e mínimos em leitura", tone: supplierTone, icon: "truck", view: readinessSummary.readiness.suppliers ? "suppliers" : "imports" })}
+            ${dashboardHealthTile({ label: "Carteira", value: `${number(customerCount)} clientes`, detail: customerRisk || repurchaseDue ? `${number(customerRisk)} risco; ${number(repurchaseDue)} recompra` : "base pronta para segmentar", tone: customerTone, icon: "users", view: customerCount ? "customers" : "imports" })}
+            ${dashboardHealthTile({ label: "Cobertura", value: stockUniverse ? `${number(stockHealthPct)}% ok` : `${number(sourceCoverage)}% dados`, detail: stockUniverse ? `${number(stockOk)} itens sem alerta forte` : "fontes conectadas", tone: stockTone, icon: "activity", view: stockUniverse ? "stock" : "imports" })}
+          </div>
+          <div class="retail-benchmark-grid">
+            ${dashboardBenchmark({ label: "Concentração Top 5 produtos", value: topProductShare ? `${number(topProductShare)}%` : "n/d", detail: topProduct.name || "sem ranking", tone: topProductShare > 45 ? "warn" : "neutral" })}
+            ${dashboardBenchmark({ label: "Concentração Top 5 clientes", value: topCustomerShare ? `${number(topCustomerShare)}%` : "n/d", detail: topCustomer.name || "sem ranking", tone: topCustomerShare > 45 ? "warn" : "neutral" })}
+            ${dashboardBenchmark({ label: "Sortimento vendido", value: `${number(productCount)} SKUs`, detail: `${number(customerCount)} clientes compraram`, tone: "neutral" })}
+            ${dashboardBenchmark({ label: "Capital em estoque", value: stockUniverse ? `${number(excessStock)} excesso` : "n/d", detail: stockUniverse ? `${number(stockUniverse)} itens avaliados` : "aguardando estoque", tone: excessStock ? "warn" : "neutral" })}
+          </div>
+        </section>
       </div>
     `;
   }

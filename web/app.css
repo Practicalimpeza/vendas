@@ -17913,3 +17913,413 @@ body.onboarding-open {
     grid-template-columns: 1fr;
   }
 }
+
+/* BI desktop profissional da Visao Geral. */
+.workspace:has(#dashboard.active) .dashboard-bi {
+  grid-auto-flow: dense;
+  gap: 12px;
+}
+
+.workspace:has(#dashboard.active) #generalMapHero {
+  grid-column: 1 / -1;
+  order: 1;
+}
+
+.workspace:has(#dashboard.active) #dashboardCharts {
+  grid-column: 1 / span 8;
+  grid-row: span 2;
+  order: 2;
+}
+
+.workspace:has(#dashboard.active) #kpis {
+  grid-column: 9 / -1;
+  order: 3;
+}
+
+.workspace:has(#dashboard.active) #generalMapCards {
+  grid-column: 9 / -1;
+  order: 4;
+}
+
+.workspace:has(#dashboard.active) #dashboardControlBar {
+  order: 5;
+}
+
+#dashboard .bi-hero {
+  min-height: 0;
+  max-height: none;
+  padding: 0;
+  border: 1px solid rgba(17, 28, 22, 0.1);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 18px 44px rgba(17, 28, 22, 0.08);
+  overflow: hidden;
+}
+
+#dashboard > [data-dashboard-size="compact"].bi-hero {
+  max-height: none;
+}
+
+#dashboard > .bi-hero::before {
+  display: none;
+}
+
+.retail-bi-command {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.88fr) minmax(560px, 1.62fr);
+  min-height: 372px;
+}
+
+.retail-bi-summary {
+  display: grid;
+  align-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(135deg, #0d2118 0%, #174d39 58%, #21455f 100%);
+  background-size: 42px 42px, 42px 42px, auto;
+  color: #ffffff;
+}
+
+.retail-bi-title {
+  display: grid;
+  gap: 8px;
+}
+
+.retail-bi-title span,
+.retail-bi-primary span,
+.retail-bi-panel header span,
+.retail-health-tile span,
+.retail-benchmark span,
+.retail-bar span {
+  color: inherit;
+  opacity: 0.68;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.retail-bi-title h2 {
+  margin: 0;
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.retail-bi-title p,
+.retail-bi-primary em,
+.retail-bar em,
+.retail-health-tile em,
+.retail-benchmark em {
+  margin: 0;
+  color: inherit;
+  opacity: 0.72;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.34;
+}
+
+.retail-bi-primary {
+  display: grid;
+  gap: 4px;
+}
+
+.retail-bi-primary strong {
+  font-size: clamp(38px, 4.6vw, 58px);
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+.retail-bi-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.retail-bar {
+  display: grid;
+  gap: 5px;
+}
+
+.retail-bar > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.retail-bar strong {
+  font-size: 14px;
+}
+
+.retail-bar i {
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.retail-bar i::before {
+  content: "";
+  display: block;
+  width: var(--bar);
+  height: 100%;
+  border-radius: inherit;
+  background: #79d99b;
+}
+
+.retail-bar.blue i::before {
+  background: #77b7e8;
+}
+
+.retail-bar.warn i::before {
+  background: #f5b74c;
+}
+
+.retail-bi-panel {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+}
+
+.retail-bi-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.08);
+}
+
+.retail-bi-panel header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.retail-bi-panel header strong {
+  font-size: 16px;
+}
+
+.retail-bi-panel header em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.retail-health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.retail-health-tile {
+  appearance: none;
+  min-width: 0;
+  min-height: 86px;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+  color: var(--ink);
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.retail-health-tile:hover {
+  border-color: rgba(25, 115, 77, 0.25);
+  box-shadow: 0 12px 28px rgba(17, 28, 22, 0.08);
+}
+
+.retail-health-tile svg {
+  width: 17px;
+  height: 17px;
+  color: #2f7eb8;
+}
+
+.retail-health-tile.good svg,
+.retail-health-tile.good strong {
+  color: var(--green);
+}
+
+.retail-health-tile.warn svg,
+.retail-health-tile.warn strong {
+  color: #a16207;
+}
+
+.retail-health-tile.danger svg,
+.retail-health-tile.danger strong {
+  color: #b42318;
+}
+
+.retail-health-tile strong {
+  font-size: 20px;
+  line-height: 1.05;
+}
+
+.retail-benchmark-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.retail-benchmark {
+  min-width: 0;
+  border: 1px solid rgba(17, 28, 22, 0.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fbfcfb;
+}
+
+.retail-benchmark.warn {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: #fff8eb;
+}
+
+.retail-benchmark strong {
+  display: block;
+  margin: 3px 0 1px;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.05;
+}
+
+.workspace:has(#dashboard.active) .bi-kpi-strip {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(17, 28, 22, 0.07);
+}
+
+.workspace:has(#dashboard.active) .bi-kpi-strip .kpi {
+  min-height: 86px;
+  border-right: 0;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.08);
+  padding: 11px 12px;
+  background: #ffffff;
+}
+
+.workspace:has(#dashboard.active) .bi-kpi-strip .kpi:last-child {
+  border-bottom: 0;
+}
+
+.workspace:has(#dashboard.active) .bi-kpi-strip .kpi strong {
+  font-size: 20px;
+}
+
+.workspace:has(#dashboard.active) .bi-signal-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(17, 28, 22, 0.07);
+}
+
+.workspace:has(#dashboard.active) .bi-signal {
+  min-height: 74px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(17, 28, 22, 0.08);
+}
+
+.workspace:has(#dashboard.active) .bi-signal:last-child {
+  border-bottom: 0;
+}
+
+.workspace:has(#dashboard.active) .bi-signal svg {
+  width: 18px;
+  height: 18px;
+}
+
+.workspace:has(#dashboard.active) .bi-signal strong {
+  display: block;
+  margin: 2px 0;
+  font-size: 18px;
+}
+
+.workspace:has(#dashboard.active) .bi-signal small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.workspace:has(#dashboard.active) .bi-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workspace:has(#dashboard.active) .bi-panel {
+  min-height: 246px;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(17, 28, 22, 0.07);
+}
+
+.workspace:has(#dashboard.active) .bi-panel-large {
+  grid-column: span 8;
+  min-height: 316px;
+}
+
+.workspace:has(#dashboard.active) .bi-panel-wide,
+.workspace:has(#dashboard.active) .bi-panel:not(.bi-panel-large):not(.bi-panel-wide) {
+  grid-column: span 4;
+}
+
+.workspace:has(#dashboard.active) .bi-chart,
+.workspace:has(#dashboard.active) .bi-chart .chart-canvas-wrap {
+  border-radius: 8px;
+}
+
+@media (max-width: 1180px) {
+  .retail-bi-command {
+    grid-template-columns: 1fr;
+  }
+
+  .retail-health-grid,
+  .retail-benchmark-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace:has(#dashboard.active) #dashboardCharts,
+  .workspace:has(#dashboard.active) #kpis,
+  .workspace:has(#dashboard.active) #generalMapCards {
+    grid-column: 1 / -1;
+  }
+
+  .workspace:has(#dashboard.active) .bi-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .retail-bi-summary,
+  .retail-bi-panel {
+    padding: 14px;
+  }
+
+  .retail-health-grid,
+  .retail-benchmark-grid,
+  .workspace:has(#dashboard.active) .bi-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+}
