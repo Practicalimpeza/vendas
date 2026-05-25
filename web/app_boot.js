@@ -704,6 +704,10 @@ async function boot() {
     const target = event.target.closest("[data-view-target]");
     if (target?.dataset.viewTarget) setView(target.dataset.viewTarget);
   });
+  document.querySelector(".topbar")?.addEventListener("click", (event) => {
+    const target = event.target.closest("button[data-view-target]");
+    if (target?.dataset.viewTarget) setView(target.dataset.viewTarget);
+  });
   document.querySelector("#whatsappFloatButton")?.addEventListener("click", () => toggleWhatsAppOverlay());
   renderNavBadges();
   document.querySelectorAll(".period-btn").forEach((button) => {

@@ -9,7 +9,7 @@
     .sort((a, b) => b.value - a.value);
 }
 
-const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v5";
+const DASHBOARD_LAYOUT_KEY = "pulso.dashboard.layout.v6";
 const DASHBOARD_LEGACY_LAYOUT_KEY = "pulso.dashboard.layout.v0";
 const DASHBOARD_BASE_VISIBLE_KEY = "pulso.dashboard.base.visible";
 const DASHBOARD_BLOCK_DEFS = [
@@ -34,7 +34,7 @@ const DASHBOARD_PRESETS = {
   gestor: {
     label: "Essencial",
     order: ["indicadores", "mesa", "sinais", "pulso", "analises", "potencial", "ferramentas", "trilhas", "implantacao"],
-    hidden: ["pulso", "sinais", "potencial", "analises", "ferramentas", "trilhas", "implantacao"],
+    hidden: ["pulso", "sinais", "potencial", "ferramentas", "trilhas", "implantacao"],
     sizes: { pulso: "compact", indicadores: "medium", sinais: "medium", mesa: "large", potencial: "medium", analises: "large", ferramentas: "medium", trilhas: "medium", implantacao: "compact" },
   },
   comprador: {
@@ -351,6 +351,7 @@ function showDashboardBlock(blockKey) {
   layout.hidden = layout.hidden.filter((key) => key !== blockKey);
   layout.preset = "personalizado";
   applyDashboardLayoutState(saveDashboardLayout(layout));
+  if (blockKey === "analises") scheduleChartRecovery();
 }
 
 function restoreDashboardDefaultLayout() {
