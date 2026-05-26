@@ -8827,7 +8827,6 @@ th.sortable-th[data-sort-dir="desc"]::after {
 }
 
 .purchase-supplier-head,
-.purchase-supplier-filter-row,
 .purchase-supplier-row {
   display: grid;
   grid-template-columns: minmax(190px, 1.3fr) minmax(104px, .68fr) minmax(104px, .68fr) minmax(96px, .58fr) minmax(76px, .46fr) minmax(70px, .42fr) minmax(76px, .42fr) minmax(72px, .4fr);
@@ -8839,8 +8838,8 @@ th.sortable-th[data-sort-dir="desc"]::after {
   position: sticky;
   top: 0;
   z-index: 2;
-  min-height: 38px;
-  padding: 0 18px;
+  min-height: 70px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line);
   background: #f7faf8;
   color: var(--muted);
@@ -8849,7 +8848,11 @@ th.sortable-th[data-sort-dir="desc"]::after {
   text-transform: uppercase;
 }
 
-.purchase-supplier-head > span {
+.purchase-supplier-head > span,
+.purchase-supplier-th {
+  display: grid;
+  align-content: center;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -9659,7 +9662,7 @@ th.sortable-th[data-sort-dir="desc"]::after {
 }
 
 .quote-view.quote-supplier-mode .purchase-supplier-head {
-  min-height: 31px;
+  min-height: 64px;
   padding: 0 12px;
   font-size: 9.8px;
 }

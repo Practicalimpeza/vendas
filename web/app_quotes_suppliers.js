@@ -480,7 +480,18 @@ async function saveQuoteSupplierProfile(button) {
   }
 }
 
-function quoteSupplierHeader(label, sortKey) {
+function quoteSupplierFilterControl(key, options, label) {
+  const current = quoteSupplierColumnFilterValue(key);
+  if (key === "supplier") {
+    return `<input data-quote-supplier-col-filter="supplier" type="search" value="${escapeAttr(current)}" placeholder="filtrar" aria-label="Filtrar ${escapeAttr(label)}" />`;
+  }
+  const opts = options
+    .map(([value, text]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(text)}</option>`)
+    .join("");
+  return `<select data-quote-supplier-col-filter="${escapeAttr(key)}" aria-label="Filtrar ${escapeAttr(label)}">${opts}</select>`;
+}
+
+function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = []) {
   const active = (state.quoteSupplierSort || "supplier") === sortKey;
   const dir = active ? (state.quoteSupplierSortDir || quoteSupplierDefaultSortDir(sortKey)) : quoteSupplierDefaultSortDir(sortKey);
   const ariaSort = !active ? "none" : dir === "asc" ? "ascending" : "descending";
@@ -488,39 +499,30 @@ function quoteSupplierHeader(label, sortKey) {
   const sortDirAttr = active ? ` data-sort-dir="${escapeAttr(dir)}"` : "";
   const help = QUOTE_SUPPLIER_HELP[sortKey] || "";
   const helpAttrs = help ? ` data-help="${escapeAttr(help)}"` : "";
+  const filter = filterKey
+    ? `<label class="purchase-column-filter">${quoteSupplierFilterControl(filterKey, filterOptions, label)}</label>`
+    : "";
   return `
-    <span role="columnheader" aria-sort="${ariaSort}">
+    <span class="purchase-supplier-th" role="columnheader" aria-sort="${ariaSort}">
       <button class="purchase-sort-button ${active ? "active" : ""}" type="button" data-quote-supplier-sort="${escapeAttr(sortKey)}" aria-pressed="${active ? "true" : "false"}"${sortDirAttr}${helpAttrs}>
         <span>${escapeHtml(label)}</span>
         <i aria-hidden="true">${marker}</i>
       </button>
+      ${filter}
     </span>
   `;
 }
 
-function quoteSupplierSelectFilter(key, options, label) {
-  const current = quoteSupplierColumnFilterValue(key);
-  const opts = options
-    .map(([value, text]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(text)}</option>`)
-    .join("");
-  return `<label class="purchase-column-filter"><span>${escapeHtml(label)}</span><select data-quote-supplier-col-filter="${escapeAttr(key)}">${opts}</select></label>`;
-}
-
-function quoteSupplierColumnFiltersRow() {
+function quoteSupplierHeaderCells() {
   return `
-    <div class="purchase-supplier-filter-row" role="row" aria-label="Filtros por coluna">
-      <label class="purchase-column-filter">
-        <span>Fornecedor</span>
-        <input data-quote-supplier-col-filter="supplier" type="search" value="${escapeAttr(quoteSupplierColumnFilterValue("supplier"))}" placeholder="nome ou contato" />
-      </label>
-      ${quoteSupplierSelectFilter("value", [["", "Todos"], ["positive", "Com valor"], ["high", "Alto valor"], ["zero", "Sem sugestão"]], "Sugerido")}
-      ${quoteSupplierSelectFilter("minimum", [["", "Todos"], ["configured", "Com mínimo"], ["missing", "Sem mínimo"], ["met", "Mínimo ok"]], "Mínimo")}
-      ${quoteSupplierSelectFilter("gap", [["", "Todos"], ["missing", "Falta mínimo"], ["ok", "OK"], ["none", "Sem mínimo"]], "Situação")}
-      ${quoteSupplierSelectFilter("pct", [["", "Todos"], ["under_65", "< 65%"], ["near", "65-99%"], ["met", ">= 100%"]], "% mínimo")}
-      ${quoteSupplierSelectFilter("cycle", [["", "Todos"], ["short", "< 60d"], ["long", ">= 60d"], ["none", "Sem ciclo"]], "Ciclo")}
-      ${quoteSupplierSelectFilter("risk", [["", "Todos"], ["rupture", "Ruptura"], ["signals", "Com sinais"], ["none", "Sem sinal"]], "Ruptura")}
-      ${quoteSupplierSelectFilter("open", [["", "Todos"], ["any", "Qualquer"], ["quote", "Cotação"], ["order", "Pedido"], ["none", "Nenhum"]], "Aberto")}
-    </div>
+    ${quoteSupplierHeader("Fornecedor", "supplier", "supplier")}
+    ${quoteSupplierHeader("Sugerido", "value", "value", [["", "Todos"], ["positive", "Com valor"], ["high", "Alto valor"], ["zero", "Sem sugestão"]])}
+    ${quoteSupplierHeader("Mínimo", "minimum", "minimum", [["", "Todos"], ["configured", "Com mínimo"], ["missing", "Sem mínimo"], ["met", "Mínimo ok"]])}
+    ${quoteSupplierHeader("Situação", "minimum_gap", "gap", [["", "Todos"], ["missing", "Falta mínimo"], ["ok", "OK"], ["none", "Sem mínimo"]])}
+    ${quoteSupplierHeader("% mínimo", "minimum_pct", "pct", [["", "Todos"], ["under_65", "< 65%"], ["near", "65-99%"], ["met", ">= 100%"]])}
+    ${quoteSupplierHeader("Ciclo", "cycle", "cycle", [["", "Todos"], ["short", "< 60d"], ["long", ">= 60d"], ["none", "Sem ciclo"]])}
+    ${quoteSupplierHeader("Ruptura", "risk", "risk", [["", "Todos"], ["rupture", "Ruptura"], ["signals", "Com sinais"], ["none", "Sem sinal"]])}
+    ${quoteSupplierHeader("Aberto", "open_quote", "open", [["", "Todos"], ["any", "Qualquer"], ["quote", "Cotação"], ["order", "Pedido"], ["none", "Nenhum"]])}
   `;
 }
 
@@ -529,16 +531,8 @@ function quoteSupplierRows(rows) {
     return `
       <div class="purchase-supplier-table nexo-quote-data-table" role="table" aria-label="Fornecedores na mesa de compra">
         <div class="purchase-supplier-head" role="row">
-          ${quoteSupplierHeader("Fornecedor", "supplier")}
-          ${quoteSupplierHeader("Sugerido", "value")}
-          ${quoteSupplierHeader("Mínimo", "minimum")}
-          ${quoteSupplierHeader("Mínimo", "minimum_gap")}
-          ${quoteSupplierHeader("% mínimo", "minimum_pct")}
-          ${quoteSupplierHeader("Ciclo", "cycle")}
-          ${quoteSupplierHeader("Ruptura", "risk")}
-          ${quoteSupplierHeader("Aberto", "open_quote")}
+          ${quoteSupplierHeaderCells()}
         </div>
-        ${quoteSupplierColumnFiltersRow()}
         <div class="quote-empty">Nenhum fornecedor aparece com esta busca ou filtro.</div>
       </div>
     `;
@@ -605,16 +599,8 @@ function quoteSupplierRows(rows) {
   return `
     <div class="purchase-supplier-table nexo-quote-data-table" role="table" aria-label="Fornecedores na mesa de compra">
       <div class="purchase-supplier-head" role="row">
-        ${quoteSupplierHeader("Fornecedor", "supplier")}
-        ${quoteSupplierHeader("Sugerido", "value")}
-        ${quoteSupplierHeader("Mínimo", "minimum")}
-        ${quoteSupplierHeader("Mínimo", "minimum_gap")}
-        ${quoteSupplierHeader("% mínimo", "minimum_pct")}
-        ${quoteSupplierHeader("Ciclo", "cycle")}
-        ${quoteSupplierHeader("Ruptura", "risk")}
-        ${quoteSupplierHeader("Aberto", "open_quote")}
+        ${quoteSupplierHeaderCells()}
       </div>
-      ${quoteSupplierColumnFiltersRow()}
       <div class="purchase-supplier-body">${body}</div>
     </div>
   `;

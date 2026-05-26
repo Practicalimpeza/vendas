@@ -657,56 +657,47 @@
 }
 
 .nexo-quote-data-table .purchase-supplier-head {
+  align-items: stretch;
+  min-height: 68px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
 }
 
-.nexo-quote-data-table .purchase-supplier-filter-row {
-  position: sticky;
-  top: 38px;
-  z-index: 2;
+.nexo-quote-data-table .purchase-supplier-th {
   display: grid;
-  align-items: center;
-  gap: 12px;
-  min-height: 42px;
-  padding: 6px 18px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.nexo-quote-data-table .purchase-column-filter {
-  display: grid;
-  gap: 3px;
+  align-content: center;
+  gap: 5px;
   min-width: 0;
 }
 
-.nexo-quote-data-table .purchase-column-filter span {
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 900;
-  line-height: 1;
-  text-transform: uppercase;
+.nexo-quote-data-table .purchase-column-filter {
+  display: block;
+  min-width: 0;
 }
 
 .nexo-quote-data-table .purchase-column-filter input,
 .nexo-quote-data-table .purchase-column-filter select {
   width: 100%;
   min-width: 0;
-  height: 28px;
-  padding: 0 7px;
+  height: 27px;
+  padding: 0 6px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 11px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: none;
 }
 
 .nexo-quote-data-table .purchase-sort-button {
-  min-height: 28px;
-  padding: 0 2px 0 8px;
+  min-height: 26px;
+  height: 26px;
+  padding: 0 2px 0 7px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
@@ -714,8 +705,8 @@
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   margin-left: auto;
   border: 1px solid transparent;
   border-radius: 8px;
