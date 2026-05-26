@@ -498,24 +498,6 @@ function quoteSupplierHeader(label, sortKey) {
   `;
 }
 
-function quoteSupplierTableFilters(rows = state.quoteSuppliers || []) {
-  const active = new Set(activeQuoteSupplierLenses());
-  const counts = quoteSupplierLensCounts(rows);
-  const chips = quoteSupplierLensDefinitions()
-    .map((lens) => {
-      const isActive = lens.key === "all" ? active.has("all") : active.has(lens.key);
-      const count = counts[lens.key] ?? 0;
-      return `
-        <button class="nexo-dt-chip ${isActive ? "active" : ""}" type="button" data-quote-supplier-filter="${escapeAttr(lens.key)}" aria-pressed="${isActive ? "true" : "false"}">
-          <b>${escapeHtml(lens.label)}</b>
-          <span>${number(count)}</span>
-        </button>
-      `;
-    })
-    .join("");
-  return `<div class="nexo-dt-chips quote-table-filters" data-quote-table-filters>${chips}</div>`;
-}
-
 function quoteSupplierSelectFilter(key, options, label) {
   const current = quoteSupplierColumnFilterValue(key);
   const opts = options
@@ -545,7 +527,6 @@ function quoteSupplierColumnFiltersRow() {
 function quoteSupplierRows(rows) {
   if (!rows.length) {
     return `
-      ${quoteSupplierTableFilters()}
       <div class="purchase-supplier-table nexo-quote-data-table" role="table" aria-label="Fornecedores na mesa de compra">
         <div class="purchase-supplier-head" role="row">
           ${quoteSupplierHeader("Fornecedor", "supplier")}
@@ -622,7 +603,6 @@ function quoteSupplierRows(rows) {
     })
     .join("");
   return `
-    ${quoteSupplierTableFilters()}
     <div class="purchase-supplier-table nexo-quote-data-table" role="table" aria-label="Fornecedores na mesa de compra">
       <div class="purchase-supplier-head" role="row">
         ${quoteSupplierHeader("Fornecedor", "supplier")}
