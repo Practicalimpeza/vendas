@@ -5,7 +5,7 @@ import sqlite3
 from action_center import api_actions_today, update_action_status
 from api_contracts import api_health
 from app_config import app_public_config
-from commercial import api_commercial_intelligence, api_customer_mix, api_customers, api_services
+from commercial import api_commercial_intelligence, api_customer_mix, api_customers, api_sales, api_services
 from company_profile import api_company_profile, update_company_profile
 from db_helpers import parse_int, scalar_text
 from erp_import_flow import api_erp_import_commit, api_erp_import_preview, api_import_reference_folder, api_import_refresh_local, api_imports
@@ -70,6 +70,7 @@ CACHEABLE_GET_ROUTES = {
     "/api/replenishment-v2",
     "/api/replenishment-v2/compare",
     "/api/commercial/intelligence",
+    "/api/sales",
     "/api/actions/today",
     "/api/customers/top",
     "/api/services/top",
@@ -117,6 +118,7 @@ def get_api_payload(route: str, conn: sqlite3.Connection, query: dict, period: d
         "/api/replenishment-v2": lambda: replenishment_v2_payload(conn, period=period),
         "/api/replenishment-v2/compare": lambda: api_replenishment_v2_compare(conn, period=period),
         "/api/commercial/intelligence": lambda: api_commercial_intelligence(conn, period),
+        "/api/sales": lambda: api_sales(conn, period, parse_int(scalar_text(query.get("limit")), 1000) or 1000),
         "/api/actions/today": lambda: api_actions_today(conn),
         "/api/customers/top": lambda: api_customers(conn, period),
         "/api/customer/mix": lambda: api_customer_mix(conn, scalar_text(query.get("id")), period),

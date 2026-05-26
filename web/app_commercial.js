@@ -14,13 +14,125 @@
     .join("");
 }
 
+let commercialSalesTable = null;
+
 function setCommercialMode(mode) {
   setModuleMode({
     stateKey: "commercialMode",
     modeAttr: "data-commercial-mode",
-    operationalSelector: "#commercialOperational",
-    dashboardSelector: "#commercialDashboard",
+    panels: {
+      operational: "#commercialOperational",
+      sales: "#commercialSales",
+      dashboard: "#commercialDashboard",
+    },
   }, mode);
+  if (state.commercialMode === "sales") renderCommercialSales();
+}
+
+function commercialSalesColumns() {
+  return [
+    { id: "data", label: "Data", type: "date", value: (row) => row.data || "" },
+    { id: "tipo", label: "Tipo", type: "text", value: (row) => row.tipo || "" },
+    {
+      id: "item",
+      label: "Item",
+      type: "text",
+      value: (row) => row.item || "",
+      render: (row) => `
+        <strong class="product-name">${escapeHtml(row.item || "")}</strong>
+        <span class="muted-line">${escapeHtml([row.codigo, row.tipo].filter(Boolean).join(" · "))}</span>
+      `,
+    },
+    { id: "cliente", label: "Cliente", type: "text", value: (row) => row.cliente || "" },
+    { id: "loja", label: "Loja", type: "text", value: (row) => row.loja || "", hidden: true },
+    { id: "quantidade", label: "Qtd.", type: "number", align: "num", value: (row) => Number(row.quantidade || 0) },
+    { id: "receita", label: "Receita", type: "money", align: "num", value: (row) => Number(row.receita || 0) },
+    { id: "valor_unitario", label: "Valor un.", type: "money", align: "num", value: (row) => Number(row.valor_unitario || 0), hidden: true },
+  ];
+}
+
+function commercialSalesSummary(rows = []) {
+  const revenue = rows.reduce((total, row) => total + Number(row.receita || 0), 0);
+  const customers = new Set(rows.map((row) => row.cliente || "").filter(Boolean));
+  const items = new Set(rows.map((row) => row.item || "").filter(Boolean));
+  return [
+    { label: "Registros", value: number(rows.length) },
+    { label: "Receita filtrada", value: compactMoney(revenue), tone: "green" },
+    { label: "Clientes", value: number(customers.size), tone: "blue" },
+    { label: "Itens", value: number(items.size) },
+  ];
+}
+
+function ensureCommercialSalesTable() {
+  if (commercialSalesTable) return commercialSalesTable;
+  const mount = document.querySelector("#salesTableMount");
+  if (!mount) return null;
+  commercialSalesTable = createDataTable(mount, {
+    key: "commercial-sales",
+    columns: commercialSalesColumns(),
+    rows: [],
+    searchPlaceholder: "Buscar venda, cliente, item, código ou loja...",
+    rowKey: (row) => row.id,
+    emptyTitle: "Nenhuma venda no período",
+    emptyHint: "Ajuste o recorte no topo ou confira a importação de vendas.",
+    initialSort: [{ id: "data", dir: "desc" }],
+    summary: commercialSalesSummary,
+    presets: [
+      {
+        id: "sales-main",
+        name: "Leitura principal",
+        hint: "Data, item, cliente e receita.",
+        columns: ["data", "item", "cliente", "quantidade", "receita"],
+        sort: [{ id: "data", dir: "desc" }],
+      },
+      {
+        id: "sales-services",
+        name: "Serviços",
+        hint: "Apenas vendas de serviços.",
+        filters: { tipo: { kind: "set", values: ["Serviço"] } },
+      },
+      {
+        id: "sales-products",
+        name: "Produtos",
+        hint: "Apenas vendas de produtos.",
+        filters: { tipo: { kind: "set", values: ["Produto"] } },
+      },
+    ],
+  });
+  return commercialSalesTable;
+}
+
+function salesPeriodQuery() {
+  return typeof periodQuery === "function" ? periodQuery() : "?period_days=all";
+}
+
+async function loadCommercialSalesRows() {
+  const query = salesPeriodQuery();
+  if (state.salesRowsPeriodKey === query && Array.isArray(state.salesRows)) return state.salesRows;
+  const joiner = query.includes("?") ? "&" : "?";
+  const salesRows = await apiRows(
+    `/api/sales${query}${joiner}limit=2000`,
+    ["id", "tipo", "data", "loja", "codigo", "item", "cliente", "quantidade", "receita", "valor_unitario"],
+    "sales_list.v1",
+  );
+  state.salesRowsPeriodKey = query;
+  state.salesRows = salesRows;
+  return salesRows;
+}
+
+async function renderCommercialSales() {
+  const table = ensureCommercialSalesTable();
+  if (!table) return;
+  if (state.salesRowsPeriodKey === salesPeriodQuery() && Array.isArray(state.salesRows)) {
+    table.setRows(state.salesRows);
+    return;
+  }
+  table.setRows([]);
+  try {
+    table.setRows(await loadCommercialSalesRows());
+  } catch (error) {
+    showAppError("Falha ao carregar vendas importadas", error.message || "Não foi possível montar a lista de vendas.");
+  }
 }
 
 function commercialChartRows(items, valueFormatter = number) {
@@ -281,6 +393,7 @@ function renderCommercial(payload) {
   document.querySelector("#repurchaseTable").innerHTML = customerOpportunityRows(payload.repurchase_opportunities || [], "due");
   document.querySelector("#productMomentumTable").innerHTML = momentumRows(payload.product_momentum || [], "product");
   document.querySelector("#brandMomentumTable").innerHTML = momentumRows(payload.brand_momentum || [], "brand");
+  if (state.commercialMode === "sales") renderCommercialSales();
 }
 
 

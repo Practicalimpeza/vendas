@@ -638,7 +638,7 @@ function dashboardRetailIntelligencePanel(concepts = []) {
     <header>
       <div>
         <span>Mapa de gestão</span>
-        <strong>Inteligência que o software deve entregar</strong>
+        <strong>Leituras que a gestão deve responder</strong>
       </div>
       <button class="secondary-button compact" type="button" data-view-target="imports">Ver importações</button>
     </header>
@@ -659,14 +659,18 @@ function dashboardRetailIntelligencePanel(concepts = []) {
   `;
 }
 
-function dashboardScoreCell({ label, value, detail, tone = "neutral", icon = "activity" }) {
+function dashboardScoreCell({ label, value, detail, tone = "neutral", icon = "activity", view = "", commercialMode = "" }) {
+  const tag = view ? "button" : "article";
+  const type = view ? ` type="button"` : "";
+  const viewTarget = view ? ` data-view-target="${escapeAttr(view)}"` : "";
+  const modeTarget = commercialMode ? ` data-commercial-mode-target="${escapeAttr(commercialMode)}"` : "";
   return `
-    <article class="cockpit-score-cell ${escapeAttr(tone)}">
+    <${tag} class="cockpit-score-cell ${escapeAttr(tone)}"${type}${viewTarget}${modeTarget}>
       <i data-lucide="${escapeAttr(icon)}"></i>
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
       <em>${escapeHtml(detail || "")}</em>
-    </article>
+    </${tag}>
   `;
 }
 
@@ -925,14 +929,14 @@ function renderDashboardCockpit({
     </section>
 
     <section class="cockpit-zone cockpit-data">
-      <header><div><span>Dados e maturidade</span><strong>O que o cockpit já enxerga</strong></div></header>
+      <header><div><span>Dados e maturidade</span><strong>O que a base já permite ver</strong></div></header>
       <div class="cockpit-data-grid">${dashboardDataMatrix(readinessSummary)}</div>
     </section>
 
     <section class="cockpit-zone cockpit-unlocks">
       <header>
         <div>
-          <span>Inteligências bloqueadas</span>
+          <span>Leituras pendentes</span>
           <strong>Por que importar mais dados</strong>
         </div>
         <button class="secondary-button compact" type="button" data-view-target="imports">Importações</button>
@@ -1028,7 +1032,7 @@ function renderDashboardExecutiveKpis({
     {
       label: "Maturidade",
       value: `${number(sourceCoverage)}% dados`,
-      detail: readinessSummary?.upcomingCount ? `${number(readinessSummary.upcomingCount)} inteligências pedem mais dados.` : "Base ampla para visão executiva.",
+      detail: readinessSummary?.upcomingCount ? `${number(readinessSummary.upcomingCount)} leituras pedem mais dados.` : "Base ampla para visão executiva.",
       color: sourceCoverage >= 70 ? "green" : "amber",
       icon: "database",
     },
@@ -1364,9 +1368,16 @@ function renderGeneralMap({
   const dataTone = sourceCoverage >= 70 ? "good" : "warn";
   const marginTone = lowMargin ? "warn" : readinessSummary.readiness.costs ? "good" : "neutral";
   const customerTone = customerRisk ? "warn" : customerCount ? "good" : "neutral";
-  const heroSubtitle = totalRevenue
-    ? `${number(productCount)} SKUs vendidos, ${number(customerCount)} clientes, ${number(supplierCount)} fornecedores e ${number(readinessSummary.sourceCount)} fontes reconhecidas.`
-    : "Importe vendas, estoque, custos e clientes para transformar a abertura em leitura executiva.";
+  const heroLinks = totalRevenue
+    ? `
+      <div class="cockpit-hero-links">
+        <button type="button" data-view-target="products">${number(productCount)} SKUs vendidos</button>
+        <button type="button" data-view-target="customers">${number(customerCount)} clientes</button>
+        <button type="button" data-view-target="suppliers">${number(supplierCount)} fornecedores</button>
+        <button type="button" data-view-target="imports">${number(readinessSummary.sourceCount)} fontes reconhecidas</button>
+      </div>
+    `
+    : `<p>Importe vendas, estoque, custos e clientes para transformar a abertura em leitura executiva.</p>`;
   const retailConcepts = dashboardRetailKpiConcepts({
     readinessSummary,
     totalRevenue,
@@ -1381,22 +1392,22 @@ function renderGeneralMap({
     hero.innerHTML = `
       <div class="cockpit-topbar">
         <div>
-          <span>Cockpit varejo · ${escapeHtml(periodLabel)}</span>
+          <span>Visão da empresa · ${escapeHtml(periodLabel)}</span>
           <h2>${escapeHtml(companyName)}</h2>
-          <p>${escapeHtml(heroSubtitle)}</p>
+          ${heroLinks}
         </div>
-        <div class="cockpit-period-stack">
+        <button class="cockpit-period-stack" type="button" data-view-target="opportunities" data-commercial-mode-target="sales">
           <strong>${escapeHtml(totalRevenue ? compactMoney(totalRevenue) : "sem vendas")}</strong>
           <span>Receita no recorte</span>
-        </div>
+        </button>
       </div>
       <div class="cockpit-scorebar">
-        ${dashboardScoreCell({ label: "Receita", value: totalRevenue ? compactMoney(totalRevenue) : "sem vendas", detail: `${compactMoney(avgDailyRevenue)}/dia`, tone: totalRevenue ? "good" : "warn", icon: "trending-up" })}
-        ${dashboardScoreCell({ label: "Rentabilidade", value: lowMargin ? `${number(lowMargin)} alertas` : "em leitura", detail: `${number(marginOpportunities)} oportunidades`, tone: lowMargin ? "warn" : "neutral", icon: "badge-percent" })}
-        ${dashboardScoreCell({ label: "Clientes", value: number(customerCount), detail: `${number(repurchaseDue)} recompra; ${number(customerRisk)} risco`, tone: customerRisk ? "warn" : "good", icon: "users" })}
-        ${dashboardScoreCell({ label: "Mix", value: `${number(productMixPct)}% produtos`, detail: `${number(serviceMixPct)}% serviços`, tone: "neutral", icon: "chart-pie" })}
-        ${dashboardScoreCell({ label: "Capital", value: `${number(excessStock)} excesso`, detail: `${number(urgentStock)} sinais de estoque`, tone: urgentStock || excessStock ? "warn" : "good", icon: "coins" })}
-        ${dashboardScoreCell({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes`, tone: sourceCoverage >= 70 ? "good" : "warn", icon: "database" })}
+        ${dashboardScoreCell({ label: "Receita", value: totalRevenue ? compactMoney(totalRevenue) : "sem vendas", detail: `${compactMoney(avgDailyRevenue)}/dia`, tone: totalRevenue ? "good" : "warn", icon: "trending-up", view: "opportunities", commercialMode: "sales" })}
+        ${dashboardScoreCell({ label: "Rentabilidade", value: lowMargin ? `${number(lowMargin)} alertas` : "em leitura", detail: `${number(marginOpportunities)} oportunidades`, tone: lowMargin ? "warn" : "neutral", icon: "badge-percent", view: "pricing" })}
+        ${dashboardScoreCell({ label: "Clientes", value: number(customerCount), detail: `${number(repurchaseDue)} recompra; ${number(customerRisk)} risco`, tone: customerRisk ? "warn" : "good", icon: "users", view: "customers" })}
+        ${dashboardScoreCell({ label: "Produtos", value: `${number(productMixPct)}% produtos`, detail: `${number(serviceMixPct)}% serviços`, tone: "neutral", icon: "chart-pie", view: "products" })}
+        ${dashboardScoreCell({ label: "Capital", value: `${number(excessStock)} excesso`, detail: `${number(urgentStock)} sinais de estoque`, tone: urgentStock || excessStock ? "warn" : "good", icon: "coins", view: "stock" })}
+        ${dashboardScoreCell({ label: "Dados", value: `${number(sourceCoverage)}%`, detail: `${number(readinessSummary.sourceCount)} de ${number(readinessSummary.sourceTotal)} fontes`, tone: sourceCoverage >= 70 ? "good" : "warn", icon: "database", view: "imports" })}
       </div>
     `;
   }

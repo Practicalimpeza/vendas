@@ -248,10 +248,6 @@ function setQuoteSupplierSort(key, options = {}) {
     state.quoteSupplierSort = nextKey;
     state.quoteSupplierSortDir = options.dir || quoteSupplierDefaultSortDir(nextKey);
   }
-  const sort = document.querySelector("#quoteSupplierSort");
-  if (sort && Array.from(sort.options).some((option) => option.value === state.quoteSupplierSort)) {
-    sort.value = state.quoteSupplierSort;
-  }
 }
 
 function setQuoteSupplierViewMode(mode) {
@@ -482,13 +478,16 @@ async function saveQuoteSupplierProfile(button) {
 
 function quoteSupplierFilterControl(key, options, label) {
   const current = quoteSupplierColumnFilterValue(key);
-  if (key === "supplier") {
-    return `<input data-quote-supplier-col-filter="supplier" type="search" value="${escapeAttr(current)}" placeholder="filtrar" aria-label="Filtrar ${escapeAttr(label)}" />`;
-  }
   const opts = options
     .map(([value, text]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(text)}</option>`)
     .join("");
   return `<select data-quote-supplier-col-filter="${escapeAttr(key)}" aria-label="Filtrar ${escapeAttr(label)}">${opts}</select>`;
+}
+
+function closeQuoteSupplierFilterPanels(exceptPanel = null) {
+  document.querySelectorAll("#quoteSuppliersTable .purchase-filter-panel").forEach((panel) => {
+    if (panel !== exceptPanel) panel.hidden = true;
+  });
 }
 
 function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = []) {
@@ -499,11 +498,23 @@ function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = []) {
   const sortDirAttr = active ? ` data-sort-dir="${escapeAttr(dir)}"` : "";
   const help = QUOTE_SUPPLIER_HELP[sortKey] || "";
   const helpAttrs = help ? ` data-help="${escapeAttr(help)}"` : "";
+  const filtered = filterKey ? Boolean(quoteSupplierColumnFilterValue(filterKey)) : false;
   const filter = filterKey
-    ? `<label class="purchase-column-filter">${quoteSupplierFilterControl(filterKey, filterOptions, label)}</label>`
+    ? `
+      <span class="purchase-column-filter">
+        <button class="purchase-filter-button ${filtered ? "active" : ""}" type="button" data-quote-supplier-filter-menu="${escapeAttr(filterKey)}" aria-label="Filtrar ${escapeAttr(label)}" aria-pressed="${filtered ? "true" : "false"}">
+          <i data-lucide="list-filter"></i>
+        </button>
+        <span class="purchase-filter-panel" hidden>
+          <strong>${escapeHtml(label)}</strong>
+          ${quoteSupplierFilterControl(filterKey, filterOptions, label)}
+          <button type="button" data-quote-supplier-filter-clear="${escapeAttr(filterKey)}">Limpar filtro</button>
+        </span>
+      </span>
+    `
     : "";
   return `
-    <span class="purchase-supplier-th" role="columnheader" aria-sort="${ariaSort}">
+    <span class="purchase-supplier-th ${filtered ? "filtered" : ""}" role="columnheader" aria-sort="${ariaSort}">
       <button class="purchase-sort-button ${active ? "active" : ""}" type="button" data-quote-supplier-sort="${escapeAttr(sortKey)}" aria-pressed="${active ? "true" : "false"}"${sortDirAttr}${helpAttrs}>
         <span>${escapeHtml(label)}</span>
         <i aria-hidden="true">${marker}</i>
@@ -515,7 +526,7 @@ function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = []) {
 
 function quoteSupplierHeaderCells() {
   return `
-    ${quoteSupplierHeader("Fornecedor", "supplier", "supplier")}
+    ${quoteSupplierHeader("Fornecedor", "supplier")}
     ${quoteSupplierHeader("Sugerido", "value", "value", [["", "Todos"], ["positive", "Com valor"], ["high", "Alto valor"], ["zero", "Sem sugestão"]])}
     ${quoteSupplierHeader("Mínimo", "minimum", "minimum", [["", "Todos"], ["configured", "Com mínimo"], ["missing", "Sem mínimo"], ["met", "Mínimo ok"]])}
     ${quoteSupplierHeader("Situação", "minimum_gap", "gap", [["", "Todos"], ["missing", "Falta mínimo"], ["ok", "OK"], ["none", "Sem mínimo"]])}

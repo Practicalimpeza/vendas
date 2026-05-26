@@ -44,6 +44,8 @@
   replenishment: null,
   commercial: null,
   commercialMode: "operational",
+  salesRows: [],
+  salesRowsPeriodKey: "",
   actions: null,
   selectedActionId: "",
   skills: null,

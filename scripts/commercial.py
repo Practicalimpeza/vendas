@@ -40,6 +40,57 @@ def api_customers(conn: sqlite3.Connection, period: dict | None = None) -> list[
     )
 
 
+def api_sales(conn: sqlite3.Connection, period: dict | None = None, limit: int = 1000) -> list[dict]:
+    period = period or resolve_period(conn, {"period_days": "all"})
+    limit = max(1, min(int(limit or 1000), 5000))
+    product_where, product_params = date_where("ps.sold_at", period, "WHERE")
+    service_where, service_params = date_where("ss.emitted_at", period, "WHERE")
+    return rows(
+        conn,
+        f"""
+        SELECT *
+        FROM (
+            SELECT
+                'produto:' || ps.id AS id,
+                'Produto' AS tipo,
+                substr(ps.sold_at, 1, 10) AS data,
+                COALESCE(st.name, '') AS loja,
+                p.source_code AS codigo,
+                p.name AS item,
+                COALESCE(c.name, 'Consumidor') AS cliente,
+                ROUND(ps.quantity, 2) AS quantidade,
+                ROUND(ps.gross_amount, 2) AS receita,
+                ROUND(ps.gross_amount / NULLIF(ps.quantity, 0), 2) AS valor_unitario
+            FROM product_sales ps
+            JOIN products p ON p.id = ps.product_id
+            LEFT JOIN customers c ON c.id = ps.customer_id
+            LEFT JOIN stores st ON st.id = ps.store_id
+            {product_where}
+            UNION ALL
+            SELECT
+                'servico:' || ss.id AS id,
+                'Serviço' AS tipo,
+                substr(ss.emitted_at, 1, 10) AS data,
+                COALESCE(st.name, '') AS loja,
+                '' AS codigo,
+                COALESCE(s.name, 'Serviço') AS item,
+                COALESCE(c.name, 'Consumidor') AS cliente,
+                ROUND(ss.quantity, 2) AS quantidade,
+                ROUND(ss.gross_amount, 2) AS receita,
+                ROUND(ss.gross_amount / NULLIF(ss.quantity, 0), 2) AS valor_unitario
+            FROM service_sales ss
+            LEFT JOIN services s ON s.id = ss.service_id
+            LEFT JOIN customers c ON c.id = ss.customer_id
+            LEFT JOIN stores st ON st.id = ss.store_id
+            {service_where}
+        )
+        ORDER BY data DESC, id DESC
+        LIMIT ?
+        """,
+        (*product_params, *service_params, limit),
+    )
+
+
 def api_customer_mix(conn: sqlite3.Connection, customer_id: str, period: dict | None = None) -> dict:
     period = period or resolve_period(conn, {"period_days": "all"})
     customer = one(

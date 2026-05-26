@@ -353,10 +353,6 @@ async function boot() {
     if (!button) return;
     setQuoteSupplierViewMode(button.dataset.quoteSupplierView);
   });
-  document.querySelector("#quoteSupplierSort")?.addEventListener("change", (event) => {
-    setQuoteSupplierSort(event.target.value || "supplier");
-    renderQuotes({ preserveScroll: true, summaryOnly: true });
-  });
   document.querySelector("#quoteSupplierClear")?.addEventListener("click", () => {
     const search = document.querySelector("#quoteSupplierSearch");
     if (search) search.value = "";
@@ -368,8 +364,6 @@ async function boot() {
     state.quoteSupplierPopupOpen = false;
     state.quoteSupplierViewMode = "table";
     setQuoteSupplierSort("supplier", { dir: "asc" });
-    const sort = document.querySelector("#quoteSupplierSort");
-    if (sort) sort.value = "supplier";
     renderQuotes({ preserveScroll: false, withDashboard: true });
   });
   const applyQuoteSupplierColumnFilter = (event) => {
@@ -408,6 +402,27 @@ async function boot() {
     await loadQuoteSupplierWorkbench(state.selectedQuoteSupplierId);
   });
   document.querySelector("#quoteSuppliersTable").addEventListener("click", async (event) => {
+    const filterMenuButton = event.target.closest("[data-quote-supplier-filter-menu]");
+    if (filterMenuButton) {
+      const panel = filterMenuButton.closest(".purchase-column-filter")?.querySelector(".purchase-filter-panel");
+      const shouldOpen = Boolean(panel?.hidden);
+      if (typeof closeQuoteSupplierFilterPanels === "function") closeQuoteSupplierFilterPanels(panel);
+      if (panel) panel.hidden = !shouldOpen;
+      return;
+    }
+    const filterClearButton = event.target.closest("[data-quote-supplier-filter-clear]");
+    if (filterClearButton?.dataset.quoteSupplierFilterClear) {
+      const next = { ...(state.quoteSupplierColumnFilters || {}) };
+      delete next[filterClearButton.dataset.quoteSupplierFilterClear];
+      state.quoteSupplierColumnFilters = next;
+      state.quoteSupplierPreviewId = "";
+      state.quoteSupplierPopupOpen = false;
+      renderQuotes({ preserveScroll: false, summaryOnly: true });
+      return;
+    }
+    if (!event.target.closest(".purchase-filter-panel") && typeof closeQuoteSupplierFilterPanels === "function") {
+      closeQuoteSupplierFilterPanels();
+    }
     const filterButton = event.target.closest("[data-quote-supplier-filter]");
     if (filterButton?.dataset.quoteSupplierFilter) {
       const lens = filterButton.dataset.quoteSupplierFilter;
@@ -656,7 +671,10 @@ async function boot() {
     if (generateButton) generateCurrentQuote(generateButton);
   });
   document.querySelectorAll("[data-commercial-mode]").forEach((button) => {
-    button.addEventListener("click", () => setCommercialMode(button.getAttribute("data-commercial-mode")));
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      setCommercialMode(button.getAttribute("data-commercial-mode"));
+    });
   });
   document.querySelectorAll("[data-customer-mode]").forEach((button) => {
     button.addEventListener("click", () => setCustomerMode(button.getAttribute("data-customer-mode")));
@@ -697,7 +715,11 @@ async function boot() {
   document.querySelector("#dashboard")?.addEventListener("click", (event) => {
     if (event.currentTarget.classList.contains("dashboard-editing")) return;
     const target = event.target.closest("[data-view-target]");
-    if (target?.dataset.viewTarget) setView(target.dataset.viewTarget);
+    if (!target?.dataset.viewTarget) return;
+    setView(target.dataset.viewTarget);
+    if (target.dataset.commercialModeTarget && typeof setCommercialMode === "function") {
+      window.setTimeout(() => setCommercialMode(target.dataset.commercialModeTarget), 0);
+    }
   });
   document.querySelector(".topbar")?.addEventListener("click", (event) => {
     const target = event.target.closest("button[data-view-target]");

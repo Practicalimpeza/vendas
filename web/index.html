@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sistema</title>
     <link rel="icon" href="data:," data-app-icon />
-    <link rel="stylesheet" href="/app.css?v=20260526compras3" />
+    <link rel="stylesheet" href="/app.css?v=20260526compras4" />
     <link rel="stylesheet" href="/app_datatable.css?v=20260526compras3" />
     <link rel="stylesheet" href="/app_glass.css?v=20260523glass11" />
   </head>
@@ -107,7 +107,7 @@
           <section class="operator-control-bar" id="dashboardControlBar" aria-label="Controles da mesa">
             <div>
               <span>Visao personalizada</span>
-              <strong>Camadas do cockpit</strong>
+              <strong>Camadas da visão</strong>
             </div>
             <div class="operator-lens-row" id="dashboardLensControls"></div>
             <div class="operator-command-row">
@@ -121,7 +121,7 @@
               </button>
               <button type="button" data-dashboard-show-block="analises">
                 <i data-lucide="chart-column-big"></i>
-                <span>Cockpit</span>
+                <span>Análises</span>
               </button>
             </div>
           </section>
@@ -717,17 +717,6 @@
               </div>
               <div class="qstage-tools">
                 <input id="quoteSupplierSearch" class="search-input compact" type="search" placeholder="Buscar fornecedor, contato ou sinal" />
-                <select id="quoteSupplierSort" class="filter-select compact" title="Organizar a mesa">
-                  <option value="supplier">Fornecedor A-Z</option>
-                  <option value="value">Maior valor</option>
-                  <option value="minimum">Maior mínimo</option>
-                  <option value="minimum_gap">Mais perto do mínimo</option>
-                  <option value="minimum_pct">Maior % do mínimo</option>
-                  <option value="risk">Risco de ruptura</option>
-                  <option value="cycle">Ciclo mais longo</option>
-                  <option value="open_quote">Cotação aberta</option>
-                  <option value="nexo">Mais sinais</option>
-                </select>
                 <select id="quoteWindowDays" class="filter-select compact" title="Janela de demanda usada nos calculos">
                   <option value="30">Janela 30d</option>
                   <option value="90" selected>Janela 90d</option>
@@ -881,6 +870,7 @@
         <section id="opportunities" class="view">
           <div class="quote-tabs module-tabs" role="tablist" aria-label="Oportunidades">
             <a class="quote-tab active" href="/oportunidades?commercial_mode=operational" data-commercial-mode="operational">Operacional</a>
+            <a class="quote-tab" href="/oportunidades?commercial_mode=sales" data-commercial-mode="sales">Vendas importadas</a>
             <a class="quote-tab" href="/oportunidades?commercial_mode=dashboard" data-commercial-mode="dashboard">Dashboard</a>
           </div>
           <div id="commercialOperational" class="commercial-mode-panel active">
@@ -941,12 +931,23 @@
               </section>
             </div>
           </div>
+          <div id="commercialSales" class="commercial-mode-panel">
+            <section class="panel sales-ledger-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Vendas importadas</h2>
+                  <p class="panel-subtitle">Lista pesquisável de produtos e serviços vendidos no período selecionado.</p>
+                </div>
+              </div>
+              <div id="salesTableMount"></div>
+            </section>
+          </div>
           <div id="commercialDashboard" class="commercial-mode-panel">
             <div class="kpi-grid compact" id="commercialSummary"></div>
             <section class="panel">
               <div class="panel-head">
                 <div>
-                  <h2>Dashboard de oportunidades</h2>
+                  <h2>Painel de oportunidades</h2>
                   <p class="panel-subtitle">Clientes em risco, recompra provável, momentum de produtos e marcas em uma leitura executiva.</p>
                 </div>
               </div>
@@ -955,7 +956,7 @@
             <section class="panel">
               <div class="panel-head">
                 <div>
-                  <h2>Insights comerciais</h2>
+                  <h2>Sinais comerciais</h2>
                   <p class="panel-subtitle">Sinais que ajudam a escolher entre recuperar cliente, puxar recompra ou investigar mix.</p>
                 </div>
               </div>
@@ -1209,21 +1210,21 @@
     <script src="/vendor/echarts.min.js?v=5.5.1" async onload="window.nexoEchartsLoaded = true; window.nexoChartsReady?.()"></script>
     <script src="/vendor/lucide.min.js?v=0.468.0" async onload="window.lucide?.createIcons({ attrs: { 'stroke-width': 2.1 } })"></script>
     <script src="/app_core.js?v=20260509a"></script>
-    <script src="/app_state.js?v=20260525ux2"></script>
+    <script src="/app_state.js?v=20260526visao1"></script>
     <script src="/app_charts.js?v=20260509a"></script>
     <script src="/app_tables.js?v=20260523dt3"></script>
     <script src="/app_datatable.js?v=20260523dt7"></script>
     <script src="/app_ui.js?v=20260525ux2"></script>
-    <script src="/app_dashboard.js?v=20260525cockpit3"></script>
+    <script src="/app_dashboard.js?v=20260526visao1"></script>
     <script src="/app_products.js?v=20260522dt5"></script>
     <script src="/app_period_data.js?v=20260522a"></script>
-    <script src="/app_quotes_suppliers.js?v=20260526compras3"></script>
+    <script src="/app_quotes_suppliers.js?v=20260526compras4"></script>
     <script src="/app_quote_dashboard.js?v=20260520a"></script>
     <script src="/app_purchase_orders.js?v=20260516a"></script>
-    <script src="/app_quote_workbench.js?v=20260523b"></script>
+    <script src="/app_quote_workbench.js?v=20260526compras4"></script>
     <script src="/app_quote_cycle.js?v=20260520c"></script>
     <script src="/app_quote_formula.js?v=20260520a"></script>
-    <script src="/app_commercial.js?v=20260520a"></script>
+    <script src="/app_commercial.js?v=20260526visao1"></script>
     <script src="/app_pricing.js?v=20260522a"></script>
     <script src="/app_imports.js?v=20260520f"></script>
     <script src="/app_customers.js?v=20260522dt4"></script>
@@ -1237,6 +1238,6 @@
     <script src="/app_quote_tools.js?v=20260522b"></script>
     <script src="/app_auth.js?v=20260522d"></script>
     <script src="/app.js?v=20260522b"></script>
-    <script src="/app_boot.js?v=20260526compras1"></script>
+    <script src="/app_boot.js?v=20260526compras4"></script>
   </body>
 </html>

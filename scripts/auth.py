@@ -54,6 +54,7 @@ ROUTE_MODULES = {
     "/api/replenishment-v2": "stock",
     "/api/replenishment-v2/compare": "stock",
     "/api/commercial/intelligence": "opportunities",
+    "/api/sales": "opportunities",
     "/api/customers/top": "customers",
     "/api/customer/mix": "customers",
     "/api/services/top": "customers",

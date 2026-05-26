@@ -1470,6 +1470,7 @@ function renderQuotes(options = {}) {
   }
   renderQuoteSupplierFastState();
   updateQuoteSupplierChips();
+  if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { "stroke-width": 2.1 } });
   if (options.summaryOnly) return;
   if (suppliers[0]?.supplier_id) {
     window.setTimeout(() => prefetchQuoteSupplierWorkbench(suppliers[0].supplier_id).catch(() => {}), 350);
