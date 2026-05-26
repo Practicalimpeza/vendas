@@ -392,16 +392,11 @@ async function boot() {
     const chipBtn = event.target.closest("[data-lens], [data-chip]");
     if (chipBtn) {
       const lens = chipBtn.dataset.lens || quoteLegacyChipToLens(chipBtn.dataset.chip);
-      if (lens === "all") {
-        state.quoteSupplierLenses = [];
-      } else {
-        const active = new Set(state.quoteSupplierLenses || []);
-        if (active.has(lens)) active.delete(lens);
-        else active.add(lens);
-        state.quoteSupplierLenses = Array.from(active);
-      }
-      state.quoteSupplierChip = state.quoteSupplierLenses[0] || "all";
-      state.quoteSupplierChipPinned = Boolean(state.quoteSupplierLenses.length);
+      const current = activeQuoteSupplierLenses()[0] || "all";
+      const next = lens === "all" || current === lens ? "all" : lens;
+      state.quoteSupplierLenses = next === "all" ? [] : [next];
+      state.quoteSupplierChip = next;
+      state.quoteSupplierChipPinned = next !== "all";
       state.quoteSupplierPreviewId = "";
       state.quoteSupplierPopupOpen = false;
       renderQuotes({ preserveScroll: false, summaryOnly: true });

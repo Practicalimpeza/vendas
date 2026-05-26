@@ -131,8 +131,8 @@ function defaultQuoteSupplierChip() {
 }
 
 function activeQuoteSupplierLenses() {
-  const lenses = state.quoteSupplierLenses || [];
-  return lenses.length ? lenses : ["all"];
+  const lenses = (state.quoteSupplierLenses || []).filter((lens) => lens && lens !== "all");
+  return lenses.length ? [lenses[0]] : ["all"];
 }
 
 function quoteLegacyChipToLens(chip) {
