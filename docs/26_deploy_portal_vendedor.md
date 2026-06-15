@@ -46,6 +46,13 @@ Com essas variaveis, o start command pode ser:
 python scripts/serve_app.py
 ```
 
+O arquivo `railway.json` no repositorio fixa:
+
+- builder `RAILPACK`;
+- start command `python scripts/serve_app.py`;
+- healthcheck publico `/healthz`;
+- restart policy `ON_FAILURE`.
+
 O volume deve conter:
 
 ```text
@@ -79,6 +86,49 @@ volume do provedor, nunca para o GitHub.
 11. Testar no celular: login, `/vendedor`, buscar cliente, abrir ficha, gerar
     pedido PDF.
 12. Antes de liberar para todos, baixar uma copia do volume como backup.
+
+## Railway pelo painel
+
+1. Abrir Railway e criar um novo projeto.
+2. Escolher "Deploy from GitHub repo".
+3. Selecionar `Practicalimpeza/vendas`.
+4. Confirmar que o deploy usou o `railway.json` do repositorio.
+5. Em Variables, adicionar:
+
+```text
+PULSO_ALLOW_NETWORK=1
+PULSO_HOST=0.0.0.0
+PULSO_DATA_DIR=/data
+PULSO_TENANT=practica
+PULSO_APP_NAME=Practica CRM
+```
+
+6. Em Volumes, criar um volume no servico e montar em `/data`.
+7. Gerar um dominio Railway para o servico.
+8. Abrir `/healthz`; deve retornar `{"ok": true}`.
+9. Abrir `/vendedor`; se o volume ainda estiver vazio, o app vai pedir o
+   bootstrap do primeiro administrador.
+
+Se for usar a CLI futuramente, ela deve respeitar `.gitignore` e
+`.railwayignore`; mesmo assim, nao use `--no-gitignore` neste projeto.
+
+## Envio dos dados para o volume
+
+O app sem dados reais sobe vazio. Para usar a base atual, envie apenas a pasta
+do tenant para o volume:
+
+```text
+data/tenants/practica -> /data/tenants/practica
+```
+
+Antes de enviar:
+
+1. feche o servidor local;
+2. copie o diretorio do tenant para uma pasta temporaria de backup;
+3. confira se o banco existe em `database.sqlite3`;
+4. envie pelo gerenciador de arquivos do volume/CLI do Railway;
+5. reinicie o servico;
+6. acesse com admin real e crie usuarios `seller`.
 
 ## Bloqueadores antes de uso amplo
 

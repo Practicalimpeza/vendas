@@ -1572,6 +1572,7 @@ def smoke_http_server() -> None:
         try:
             index = urllib.request.urlopen(f"{base_url}/", timeout=10).read()
             check(b"<html" in index.lower() and len(index) > 1000, "Pagina inicial nao retornou HTML esperado.")
+            check(get_json("/healthz").get("ok") is True, "Healthcheck publico /healthz nao retornou ok.")
             for spa_route, marker in {"/implantacao": b"implementationSteps", "/distribuicao": b"distributionSummary"}.items():
                 page = urllib.request.urlopen(f"{base_url}{spa_route}", timeout=10).read()
                 check(marker in page, f"Rota SPA nao retornou a tela esperada: {spa_route}")

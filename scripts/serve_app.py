@@ -126,6 +126,9 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         route = parsed.path
         query = parse_qs(parsed.query)
+        if route == "/healthz":
+            send_json(self, {"ok": True})
+            return
         if route == "/api/auth/me":
             conn = connect(self.db_path)
             try:

@@ -135,7 +135,8 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
   `docs/26_deploy_portal_vendedor.md` e publicar o codigo em repositorio
   privado, usar volume persistente para `PULSO_DATA_DIR`, liberar rede com
   `PULSO_ALLOW_NETWORK=1`, `PULSO_HOST=0.0.0.0` e manter SQLite/arquivos do
-  tenant fora do GitHub. Isso nao substitui a migracao futura para banco online.
+  tenant fora do GitHub. `railway.json` fixa o start command e o healthcheck
+  publico `/healthz`. Isso nao substitui a migracao futura para banco online.
 - Auth/desenvolvimento: `scripts/auth.py` ganhou bypass local por
   `PULSO_DEV_AUTH_BYPASS=1`, retornando usuario admin temporario em
   `/api/auth/me` com `dev_auth_bypass=true`. O frontend mostra "Dev sem login"
