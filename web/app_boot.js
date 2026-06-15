@@ -224,6 +224,10 @@ async function boot() {
     workspaceHydrationPromise = (async () => {
       if (!canUseFullWorkspace && !canUseImports && !canUseAdmin) {
         workspaceHydrated = true;
+        if (!prioritizeQuotes) {
+          window.clearTimeout(startupFallback);
+          finishStartupLoading();
+        }
         return {};
       }
       if (canUseFullWorkspace && !periodDataPromise) periodDataPromise = loadPeriodWorkspaceData();
