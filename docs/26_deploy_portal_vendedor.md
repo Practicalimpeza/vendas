@@ -49,7 +49,7 @@ python scripts/serve_app.py
 O arquivo `railway.json` no repositorio fixa:
 
 - builder `RAILPACK`;
-- start command `python scripts/serve_app.py`;
+- start command com `PULSO_HOST=0.0.0.0` e `PULSO_ALLOW_NETWORK=1`;
 - healthcheck publico `/healthz`;
 - restart policy `ON_FAILURE`.
 
@@ -96,8 +96,6 @@ volume do provedor, nunca para o GitHub.
 5. Em Variables, adicionar:
 
 ```text
-PULSO_ALLOW_NETWORK=1
-PULSO_HOST=0.0.0.0
 PULSO_DATA_DIR=/data
 PULSO_TENANT=practica
 PULSO_APP_NAME=Practica CRM
