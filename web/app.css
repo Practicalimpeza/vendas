@@ -8982,11 +8982,17 @@ th.sortable-th[data-sort-dir="desc"]::after {
     height: auto;
     padding: 8px;
     gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
   }
 
   .nav {
     display: flex;
     grid-template-columns: none;
+    justify-content: flex-start;
+    min-width: max-content;
+    overflow-x: visible;
   }
 
   .kpi-grid,
@@ -9056,9 +9062,24 @@ th.sortable-th[data-sort-dir="desc"]::after {
     padding: 16px;
   }
 
+  .sidebar {
+    bottom: 10px;
+    max-width: calc(100vw - 12px);
+    padding: 6px;
+  }
+
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .user-menu span {
+    max-width: min(128px, 42vw);
   }
 
   .today-hero {

@@ -111,12 +111,21 @@ function renderUserMenu() {
   menu.className = "user-menu";
   menu.hidden = false;
   const devBypass = Boolean(state.auth?.dev_auth_bypass || user?.dev_auth_bypass);
+  const adminShortcut = canAccessView("admin") ? `
+    <button class="secondary-button compact" type="button" id="adminShortcutButton" title="Usuarios" aria-label="Usuarios">
+      <i data-lucide="users-round"></i>
+    </button>
+  ` : "";
   menu.innerHTML = `
     <span>${escapeHtml(devBypass ? "Dev sem login" : user?.name || "Usuário")}</span>
+    ${adminShortcut}
     <button class="secondary-button compact" type="button" id="logoutButton" title="Sair" aria-label="Sair"${devBypass ? " hidden" : ""}>
       <i data-lucide="log-out"></i>
     </button>
   `;
+  menu.querySelector("#adminShortcutButton")?.addEventListener("click", () => {
+    setView("admin");
+  });
   menu.querySelector("#logoutButton")?.addEventListener("click", async () => {
     await authPost("/api/auth/logout", {});
     window.location.reload();
