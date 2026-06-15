@@ -19,6 +19,22 @@ function sellerPortalMatch(row = {}, fields = [], term = sellerPortalTerm()) {
 }
 
 async function ensureSellerPortalData() {
+  if (typeof isSellerUser === "function" && isSellerUser()) {
+    const query = typeof periodQuery === "function" ? periodQuery(state.periodDays || "all") : "?period_days=all";
+    const [customers, products, sales] = await Promise.all([
+      apiRows(`/api/customers/top${query}`, ["name", "purchases", "last_purchase", "revenue"], "customers_top.v1"),
+      apiRows(
+        `/api/products/top${query}`,
+        ["id", "organization_id", "source_code", "name", "quantity", "revenue", "share"],
+        "products_top.v1",
+      ),
+      apiRows(`/api/sales${query}`, ["data", "item", "cliente", "receita"], "sales.v1"),
+    ]);
+    state.customers = customers || [];
+    state.products = products || [];
+    state.salesRows = sales || [];
+    return;
+  }
   const workspace = typeof ensurePeriodWorkspaceData === "function" ? await ensurePeriodWorkspaceData() : null;
   if (workspace && typeof applyPeriodWorkspaceData === "function") {
     applyPeriodWorkspaceData(workspace, { force: false });
