@@ -1,5 +1,8 @@
 const SELLER_PORTAL_LIST_LIMIT = 12;
 const SELLER_PORTAL_SEARCH_LIMIT = 80;
+const SELLER_PRODUCT_SEARCH_LIMIT = 50;
+const SELLER_PRODUCT_SEARCH_DEBOUNCE_MS = 360;
+const sellerProductSearchCache = new Map();
 
 function sellerPortalCard({ icon, label, value, hint, target }) {
   return `
@@ -147,6 +150,7 @@ function sellerProductSearchRows(rows = []) {
 async function openSellerProductSearch() {
   const initialRows = (state.products || []).slice(0, SELLER_PORTAL_SEARCH_LIMIT);
   let requestId = 0;
+  let debounceTimer = null;
   openModal(
     "Buscar produto",
     `
@@ -160,21 +164,37 @@ async function openSellerProductSearch() {
       const input = body.querySelector("#sellerProductSearchInput");
       const meta = body.querySelector("#sellerProductSearchMeta");
       const results = body.querySelector("#sellerProductSearchResults");
-      const renderLocal = () => {
-        results.innerHTML = sellerProductSearchRows(initialRows);
+      const renderLocal = (term = "", willRefine = false) => {
+        const normalized = term.trim().toLowerCase();
+        const rows = normalized
+          ? (state.products || [])
+            .filter((row) => sellerPortalMatch(row, ["name", "source_code", "brand_name", "supplier_name"], normalized))
+            .slice(0, SELLER_PRODUCT_SEARCH_LIMIT)
+          : initialRows;
+        if (meta) {
+          meta.textContent = normalized
+            ? `Mostrando ${number(rows.length)} resultado(s) locais.${willRefine ? " Refinando no cadastro completo..." : ""}`
+            : `Mostrando ${number(initialRows.length)} produtos mais vendidos.`;
+        }
+        results.innerHTML = sellerProductSearchRows(rows);
       };
       const renderRemote = async () => {
         const term = (input?.value || "").trim();
         const currentRequest = ++requestId;
         if (term.length < 2) {
-          if (meta) meta.textContent = `Mostrando ${number(initialRows.length)} produtos mais vendidos.`;
-          renderLocal();
+          renderLocal(term, false);
           return;
         }
-        if (meta) meta.textContent = "Buscando no cadastro completo...";
+        const cacheKey = term.toLowerCase();
+        if (sellerProductSearchCache.has(cacheKey)) {
+          const rows = sellerProductSearchCache.get(cacheKey) || [];
+          if (meta) meta.textContent = `Mostrando ${number(rows.length)} resultado(s) para "${term}".`;
+          results.innerHTML = sellerProductSearchRows(rows);
+          return;
+        }
         try {
           const payload = await apiContract(
-            `/api/products/search?q=${encodeURIComponent(term)}&limit=${SELLER_PORTAL_SEARCH_LIMIT}`,
+            `/api/products/search?q=${encodeURIComponent(term)}&limit=${SELLER_PRODUCT_SEARCH_LIMIT}`,
             "products_search.v1",
           );
           const rows = requireRows(
@@ -184,6 +204,7 @@ async function openSellerProductSearch() {
             "/api/products/search",
           );
           if (currentRequest !== requestId) return;
+          sellerProductSearchCache.set(cacheKey, rows);
           if (meta) meta.textContent = `Mostrando ${number(rows.length)} resultado(s) para "${term}".`;
           results.innerHTML = sellerProductSearchRows(rows);
         } catch (error) {
@@ -194,7 +215,14 @@ async function openSellerProductSearch() {
       };
       renderLocal();
       input?.focus();
-      input?.addEventListener("input", renderRemote);
+      input?.addEventListener("input", () => {
+        const term = (input.value || "").trim();
+        requestId += 1;
+        if (debounceTimer) window.clearTimeout(debounceTimer);
+        renderLocal(term, term.length >= 2);
+        if (term.length < 2) return;
+        debounceTimer = window.setTimeout(renderRemote, SELLER_PRODUCT_SEARCH_DEBOUNCE_MS);
+      });
       results?.addEventListener("click", (event) => {
         const button = event.target.closest("[data-seller-search-product-id]");
         if (!button?.dataset.sellerSearchProductId || typeof openProductModal !== "function") return;
