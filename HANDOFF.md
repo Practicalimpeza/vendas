@@ -137,6 +137,10 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
   `PULSO_ALLOW_NETWORK=1`, `PULSO_HOST=0.0.0.0` e manter SQLite/arquivos do
   tenant fora do GitHub. `railway.json` fixa o start command e o healthcheck
   publico `/healthz`. Isso nao substitui a migracao futura para banco online.
+- Backup/restore de tenant: `scripts/tenant_backup.py backup --tenant practica`
+  gera ZIP em `outputs/backups/` usando `sqlite3.backup()` para o banco e
+  incluindo config, referencia e assets. `restore --archive ... --data-dir /data
+  --replace` restaura no volume persistente e roda `PRAGMA integrity_check`.
 - Auth/desenvolvimento: `scripts/auth.py` ganhou bypass local por
   `PULSO_DEV_AUTH_BYPASS=1`, retornando usuario admin temporario em
   `/api/auth/me` com `dev_auth_bypass=true`. O frontend mostra "Dev sem login"

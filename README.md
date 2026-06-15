@@ -143,6 +143,19 @@ Todo cliente, inclusive a Practica, deve usar a estrutura
 `data/tenants/<cliente>/app_config.json` e
 `data/tenants/<cliente>/import_reference.json`.
 
+Antes de mover um tenant para outro ambiente ou volume persistente, gere um
+backup transportavel:
+
+```powershell
+python scripts\tenant_backup.py backup --tenant practica
+```
+
+Para restaurar em outro `PULSO_DATA_DIR`:
+
+```powershell
+python scripts\tenant_backup.py restore --archive outputs\backups\practica_YYYYMMDD_HHMMSS.zip --data-dir C:\temp\nexo_restore_test
+```
+
 A camada comercial agora separa **parceiro/consultor** de **empresa cliente**:
 `config/partners/default.json` define a marca/licenca do parceiro ativo, e cada
 tenant em `data/tenants/<cliente>/app_config.json` aponta para esse parceiro em

@@ -114,19 +114,39 @@ Se for usar a CLI futuramente, ela deve respeitar `.gitignore` e
 
 ## Envio dos dados para o volume
 
-O app sem dados reais sobe vazio. Para usar a base atual, envie apenas a pasta
-do tenant para o volume:
+O app sem dados reais sobe vazio. Para usar a base atual, gere um backup do
+tenant e restaure esse pacote no volume:
 
-```text
-data/tenants/practica -> /data/tenants/practica
+```powershell
+python scripts\tenant_backup.py backup --tenant practica
 ```
 
-Antes de enviar:
+O comando cria um ZIP em `outputs/backups/` com:
+
+- `database.sqlite3`, copiado via `sqlite3.backup()`;
+- `app_config.json`;
+- `import_reference.json`;
+- `assets/`, quando existir;
+- `manifest.json` com o tenant e data do backup.
+
+Depois de enviar o ZIP para o ambiente do Railway, restaure no volume:
+
+```bash
+python scripts/tenant_backup.py restore --archive practica_YYYYMMDD_HHMMSS.zip --data-dir /data --replace
+```
+
+Para testar localmente sem tocar no tenant real:
+
+```powershell
+python scripts\tenant_backup.py restore --archive outputs\backups\practica_YYYYMMDD_HHMMSS.zip --data-dir C:\temp\nexo_restore_test
+```
+
+Antes de restaurar em producao:
 
 1. feche o servidor local;
-2. copie o diretorio do tenant para uma pasta temporaria de backup;
-3. confira se o banco existe em `database.sqlite3`;
-4. envie pelo gerenciador de arquivos do volume/CLI do Railway;
+2. gere um backup novo com `tenant_backup.py backup`;
+3. guarde uma copia do ZIP fora do Railway;
+4. restaure no volume `/data`;
 5. reinicie o servico;
 6. acesse com admin real e crie usuarios `seller`.
 
