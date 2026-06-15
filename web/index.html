@@ -830,9 +830,9 @@
               <h2>Clientes, produtos e pedidos no celular</h2>
               <p>Entrada compacta para consulta rápida e geração de pedido em PDF para o financeiro.</p>
             </div>
-            <button class="primary-button" type="button" data-seller-target="customers">
-              <i data-lucide="users"></i>
-              Abrir clientes
+            <button class="primary-button" type="button" data-seller-target="order">
+              <i data-lucide="file-plus-2"></i>
+              Novo pedido
             </button>
           </section>
           <div class="seller-portal-grid" id="sellerPortalCards"></div>
@@ -869,6 +869,7 @@
             <div class="seller-portal-actions">
               <button type="button" data-seller-target="customers"><i data-lucide="user-search"></i><span>Buscar cliente</span></button>
               <button type="button" data-seller-target="products"><i data-lucide="package-search"></i><span>Consultar produto</span></button>
+              <button type="button" data-seller-target="order"><i data-lucide="file-plus-2"></i><span>Novo pedido</span></button>
               <button type="button" data-seller-target="opportunities"><i data-lucide="receipt-text"></i><span>Vendas importadas</span></button>
             </div>
           </section>
@@ -880,9 +881,9 @@
               </div>
             </header>
             <ol class="seller-portal-steps">
-              <li>Abra o cliente.</li>
-              <li>Entre no Catálogo do cliente.</li>
-              <li>Marque itens negociados ou adicione produto avulso.</li>
+              <li>Toque em Novo pedido.</li>
+              <li>Escolha o cliente.</li>
+              <li>Adicione produtos e quantidades.</li>
               <li>Baixe o Pedido PDF e envie ao financeiro.</li>
             </ol>
           </section>
@@ -1107,7 +1108,7 @@
     <script src="/app_pricing.js?v=20260522a"></script>
     <script src="/app_imports.js?v=20260529flow2"></script>
     <script src="/app_customers.js?v=20260612vendedor2"></script>
-    <script src="/app_seller_portal.js?v=20260615seller6"></script>
+    <script src="/app_seller_portal.js?v=20260615seller7"></script>
     <script src="/app_company_profile.js?v=20260526acentos1"></script>
     <script src="/app_distribution.js?v=20260521a"></script>
     <script src="/app_implementation.js?v=20260521a"></script>
