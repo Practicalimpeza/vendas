@@ -1,6 +1,6 @@
 # Handoff do Projeto
 
-Atualizado em: 2026-05-22
+Atualizado em: 2026-06-11
 
 Este arquivo deve ser mantido atualizado sempre que uma sessao fizer mudancas
 relevantes de produto, arquitetura, dados, docs ou skills. A funcao dele e
@@ -26,17 +26,19 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
   visualizacao ampla, filtros, buscas, presets, trabalho em lote, memoria
   operacional e base IA-friendly.
 - Guardrail de produto: autonomia do operador acima de recomendacao do sistema.
-  O forte do Nexo e visualizar tudo, cruzar informacoes, filtrar, buscar, salvar
-  visoes, comparar, selecionar e trabalhar em lote. Sinais e sugestoes sao
-  camada auxiliar, nao identidade do produto.
-- Proxima missao: estabilizar um release candidate coerente, com smoke verde,
-  roteiro manual de ponta a ponta e bloqueadores reais separados de melhorias.
+  O forte do Nexo e permitir o operador visualizar tudo, cruzar informacoes, filtrar, buscar, salvar
+  visoes, comparar, selecionar e trabalhar em lote.
 - Comando de verificacao principal: `python scripts\smoke_checks.py`.
 - Stack mantida: Python padrao, SQLite, HTML/CSS/JS vanilla, sem build step.
 - Nao mexer agora: Postgres, frameworks, dependencias instaladas novas e deploy
   com dados reais.
 - O servidor bloqueia exposicao fora de localhost salvo com
   `PULSO_ALLOW_NETWORK=1` (alias legado `NEXOVAREJO_ALLOW_NETWORK` continua aceito).
+- Durante desenvolvimento local, e possivel iniciar sem login com
+  `PULSO_DEV_AUTH_BYPASS=1`. O bypass cria apenas um usuario admin temporario
+  em memoria (`Dev sem login`), nao grava senha/sessao e fica automaticamente
+  desativado se `PULSO_ALLOW_NETWORK=1` ou `NEXOVAREJO_ALLOW_NETWORK=1`
+  estiver ativo.
 - Dados reais da Practica continuam sensiveis: nao ler CSVs sem necessidade,
   nao expor, nao comitar bancos, outputs ou derivados.
 
@@ -90,6 +92,55 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
 
 ## Trabalho recente relevante
 
+- Portal do vendedor mobile: primeira view `/vendedor` criada como hub compacto
+  para uso externo/mobile, com cartões para Clientes, Produtos, Vendas e Pedido
+  PDF. A view reaproveita os dados carregados no app e encaminha para as telas
+  existentes. O auth agora reconhece o papel `seller`, que ganha por padrao
+  apenas `seller`, `customers`, `products` e `opportunities`; o admin de
+  usuarios tem o checkbox "Vendedor externo" para aplicar esse perfil. Proximo
+  passo e transformar os atalhos em fluxos mobile dedicados para visita/pedido.
+- Clientes/CRM: a tela de Clientes passou a funcionar como mesa comercial para
+  vendedores. A carteira ganhou status de carteira, ticket medio, dias com
+  compra, receita de produtos/servicos e segmentos rapidos. O clique no cliente
+  abre uma ficha CRM derivada do historico importado, com dados do cadastro,
+  leitura de cadencia, mix de produtos, servicos, categorias, serie mensal e
+  ultimas compras. O endpoint existente `/api/customer/mix` foi ampliado para
+  retornar o contrato pratico `customer_profile.v1`. A camada manual de CRM
+  entrou com a migracao `20260611_customer_crm_profile`, criando
+  `customer_crm_profiles` e `customer_actions`. A ficha agora tem o bloco
+  "Gestao comercial" para responsavel, status, prioridade, proxima acao, data,
+  tags e observacao interna; a lista de clientes agrega `crm_status` e
+  `crm_next_action_at`. Contratos novos: `/api/customer/crm`
+  (`customer_crm.v1`) e `POST /api/customer/crm/upsert`.
+- Catalogo negociado por cliente: a ficha CRM ganhou a aba "Catalogo do
+  cliente", com persistencia propria no app. A migracao
+  `20260610_customer_catalog` cria `customer_catalogs`,
+  `customer_catalog_items`, `customer_catalog_events` e `product_media`.
+  Vendedores podem adicionar itens do historico recorrente ou buscar produtos
+  do cadastro geral que o cliente nunca comprou, salvar preco/desconto/minimo/
+  validade/observacao, subir foto do produto e abrir uma versao imprimivel/PDF
+  do catalogo. A aba tambem gera `POST /api/sales-order/pdf`, um pedido de
+  venda operacional em PDF que aceita itens negociados e produtos avulsos do
+  cadastro geral para o financeiro lancar manualmente no sistema da loja; nao
+  cria venda fiscal nem baixa estoque. Contratos novos:
+  `/api/customer/catalog`
+  (`customer_catalog.v1`), `/api/products/search` (`products_search.v1`) e
+  `/api/product/media/upsert` (`product_media.v1`).
+- Banco online: nao migrar o SQLite direto para producao externa ainda. O
+  caminho recomendado e transicao em etapas: portal/permissoes primeiro,
+  escolha explicita de Postgres gerenciado ou libSQL/SQLite remoto depois,
+  com dependencia Python aprovada, migracao testada, backup/restore e validacao
+  de isolamento.
+- Deploy do portal vendedor: para beta controlada, o caminho documentado em
+  `docs/26_deploy_portal_vendedor.md` e publicar o codigo em repositorio
+  privado, usar volume persistente para `PULSO_DATA_DIR`, liberar rede com
+  `PULSO_ALLOW_NETWORK=1`, `PULSO_HOST=0.0.0.0` e manter SQLite/arquivos do
+  tenant fora do GitHub. Isso nao substitui a migracao futura para banco online.
+- Auth/desenvolvimento: `scripts/auth.py` ganhou bypass local por
+  `PULSO_DEV_AUTH_BYPASS=1`, retornando usuario admin temporario em
+  `/api/auth/me` com `dev_auth_bypass=true`. O frontend mostra "Dev sem login"
+  no topo e esconde logout nesse modo. A trava impede o bypass quando o app esta
+  exposto na rede via `PULSO_ALLOW_NETWORK`/`NEXOVAREJO_ALLOW_NETWORK`.
 - Direcao ERP/standalone: o produto passa a evoluir como operacao hibrida
   natural. A regra de produto e que o sistema trabalha com o que existe:
   registros importados preservam origem externa; registros e rotinas criados no
@@ -118,25 +169,40 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
   `docs/25_mesa_de_gestao.md`: o NexoVarejo/Pulso deve ser uma ferramenta de
   clareza e gestao completa, nao um assistente que tenta guiar o usuario. A
   interface deve oferecer lentes, instrumentos, comparacao, simulacao, memoria e
-  rastreabilidade, mantendo a decisao nas maos do gestor.
-- Visao inicial enxugada: topo, periodo e logout voltaram ao fluxo normal da
-  pagina para nao sobrepor indicadores; o preset padrao passou a abrir apenas
-  `Indicadores` e `Mesa`, com Pulso/Sinais/Potencial/Analises/Ferramentas/
-  Trilhas/Implantacao ocultos ate o usuario organizar a mesa. A primeira dobra
-  mostra menos itens e evita a coluna Base como ruido inicial.
-- Reformulacao de controle iniciada: a Visao ganhou a barra `Mesa do operador`,
-  com lentes rapidas (Essencial, Comprador, Comercial, Estoque, Consultor),
-  comandos para Organizar, mostrar/esconder Base e abrir Analises. O botao
-  flutuante inferior ficou reservado para configuracoes administrativas
-  (empresa/usuarios), sem duplicar organizacao nem dados. A coluna Base agora e profundidade sob demanda
-  (`pulso.dashboard.base.visible`), nao ruido inicial obrigatorio.
+  rastreabilidade, mantendo a decisao nas maos do gestor. Contrato central:
+  o poder sempre esta na mao do operador; o sistema fornece a melhor maneira de
+  trabalhar, fluida, facil e clara, com a melhor quantidade de dados e
+  referencias possiveis para o operador tomar decisoes. Evitar copy
+  prescritiva como "devo fazer", "proximo clique", "cotar agora" ou
+  "revisar agora"; preferir dados, filtros, lentes, comparacao, simulacao e
+  instrumentos sob controle do operador.
+- Painel inicial redesenhado como cockpit BI denso: o topo glass concentra
+  `Importar dados`, perfil e logout; o periodo universal saiu do topbar e virou
+  controle individual de cada bloco do cockpit. A tela abre direto em
+  `Analises`, com graficos ECharts, matriz executiva, mix, estoque, margem,
+  produtos, clientes, fornecedores, servicos e dados importados.
+  Pulso/Mesa/Potencial/Ferramentas/Trilhas/Implantacao ficam fora do padrao.
+- Reformulacao de controle do Painel: a faixa `Mesa do operador` e os presets
+  Essencial/Comprador/Comercial/Estoque/Consultor foram removidos. A primeira
+  tela passa a ser montada pelos blocos ativos da mesa, com topbar glass para
+  contexto e comandos diretos. O botao `Organizar` saiu do topo; cada bloco do
+  cockpit pode ser ocultado diretamente, e o ultimo bloco `Adicionar` recoloca
+  graficos, KPIs e tabelas ocultos. O HTML do Painel foi enxugado, removendo a
+  grade estatica antiga de graficos que era substituida pelo cockpit em runtime.
+- A tela inicial deixou de se chamar `Visao` na interface e passou a se chamar
+  `Painel`, por ser um termo mais comum e profissional para sistema. O botao de
+  ajustes no Painel agora abre um hub de `Personalizacao e configuracoes`, com
+  entrada para personalizacao do painel do usuario, dados da empresa e
+  identidade/estado do pacote do revendedor quando o modulo de distribuicao esta
+  disponivel. A personalizacao de blocos do usuario continua local por enquanto
+  (`localStorage`), sem nova migracao de schema.
 - Margem: a aba foi reposicionada como `Auditoria de margem`, nao como
   precificador automatico. A UI deve mostrar evidencias, confianca do dado,
   referencia tecnica e proxima conferencia; evitar linguagem de "preco ideal",
   "preco alvo" como sugestao ou decisao automatica. O app nao altera preco de
   venda e a decisao continua no ERP.
 - Qualidade de linguagem: iniciada correcao de acentuacao nos textos visiveis
-  do frontend. Primeira passada cobriu topo/periodo, Visao, administracao,
+  do frontend. Primeira passada cobriu topo/periodo, Painel, administracao,
   estado dos modulos, acoes rapidas, servicos, precos, cotacoes e importacao
   nos arquivos centrais carregados pela tela inicial. Nao voltar a remover
   acentos por padrao; usar portugues correto na UI.
@@ -221,7 +287,10 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
   a URL do app responder antes de navegar, grava logs em
   `data/local/launcher_logs/`, retorna erro visivel quando o servidor nao sobe e
   reaproveita um iniciador atualizado ja aberto do mesmo modo para evitar varias
-  portas `8765+` e servidores duplicados.
+  portas `8765+` e servidores duplicados. Ajuste em 2026-05-28: as entradas
+  `.pyw` voltaram a abrir primeiro a central do iniciador; se houver ultimo
+  cliente valido, a central faz o auto-start com barra de status visivel em vez
+  de ficar sem resposta enquanto o servidor sobe.
   A navegacao principal preserva o dock flutuante no rodape como assinatura
   visual do app. A tentativa de trocar por lateral fixa foi revertida porque
   enfraquecia a experiencia; a organizacao de jornada deve ser trabalhada em
@@ -236,25 +305,25 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
   linguagem como "ver", "comparar", "investigar", "montar", "registrar" e
   "decidir"; evitar tom paternalista de "o sistema recomenda", "resolva" ou
   "acao obrigatoria" nas telas de uso diario. A tela inicial foi reposicionada
-  como `Visao`/`Mesa do operador`. A primeira camada de diferencial entrou na
-  Visao com tres blocos: `Movimentos` (o que vale observar no recorte),
+  como `Painel`/`Mesa do operador`. A primeira camada de diferencial entrou no
+  Painel com tres blocos: `Movimentos` (o que vale observar no recorte),
   `Ferramentas` (instrumentos para comparar/investigar/montar) e `Base`
   (mapa dos dados disponiveis e lacunas de leitura).
-  A Visao tambem ganhou personalizacao de mesa em segunda camada: o botao de
-  sliders abre o painel `Organizar visao`, com perfis rapidos (Gestor,
+  O Painel tambem ganhou personalizacao de mesa em segunda camada: o botao de
+  sliders abre o painel `Organizar painel`, com perfis rapidos (Gestor,
   Comprador, Comercial, Estoque e Consultor), arraste de blocos, tamanhos
   Foco/Normal/Aberto, ocultar/mostrar e restaurar padrao. A preferencia fica
   salva em `localStorage` (`pulso.dashboard.layout.v2`) com leitura legada de
   `pulso.dashboard.layout.v1`. O bloco de implantacao foi mantido como bloco
   opcional, mas sai da mesa padrao para nao misturar setup com operacao diaria.
-  A Visao tambem ganhou o bloco `Potencial da mesa` e a biblioteca de leituras
-  dentro de `Organizar visao`: eles mostram cruzamentos ja disponiveis e
+  O Painel tambem ganhou o bloco `Potencial da mesa` e a biblioteca de leituras
+  dentro de `Organizar painel`: eles mostram cruzamentos ja disponiveis e
   leituras que podem aparecer quando entram mais dados, usando linguagem de
   curiosidade e ganho operacional, nao cobranca.
-  A primeira dobra da Visao foi reforcada com comandos diretos no hero
-  (`Organizar visao`, `Conectar dados`, `Investigar mix`) e um resumo de fontes
+  A primeira dobra do Painel foi reforcada com comandos diretos no hero
+  (`Organizar painel`, `Conectar dados`, `Investigar mix`) e um resumo de fontes
   conectadas/leituras disponiveis calculado a partir da biblioteca de leituras.
-  Depois disso, a Visao deixou de usar listas fixas para partes centrais:
+  Depois disso, o Painel deixou de usar listas fixas para partes centrais:
   metricas do hero, sinais, ferramentas e mapa de fontes agora sao derivados do
   estado real das fontes, alertas e leituras liberadas. A tela deve evoluir com
   o uso/importacao em vez de parecer predeterminada.
@@ -354,8 +423,12 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
   continuam como dados operacionais editaveis.
 - Mesa de montagem do pedido foi reposicionada como tela operacional numerica:
   lista plana por padrao, filtros por condicao/valor/giro/cobertura, acoes em
-  massa sobre o filtro visivel e colunas de giro, estoque projetado, ciclo,
-  motor, caixa, quantidade e valor. Agrupamento por decisao continua opcional.
+  massa sobre o filtro visivel e colunas por categoria de decisao: Produto
+  (codigo/nome/sinais), Posicao (estoque e cobertura atual), Alvo (estoque
+  ideal/ponto), Sugestao (unidades, caixas e cobertura nova), Historico
+  (total, 30d, 90d e maior venda), Pedido (quantidade editavel) e Valor
+  (total, unitario e caixa). Detalhes completos ficam em hover para densidade
+  sem cabecalhos longos. Agrupamento por decisao continua opcional.
 - Formula: ruptura com histórico muito curto agora usa metodo
   `stockout_discovery_batch`, uma compra de descoberta. Venda unica recente nao
   vira ritmo diario normal; estoque negativo nao infla a primeira compra; o alvo
@@ -383,7 +456,7 @@ ajudar uma nova sessao a continuar sem reabrir tudo.
 7. Fechar backup/restauracao local ou tratar como bloqueador formal da beta.
 8. Decidir papel da reposicao v2 no RC: motor principal, diagnostico ou
    comparativo.
-9. Antes de novas mudancas de UX na Visao/dock/mesas, usar
+9. Antes de novas mudancas de UX no Painel/dock/mesas, usar
    `docs/25_mesa_de_gestao.md` como norte: operador no controle, mesa
    personalizavel, filtros, buscas, presets, trabalho em lote, contexto
    interligado, memoria operacional e base IA-friendly.

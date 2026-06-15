@@ -17,13 +17,49 @@ function toggleWhatsAppOverlay() {
   setWhatsAppOverlay(!panel?.classList.contains("chat-overlay-open"));
 }
 
+const STARTUP_MESSAGES = [
+  "Validando seu acesso.",
+  "Carregando seu perfil.",
+  "Aplicando permissões.",
+  "Abrindo áreas disponíveis.",
+  "Carregando dados iniciais.",
+  "Preparando sua mesa.",
+  "Finalizando abertura.",
+];
+const STARTUP_MESSAGE_INTERVAL_MS = 2500;
+let startupMessageTimer = null;
+let startupMessageIndex = 0;
+
 function setStartupMessage(message) {
   const target = document.querySelector("#startupMessage");
   if (target && message) target.textContent = message;
+  const index = STARTUP_MESSAGES.indexOf(message);
+  if (index >= 0) startupMessageIndex = index;
+}
+
+function startStartupMessages() {
+  if (startupMessageTimer) return;
+  setStartupMessage(STARTUP_MESSAGES[startupMessageIndex]);
+  startupMessageTimer = window.setInterval(() => {
+    if (startupMessageIndex >= STARTUP_MESSAGES.length - 1) {
+      stopStartupMessages();
+      return;
+    }
+    startupMessageIndex += 1;
+    setStartupMessage(STARTUP_MESSAGES[startupMessageIndex]);
+  }, STARTUP_MESSAGE_INTERVAL_MS);
+}
+
+function stopStartupMessages() {
+  if (!startupMessageTimer) return;
+  window.clearInterval(startupMessageTimer);
+  startupMessageTimer = null;
 }
 
 function hideStartupScreen() {
   const screen = document.querySelector("#startupScreen");
+  stopStartupMessages();
+  document.body.classList.remove("app-booting");
   if (!screen || screen.classList.contains("is-hidden")) return;
   screen.classList.add("is-hidden");
   window.setTimeout(() => {
@@ -32,18 +68,16 @@ function hideStartupScreen() {
 }
 
 async function boot() {
+  startStartupMessages();
   if (typeof loadAppConfig === "function") {
-    setStartupMessage("Carregando configuração da instalação.");
     await loadAppConfig();
   }
   if (typeof initOnboarding === "function") {
-    setStartupMessage("Conferindo configuração inicial.");
     const onboardingReady = await initOnboarding();
     if (!onboardingReady) return;
   }
   enhanceNavigation();
   if (typeof initAuthGate === "function") {
-    setStartupMessage("Validando acesso e permissões.");
     const authenticated = await initAuthGate();
     if (!authenticated) {
       hideStartupScreen();
@@ -54,6 +88,7 @@ async function boot() {
   if (typeof initDistributionView === "function") initDistributionView();
   if (typeof initImplementationView === "function") initImplementationView();
   if (typeof initWhatsAppCrm === "function") initWhatsAppCrm();
+  if (typeof initSellerPortal === "function") initSellerPortal();
   document.querySelector("[data-app-error-dismiss]")?.addEventListener("click", clearAppError);
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
@@ -71,6 +106,7 @@ async function boot() {
     setImportMode(button.dataset.importModeTarget || "operational");
   });
   document.querySelector("#erpImportAnalyze")?.addEventListener("click", analyzeErpImportFile);
+  document.querySelector("#erpImportFile")?.addEventListener("change", analyzeErpImportFile);
   document.querySelector("#erpImportConfirm")?.addEventListener("click", confirmErpImportMapping);
   document.querySelector("#refreshTargets")?.addEventListener("click", (event) => {
     const actionButton = event.target.closest("button");
@@ -107,8 +143,8 @@ async function boot() {
   if (initialView === "quotes") {
     const grid = document.querySelector("#quoteSuppliersTable");
     const summary = document.querySelector("#quoteSupplierDeskSummary");
-    if (summary) summary.innerHTML = `<div class="quote-workbench-loading"><strong>Preparando mesa de compra</strong><span>Calculando fornecedores, m?nimos, ciclos e sinais de ruptura.</span><i aria-hidden="true"></i></div>`;
-    if (grid) grid.innerHTML = `<div class="quote-workbench-loading"><strong>Organizando fornecedores</strong><span>A mesa aparece assim que o motor termina a leitura.</span><i aria-hidden="true"></i></div>`;
+    if (summary) summary.innerHTML = `<div class="quote-workbench-loading"><strong>Preparando compras</strong><span>Carregando fornecedores, mínimos e riscos de ruptura.</span><i aria-hidden="true"></i></div>`;
+    if (grid) grid.innerHTML = `<div class="quote-workbench-loading"><strong>Montando lista de fornecedores</strong><span>A visão aparece assim que a leitura terminar.</span><i aria-hidden="true"></i></div>`;
   }
 
   const canUseQuotes = typeof canAccessView !== "function" || canAccessView("quotes");
@@ -135,7 +171,10 @@ async function boot() {
     startupFinished = true;
     hideStartupScreen();
   };
-  const startupFallback = window.setTimeout(finishStartupLoading, prioritizeQuotes ? 7000 : 5500);
+  const startupFallback = window.setTimeout(
+    () => setStartupMessage("Finalizando abertura."),
+    prioritizeQuotes ? 7000 : 5500,
+  );
   let periodDataPromise = null;
   let importsPromise = null;
   let companyProfilePromise = null;
@@ -143,7 +182,8 @@ async function boot() {
 
   const loadQuoteSuppliers = async () => {
     if (!canUseQuotes) return [];
-    if (state.quoteSuppliers?.length) return state.quoteSuppliers;
+    const hasFreshSupplierMetrics = state.quoteSuppliers?.some((row) => "stock_value" in row && "turnover_value" in row);
+    if (state.quoteSuppliers?.length && hasFreshSupplierMetrics) return state.quoteSuppliers;
     if (quoteSuppliersPromise) return quoteSuppliersPromise;
     quoteSuppliersPromise = apiRows(
       "/api/supplier-workbench/suppliers",
@@ -165,10 +205,13 @@ async function boot() {
   };
   const warmQuoteSuppliers = () => {
     if (!canUseQuotes || state.quoteSuppliers?.length) return;
-    loadQuoteSuppliers().catch((error) => console.error("Carga de fornecedores da cota??o falhou:", error));
+    loadQuoteSuppliers().catch((error) => console.error("Carga de fornecedores da cotação falhou:", error));
   };
 
-  if (prioritizeQuotes) await loadQuoteSuppliers();
+  if (prioritizeQuotes) {
+    await loadQuoteSuppliers();
+    if (typeof restoreOpenQuoteWorkbench === "function") await restoreOpenQuoteWorkbench();
+  }
   if (prioritizeQuotes) {
     window.clearTimeout(startupFallback);
     finishStartupLoading();
@@ -211,7 +254,12 @@ async function boot() {
   };
   const hydrateWorkspaceOnDemand = () => {
     if (workspaceHydrated) return;
-    hydrateWorkspaceData().catch((error) => console.error("Carga do workspace falhou:", error));
+    hydrateWorkspaceData().catch((error) => {
+      console.error("Carga do workspace falhou:", error);
+      showAppError("Falha ao carregar a mesa", error.message || "Não foi possível montar os dados iniciais.");
+      window.clearTimeout(startupFallback);
+      finishStartupLoading();
+    });
   };
   document.addEventListener("nexo:viewchange", (event) => {
     if (event.detail?.view === "quotes") {
@@ -367,6 +415,16 @@ async function boot() {
     renderQuotes({ preserveScroll: false, withDashboard: true });
   });
   const applyQuoteSupplierColumnFilter = (event) => {
+    const search = event.target.closest("[data-quote-supplier-filter-search]");
+    if (search) {
+      const term = search.value.trim().toLowerCase();
+      const panel = search.closest(".purchase-filter-panel");
+      panel?.querySelectorAll("[data-quote-supplier-filter-option]").forEach((option) => {
+        const text = `${option.dataset.filterText || ""} ${option.dataset.filterValue || ""}`.toLowerCase();
+        option.hidden = Boolean(term) && !text.includes(term);
+      });
+      return;
+    }
     const field = event.target.closest("[data-quote-supplier-col-filter]");
     if (!field) return;
     const key = field.dataset.quoteSupplierColFilter;
@@ -408,6 +466,24 @@ async function boot() {
       const shouldOpen = Boolean(panel?.hidden);
       if (typeof closeQuoteSupplierFilterPanels === "function") closeQuoteSupplierFilterPanels(panel);
       if (panel) panel.hidden = !shouldOpen;
+      if (shouldOpen) {
+        const search = panel?.querySelector("[data-quote-supplier-filter-search]");
+        search?.focus();
+        search?.select();
+      }
+      return;
+    }
+    const filterOption = event.target.closest("[data-quote-supplier-filter-option]");
+    if (filterOption?.dataset.quoteSupplierFilterOption) {
+      const next = { ...(state.quoteSupplierColumnFilters || {}) };
+      const key = filterOption.dataset.quoteSupplierFilterOption;
+      const value = filterOption.dataset.filterValue || "";
+      if (value) next[key] = value;
+      else delete next[key];
+      state.quoteSupplierColumnFilters = next;
+      state.quoteSupplierPreviewId = "";
+      state.quoteSupplierPopupOpen = false;
+      renderQuotes({ preserveScroll: false, summaryOnly: true });
       return;
     }
     const filterClearButton = event.target.closest("[data-quote-supplier-filter-clear]");
@@ -605,6 +681,12 @@ async function boot() {
     if (event.target.closest(".quote-manual-item")) { openManualQuoteItemModal(); return; }
     if (event.target.closest(".quote-unmark-visible")) { bulkSetVisibleQuoteItems(false); return; }
     if (event.target.closest(".quote-restore-items")) { restoreSuggestedQuoteItems(); return; }
+    const columnsButton = event.target.closest(".quote-open-columns");
+    if (columnsButton) {
+      const table = typeof ensureQuoteItemsTable === "function" ? ensureQuoteItemsTable() : null;
+      table?.openColumns?.(columnsButton);
+      return;
+    }
     if (event.target.closest(".quote-clear-items")) { clearWorkbenchQuoteItems(); return; }
     const filterPill = event.target.closest(".qf-pill");
     if (filterPill) { filterWorkbenchRows(filterPill.dataset.filter); return; }
@@ -625,9 +707,7 @@ async function boot() {
     const quickBtn = event.target.closest(".link-sug, .qrow-step, .qrow-quick");
     if (quickBtn) { event.stopPropagation(); applyQuickQuantity(quickBtn); return; }
     const productRow = event.target.closest("[data-product-row]");
-    if (productRow && !event.target.closest("input, select, button")) {
-      openQuoteProductDrawer(productRow.dataset.productId);
-    }
+    if (productRow) event.stopPropagation();
   });
   document.querySelector("#quoteDetail").addEventListener("input", (event) => {
     if (event.target.classList.contains("quote-quantity-input")) scheduleWorkbenchQuantitySave(event.target);
@@ -650,12 +730,15 @@ async function boot() {
     }
   });
   document.querySelector("#quoteDetail").addEventListener("change", (event) => {
-    if (event.target.id === "quoteWorkbenchGroup") {
-      setQuoteWorkbenchGroup(event.target.value);
-      return;
-    }
     if (event.target.id === "quoteWorkbenchOnly") {
-      state.quoteWorkbenchOnly = event.target.value || "all";
+      const value = event.target.value || "all";
+      if (["suggested", "stockout", "alerts", "included"].includes(value)) {
+        state.quoteWorkbenchFilter = value === "included" ? "included" : value;
+        state.quoteWorkbenchOnly = "all";
+      } else {
+        state.quoteWorkbenchFilter = "all";
+        state.quoteWorkbenchOnly = value;
+      }
       applyWorkbenchView();
       return;
     }
@@ -722,18 +805,15 @@ async function boot() {
     }
   });
   document.querySelector(".topbar")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-dashboard-open-layout]")) {
+      if (typeof setDashboardEditMode === "function") setDashboardEditMode(true);
+      return;
+    }
     const target = event.target.closest("button[data-view-target]");
     if (target?.dataset.viewTarget) setView(target.dataset.viewTarget);
   });
   document.querySelector("#whatsappFloatButton")?.addEventListener("click", () => toggleWhatsAppOverlay());
   renderNavBadges();
-  document.querySelectorAll(".period-btn").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.periodDays = button.dataset.periodDays;
-      document.querySelectorAll(".period-btn").forEach((item) => item.classList.toggle("active", item === button));
-      await refreshPeriodData();
-    });
-  });
   document.querySelector("#hideCurrentMonthRevenue")?.addEventListener("click", () => {
     state.hideCurrentMonthRevenue = !state.hideCurrentMonthRevenue;
     renderMonthly(state.summary?.monthly || [], state.summary?.monthly_granularity);
@@ -748,16 +828,18 @@ async function boot() {
     openQuickActionModal(state.quickActions.get(quickButton.dataset.quickAction));
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !document.querySelector("#modalOverlay").hidden) closeModal();
+    if (event.key === "Escape" && typeof closeFloatingPopups === "function" && closeFloatingPopups()) {
+      event.preventDefault();
+    }
   });
-  document.querySelector("#maturity").addEventListener("click", (event) => {
+  document.querySelector("#maturity")?.addEventListener("click", (event) => {
     const target = event.target.closest("button[data-view-target]");
     if (target?.dataset.viewTarget) setView(target.dataset.viewTarget);
   });
-  document.querySelector("#maturityNextButton").addEventListener("click", (event) => {
+  document.querySelector("#maturityNextButton")?.addEventListener("click", (event) => {
     if (event.currentTarget.dataset.viewTarget) setView(event.currentTarget.dataset.viewTarget);
   });
-  document.querySelector("#missions").addEventListener("click", (event) => {
+  document.querySelector("#missions")?.addEventListener("click", (event) => {
     const target = event.target.closest("button[data-view-target]");
     if (target?.dataset.viewTarget) setView(target.dataset.viewTarget);
   });

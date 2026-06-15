@@ -13,10 +13,11 @@ primaria e trate os demais como aprofundamento por area.
 5. `23_contratos_api.md` - contratos minimos dos endpoints centrais.
 6. `24_fluxo_parceiros_distribuicao.md` - fluxo consultor, pacote e cliente.
 7. `25_mesa_de_gestao.md` - UX da mesa, personalizacao e operador no controle.
-8. `00_visao_produto.md` - promessa, usuario e escopo.
-9. `03_ingestao_e_padronizacao.md` - contrato de dados e reimportacao.
-10. `21_metodo_de_trabalho.md` - como modelar, questionar e executar mudancas.
-11. Documento especifico da area que sera alterada.
+8. `26_deploy_portal_vendedor.md` - roteiro de beta online para vendedores.
+9. `00_visao_produto.md` - promessa, usuario e escopo.
+10. `03_ingestao_e_padronizacao.md` - contrato de dados e reimportacao.
+11. `21_metodo_de_trabalho.md` - como modelar, questionar e executar mudancas.
+12. Documento especifico da area que sera alterada.
 
 ## Docs canonicos vivos
 
@@ -24,7 +25,8 @@ primaria e trate os demais como aprofundamento por area.
   `22_roadmap_produto_final.md`, `25_mesa_de_gestao.md`.
 - Dados e arquitetura: `02_modelo_canonico_sql.md`,
   `03_ingestao_e_padronizacao.md`, `23_contratos_api.md`.
-- Implantacao e onboarding: `06_implantacao_novos_comercios.md`.
+- Implantacao e onboarding: `06_implantacao_novos_comercios.md`,
+  `26_deploy_portal_vendedor.md`.
 - Parceiros e distribuicao: `24_fluxo_parceiros_distribuicao.md`.
 - Operacao do gestor: `07_motor_reposicao.md`, `09_fluxo_cotacoes.md`,
   `13_central_acoes.md`, `19_precificacao_periodo.md`.

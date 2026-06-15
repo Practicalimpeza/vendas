@@ -7,11 +7,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sistema</title>
     <link rel="icon" href="data:," data-app-icon />
-    <link rel="stylesheet" href="/app.css?v=20260526compras4" />
-    <link rel="stylesheet" href="/app_datatable.css?v=20260526compras3" />
-    <link rel="stylesheet" href="/app_glass.css?v=20260523glass11" />
+    <link rel="stylesheet" href="/app.css?v=20260612portal2" />
+    <link rel="stylesheet" href="/app_datatable.css?v=20260527headers2" />
+    <link rel="stylesheet" href="/app_glass.css?v=20260529popup1" />
   </head>
-  <body>
+  <body class="app-booting">
     <div class="startup-screen" id="startupScreen" role="status" aria-live="polite">
       <section class="startup-card" aria-label="Abrindo o sistema" data-app-label="Abrindo {app}">
         <div class="startup-brand">
@@ -22,8 +22,8 @@
           </div>
         </div>
         <div class="startup-copy">
-          <h1>Abrindo sua operação</h1>
-          <p id="startupMessage">Preparando dados, compras e indicadores.</p>
+          <h1>Acessando o sistema</h1>
+          <p id="startupMessage">Validando seu acesso.</p>
         </div>
         <div class="startup-spinner" aria-hidden="true"></div>
       </section>
@@ -40,7 +40,8 @@
 
         <nav class="nav" aria-label="Principal">
           <span class="nav-section-label">Comece por aqui</span>
-          <button class="nav-item active" data-view="dashboard" data-nav-area="app" data-uses-period="true">Visão</button>
+          <button class="nav-item active" data-view="dashboard" data-nav-area="app" data-uses-period="true">Painel</button>
+          <button class="nav-item" data-view="seller" data-nav-area="app" data-uses-period="true">Vendedor</button>
           <button class="nav-item" data-view="actions" data-nav-area="app">Hoje</button>
 
           <span class="nav-section-label">Empresa</span>
@@ -68,26 +69,18 @@
         <header class="topbar">
           <div>
             <p class="eyebrow" data-app-name>Sistema</p>
-            <h1 id="viewTitle">Visão</h1>
-            <p class="view-subtitle" id="viewSubtitle">Uma mesa para ler a empresa, comparar sinais e abrir as ferramentas certas.</p>
+            <h1 id="viewTitle">Painel</h1>
+            <p class="view-subtitle" id="viewSubtitle">Resumo executivo da operação, com indicadores e blocos ajustáveis.</p>
           </div>
           <div class="topbar-actions">
-            <button class="secondary-button compact topbar-import-button" id="topbarImportButton" type="button" data-view-target="imports" title="Importar dados" hidden>
+            <button class="secondary-button compact topbar-workspace-button" id="topbarImportButton" type="button" data-view-target="imports" title="Importar dados" hidden>
               <i data-lucide="database-zap"></i>
               <span>Importar dados</span>
             </button>
             <div class="topbar-context">
               <span id="viewQuestion">Como a empresa está se comportando?</span>
-              <strong id="viewNextAction">Padrão em 30 dias; use janelas maiores para tendência.</strong>
+              <strong id="viewNextAction">Períodos definidos por bloco.</strong>
             </div>
-            <div class="period-selector" aria-label="Período das análises">
-              <button class="period-btn active" type="button" data-period-days="30">30d</button>
-              <button class="period-btn" type="button" data-period-days="90">90d</button>
-              <button class="period-btn" type="button" data-period-days="180">6m</button>
-              <button class="period-btn" type="button" data-period-days="365">12m</button>
-              <button class="period-btn" type="button" data-period-days="all">Tudo</button>
-            </div>
-            <span class="period-label" id="periodLabel">Últimos 30 dias</span>
             <div class="user-menu" id="userMenu" hidden></div>
           </div>
         </header>
@@ -101,194 +94,14 @@
         </div>
 
           <section id="dashboard" class="view active dashboard-bi">
-          <section class="bi-hero" id="generalMapHero" data-dashboard-block="pulso" data-dashboard-label="Pulso"></section>
-          <div class="bi-kpi-strip" id="kpis" data-dashboard-block="indicadores" data-dashboard-label="Indicadores"></div>
-          <section class="bi-signal-grid" id="generalMapCards" data-dashboard-block="sinais" data-dashboard-label="Sinais"></section>
-          <section class="operator-control-bar" id="dashboardControlBar" aria-label="Controles da mesa">
-            <div>
-              <span>Visao personalizada</span>
-              <strong>Camadas da visão</strong>
-            </div>
-            <div class="operator-lens-row" id="dashboardLensControls"></div>
-            <div class="operator-command-row">
-              <button type="button" data-dashboard-open-layout>
-                <i data-lucide="sliders-horizontal"></i>
-                <span>Organizar</span>
-              </button>
-              <button type="button" data-dashboard-toggle-base>
-                <i data-lucide="columns-3"></i>
-                <span>Dados</span>
-              </button>
-              <button type="button" data-dashboard-show-block="analises">
-                <i data-lucide="chart-column-big"></i>
-                <span>Análises</span>
-              </button>
-            </div>
-          </section>
-          <section class="operator-board" id="dashboardOperatorBoard" aria-label="Mesa de operação" data-dashboard-block="mesa" data-dashboard-label="Mesa">
-            <article class="operator-panel">
-              <header>
-                <span>Movimentos</span>
-                <strong>O que vale observar</strong>
-              </header>
-              <div id="operatorMovements" class="operator-list"></div>
-            </article>
-            <article class="operator-panel">
-              <header>
-                <span>Ferramentas</span>
-                <strong>Instrumentos de trabalho</strong>
-              </header>
-              <div id="operatorTools" class="operator-tools"></div>
-            </article>
-            <article class="operator-panel">
-              <header>
-                <span>Base</span>
-                <strong>Mapa dos dados disponíveis</strong>
-              </header>
-              <div id="operatorDataMap" class="operator-data-map"></div>
-            </article>
-          </section>
-          <section class="dashboard-potential" id="dashboardPotential" data-dashboard-block="potencial" data-dashboard-label="Potencial">
-            <header>
-              <div>
-                <span>Potencial da mesa</span>
-                <strong>Leituras que crescem com os dados</strong>
-              </div>
-              <button class="secondary-button compact" type="button" data-view-target="imports">Trazer mais dados</button>
-            </header>
-            <div id="dashboardPotentialBody" class="dashboard-potential-body"></div>
-          </section>
-          <section class="bi-grid" id="dashboardCharts" data-dashboard-block="analises" data-dashboard-label="Análises">
-            <article class="bi-panel bi-panel-large">
-              <header>
-                <div>
-                  <span>Receita</span>
-                  <strong>Faturamento por período</strong>
-                </div>
-                <button class="chart-toggle-button" id="hideCurrentMonthRevenue" type="button" aria-pressed="false">Ocultar mês atual</button>
-              </header>
-              <div id="monthlyChart" class="bi-chart"></div>
-            </article>
-            <article class="bi-panel">
-              <header>
-                <span>Composicao</span>
-                <strong>Mix da receita</strong>
-              </header>
-              <div id="generalRevenueMix" class="bi-chart compact"></div>
-            </article>
-            <article class="bi-panel bi-panel-wide">
-              <header>
-                <span>Abastecimento</span>
-                <strong>Leitura por fornecedor</strong>
-              </header>
-              <div id="generalPurchaseChart" class="bi-bars"></div>
-            </article>
-            <article class="bi-panel bi-panel-wide">
-              <header>
-                <span>Estoque</span>
-                <strong>Risco e excesso</strong>
-              </header>
-              <div id="generalStockChart" class="bi-chart compact"></div>
-            </article>
-            <article class="bi-panel bi-panel-wide">
-              <header>
-                <span>Ranking</span>
-                <strong>Top produtos por receita</strong>
-              </header>
-              <div id="generalTopProducts" class="bi-bars"></div>
-            </article>
-            <article class="bi-panel">
-              <header>
-                <span>Clientes</span>
-                <strong>Top clientes</strong>
-              </header>
-              <div id="generalTopCustomers" class="bi-bars"></div>
-            </article>
-            <article class="bi-panel">
-              <header>
-                <span>Marcas</span>
-                  <strong>Concentração por marca</strong>
-              </header>
-              <div id="generalTopBrands" class="bi-bars"></div>
-            </article>
-            <article class="bi-panel">
-              <header>
-                <span>Preços</span>
-                <strong>Margem e comparação</strong>
-              </header>
-              <div id="generalMarginChart" class="bi-bars"></div>
-            </article>
-            <article class="bi-panel">
-              <header>
-                <span>Dados</span>
-                <strong>Fontes e cobertura</strong>
-              </header>
-              <div id="generalDataQuality" class="bi-score"></div>
-            </article>
-            <article class="bi-panel">
-              <header>
-                <span>Serviços</span>
-                <strong>Top serviços</strong>
-              </header>
-              <div id="generalTopServices" class="bi-bars"></div>
-            </article>
-            <article class="bi-panel">
-              <header>
-                <span>Clientes</span>
-                <strong>Carteira em leitura</strong>
-              </header>
-              <div id="generalCustomerProfile" class="bi-chart compact"></div>
-            </article>
+          <section class="bi-grid" id="dashboardCharts" aria-live="polite">
+            <div id="monthlyChart" hidden></div>
+            <button id="hideCurrentMonthRevenue" type="button" hidden aria-hidden="true"></button>
           </section>
           <div id="dashboardViewPresets" class="dashboard-floating-nav" aria-label="Atalhos principais"></div>
-          <button class="dashboard-customize-fab" id="dashboardCustomizeButton" type="button" title="Configurações da empresa" aria-label="Configurações da empresa">
+          <button class="dashboard-customize-fab" id="dashboardCustomizeButton" type="button" title="Personalização e configurações" aria-label="Personalização e configurações">
             <i data-lucide="settings-2"></i>
           </button>
-          <aside class="dashboard-edit-panel" id="dashboardEditPanel" hidden aria-label="Organizar mesa">
-            <header>
-              <div>
-                <span>Mesa</span>
-                <strong>Organizar visão</strong>
-              </div>
-              <button class="icon-button" id="dashboardFinishLayout" type="button" title="Concluir" aria-label="Concluir">
-                <i data-lucide="check"></i>
-              </button>
-            </header>
-            <div class="dashboard-edit-section">
-              <span>Perfis rápidos</span>
-              <div class="dashboard-presets-row" id="dashboardLayoutPresets"></div>
-            </div>
-            <div class="dashboard-edit-section">
-              <span>Blocos da mesa</span>
-              <div class="dashboard-block-controls" id="dashboardBlockControls"></div>
-            </div>
-            <button class="secondary-button compact" id="dashboardRestoreLayout" type="button">Restaurar padrão</button>
-          </aside>
-          <section class="panel maturity-panel" id="dashboardCapabilities" data-dashboard-block="ferramentas" data-dashboard-label="Ferramentas disponíveis">
-            <div class="panel-head">
-              <div>
-              <h2>Ferramentas disponíveis</h2>
-                <p class="panel-subtitle">O que a mesa já consegue mostrar, comparar e organizar a partir dos dados importados.</p>
-              </div>
-              <button class="secondary-button" id="maturityNextButton" type="button">Próximo passo</button>
-            </div>
-            <div id="maturity"></div>
-          </section>
-          <section class="panel missions-panel" id="dashboardMissions" data-dashboard-block="trilhas" data-dashboard-label="Trilhas">
-            <div class="panel-head">
-              <div>
-                <h2>Trilhas operacionais</h2>
-                <p class="panel-subtitle">Pequenas missões com recompensa real para a gestão.</p>
-              </div>
-            </div>
-            <div id="missions"></div>
-          </section>
-          <section class="panel" data-dashboard-block="implantacao" data-dashboard-label="Implantação">
-            <div class="panel-head">
-              <h2>Pendências de implantação</h2>
-            </div>
-            <div id="tasks" class="task-list"></div>
-          </section>
         </section>
 
         <section id="actions" class="view">
@@ -402,6 +215,7 @@
                 </label>
                 <div class="admin-user-flags">
                   <label><input id="adminUserIsAdmin" type="checkbox" /> Administrador</label>
+                  <label><input id="adminUserIsSeller" type="checkbox" /> Vendedor externo</label>
                   <label><input id="adminUserActive" type="checkbox" checked /> Ativo</label>
                 </div>
                 <div class="admin-permission-grid" id="adminPermissionGrid"></div>
@@ -711,11 +525,11 @@
           <section class="quote-stage-panel" id="quoteSupplierStage" data-quote-stage="supplier">
             <header class="qstage-head">
               <div>
-                <span class="qstage-eyebrow">Carteira de fornecedores</span>
-                <h2>Mesa de compra</h2>
-                <p class="panel-subtitle">Valores, mínimos, ciclos e abertos em uma mesa livre para organizar do seu jeito.</p>
+                <span class="qstage-eyebrow">Compras</span>
+                <h2>Fornecedores</h2>
+                <p class="panel-subtitle">Valores, mínimos, ciclos, rupturas, abertos e contatos.</p>
               </div>
-              <div class="qstage-tools">
+              <div class="qstage-tools" hidden>
                 <input id="quoteSupplierSearch" class="search-input compact" type="search" placeholder="Buscar fornecedor, contato ou sinal" />
                 <select id="quoteWindowDays" class="filter-select compact" title="Janela de demanda usada nos calculos">
                   <option value="30">Janela 30d</option>
@@ -726,10 +540,10 @@
               </div>
             </header>
             <div id="quoteSupplierDeskSummary" class="quote-desk-summary" aria-live="polite"></div>
-            <div class="quote-control-dock">
+            <div class="quote-control-dock" hidden>
               <div id="quoteSupplierChips" class="quote-chip-row quote-lens-strip">
                 <button class="quote-chip active" data-lens="all" type="button">Todos</button>
-                <button class="quote-chip" data-lens="rupture" type="button">Ruptura agora</button>
+                <button class="quote-chip" data-lens="rupture" type="button">Ruptura</button>
                 <button class="quote-chip" data-lens="near_minimum" type="button">Perto do mínimo</button>
                 <button class="quote-chip" data-lens="long_cycle" type="button">Ciclo longo</button>
                 <button class="quote-chip" data-lens="open_order" type="button">Pedido aberto</button>
@@ -742,7 +556,7 @@
               </div>
             </div>
             <div class="quote-supplier-workbench">
-              <div id="quoteSuppliersTable" class="quote-supplier-grid"></div>
+              <div id="quoteSuppliersTable"></div>
             </div>
           </section>
 
@@ -1009,6 +823,71 @@
           </div>
         </section>
 
+        <section id="seller" class="view seller-portal-view">
+          <section class="seller-portal-hero">
+            <div>
+              <span>Portal do vendedor</span>
+              <h2>Clientes, produtos e pedidos no celular</h2>
+              <p>Entrada compacta para consulta rápida e geração de pedido em PDF para o financeiro.</p>
+            </div>
+            <button class="primary-button" type="button" data-seller-target="customers">
+              <i data-lucide="users"></i>
+              Abrir clientes
+            </button>
+          </section>
+          <div class="seller-portal-grid" id="sellerPortalCards"></div>
+          <section class="seller-portal-panel">
+            <header>
+              <div>
+                <span>Busca</span>
+                <strong>Consulta rápida</strong>
+              </div>
+            </header>
+            <input class="inline-input seller-portal-search" id="sellerPortalSearch" type="search" placeholder="Cliente, produto, código ou venda">
+          </section>
+          <div class="seller-portal-lists">
+            <section class="seller-portal-panel">
+              <header><div><span>Clientes</span><strong>Carteira</strong></div></header>
+              <div class="seller-portal-list" id="sellerPortalCustomers"></div>
+            </section>
+            <section class="seller-portal-panel">
+              <header><div><span>Produtos</span><strong>Consulta</strong></div></header>
+              <div class="seller-portal-list" id="sellerPortalProducts"></div>
+            </section>
+            <section class="seller-portal-panel">
+              <header><div><span>Vendas</span><strong>Movimentos</strong></div></header>
+              <div class="seller-portal-list" id="sellerPortalSales"></div>
+            </section>
+          </div>
+          <section class="seller-portal-panel">
+            <header>
+              <div>
+                <span>Atalhos</span>
+                <strong>Rotina comercial</strong>
+              </div>
+            </header>
+            <div class="seller-portal-actions">
+              <button type="button" data-seller-target="customers"><i data-lucide="user-search"></i><span>Buscar cliente</span></button>
+              <button type="button" data-seller-target="products"><i data-lucide="package-search"></i><span>Consultar produto</span></button>
+              <button type="button" data-seller-target="opportunities"><i data-lucide="receipt-text"></i><span>Vendas importadas</span></button>
+            </div>
+          </section>
+          <section class="seller-portal-panel">
+            <header>
+              <div>
+                <span>Pedidos</span>
+                <strong>Como gerar PDF</strong>
+              </div>
+            </header>
+            <ol class="seller-portal-steps">
+              <li>Abra o cliente.</li>
+              <li>Entre no Catálogo do cliente.</li>
+              <li>Marque itens negociados ou adicione produto avulso.</li>
+              <li>Baixe o Pedido PDF e envie ao financeiro.</li>
+            </ol>
+          </section>
+        </section>
+
         <section id="customers" class="view">
           <div class="quote-tabs module-tabs" role="tablist" aria-label="Clientes">
             <a class="quote-tab active" href="/clientes?customer_mode=operational" data-customer-mode="operational">Operacional</a>
@@ -1109,8 +988,8 @@
             <section class="panel" id="refreshTargetsPanel" hidden>
               <div class="panel-head">
                 <div>
-                  <h2>Atualizar planilhas de referência</h2>
-                  <p class="panel-subtitle">Use a pasta fixa do ERP para atualizar as fontes selecionadas sem procurar arquivo por arquivo.</p>
+                  <h2>Atualizações detectadas</h2>
+                  <p class="panel-subtitle">Este aviso aparece apenas quando alguma planilha da pasta de referência mudar.</p>
                 </div>
               </div>
               <div id="refreshTargets" class="stack"></div>
@@ -1209,35 +1088,36 @@
     <div id="onboardingGate" hidden></div>
     <script src="/vendor/echarts.min.js?v=5.5.1" async onload="window.nexoEchartsLoaded = true; window.nexoChartsReady?.()"></script>
     <script src="/vendor/lucide.min.js?v=0.468.0" async onload="window.lucide?.createIcons({ attrs: { 'stroke-width': 2.1 } })"></script>
-    <script src="/app_core.js?v=20260509a"></script>
-    <script src="/app_state.js?v=20260526visao1"></script>
-    <script src="/app_charts.js?v=20260509a"></script>
+    <script src="/app_core.js?v=20260611vendedor1"></script>
+    <script src="/app_state.js?v=20260612portal1"></script>
+    <script src="/app_charts.js?v=20260529ledger1"></script>
     <script src="/app_tables.js?v=20260523dt3"></script>
-    <script src="/app_datatable.js?v=20260523dt7"></script>
-    <script src="/app_ui.js?v=20260525ux2"></script>
-    <script src="/app_dashboard.js?v=20260526visao1"></script>
+    <script src="/app_datatable.js?v=20260611clientes2"></script>
+    <script src="/app_ui.js?v=20260529clean1"></script>
+    <script src="/app_dashboard.js?v=20260529personalizacao1"></script>
     <script src="/app_products.js?v=20260522dt5"></script>
-    <script src="/app_period_data.js?v=20260522a"></script>
-    <script src="/app_quotes_suppliers.js?v=20260526compras4"></script>
+    <script src="/app_period_data.js?v=20260528visao1"></script>
+    <script src="/app_quotes_suppliers.js?v=20260527resize2"></script>
     <script src="/app_quote_dashboard.js?v=20260520a"></script>
     <script src="/app_purchase_orders.js?v=20260516a"></script>
-    <script src="/app_quote_workbench.js?v=20260526compras4"></script>
+    <script src="/app_quote_workbench.js?v=20260527composer-focus1"></script>
     <script src="/app_quote_cycle.js?v=20260520c"></script>
     <script src="/app_quote_formula.js?v=20260520a"></script>
     <script src="/app_commercial.js?v=20260526visao1"></script>
     <script src="/app_pricing.js?v=20260522a"></script>
-    <script src="/app_imports.js?v=20260520f"></script>
-    <script src="/app_customers.js?v=20260522dt4"></script>
-    <script src="/app_company_profile.js?v=20260520g"></script>
+    <script src="/app_imports.js?v=20260529flow2"></script>
+    <script src="/app_customers.js?v=20260612vendedor2"></script>
+    <script src="/app_seller_portal.js?v=20260612portal2"></script>
+    <script src="/app_company_profile.js?v=20260526acentos1"></script>
     <script src="/app_distribution.js?v=20260521a"></script>
     <script src="/app_implementation.js?v=20260521a"></script>
-    <script src="/app_onboarding.js?v=20260520x"></script>
+    <script src="/app_onboarding.js?v=20260526acentos1"></script>
     <script src="/app_actions_engine.js?v=20260522dt"></script>
     <script src="/app_whatsapp.js?v=20260514a"></script>
     <script src="/app_inventory_suppliers.js?v=20260522dt4"></script>
-    <script src="/app_quote_tools.js?v=20260522b"></script>
-    <script src="/app_auth.js?v=20260522d"></script>
-    <script src="/app.js?v=20260522b"></script>
-    <script src="/app_boot.js?v=20260526compras4"></script>
+    <script src="/app_quote_tools.js?v=20260527compras1"></script>
+    <script src="/app_auth.js?v=20260612portal1"></script>
+    <script src="/app.js?v=20260526acentos1"></script>
+    <script src="/app_boot.js?v=20260612portal1"></script>
   </body>
 </html>

@@ -7,12 +7,18 @@ REQUIRED_HEALTH_TABLES = {
     "products",
     "app_settings",
     "product_sales",
+    "product_media",
     "schema_migrations",
     "operational_data_sources",
     "entity_source_links",
     "entity_field_controls",
     "quote_requests",
     "quote_request_items",
+    "customer_catalogs",
+    "customer_catalog_items",
+    "customer_catalog_events",
+    "customer_crm_profiles",
+    "customer_actions",
     "purchase_orders",
     "purchase_order_items",
     "import_batches",
@@ -32,6 +38,10 @@ COVERED_CONTRACTS = [
     "quote_detail.v1",
     "purchase_order_detail.v1",
     "imports.v1",
+    "customer_catalog.v1",
+    "customer_crm.v1",
+    "products_search.v1",
+    "product_media.v1",
 ]
 
 
@@ -308,6 +318,92 @@ def assert_pricing_contract(payload: dict) -> None:
 
 def assert_customers_top_contract(payload: list[dict]) -> None:
     require_row_keys(payload, {"name", "purchases", "last_purchase", "revenue"}, "customers_top.v1")
+
+
+def assert_customer_catalog_contract(payload: dict) -> None:
+    require_keys(payload, {"contract", "customer", "catalog", "summary", "items", "candidate_items"}, "customer_catalog.v1")
+    check(payload["contract"] == "customer_catalog.v1", "Contrato de /api/customer/catalog mudou sem nova versao.")
+    require_keys(payload["customer"], {"id", "organization_id", "source_code", "name", "canonical_name", "document", "customer_type"}, "customer_catalog.v1.customer")
+    require_keys(payload["catalog"], {"id", "name", "status", "valid_from", "valid_until", "review_at", "public_notes", "internal_notes", "updated_at"}, "customer_catalog.v1.catalog")
+    require_keys(
+        payload["summary"],
+        {"items", "active_items", "draft_items", "paused_items", "expiring_items", "candidate_items", "negotiated_price_total"},
+        "customer_catalog.v1.summary",
+    )
+    require_row_keys(
+        payload["items"],
+        {
+            "id",
+            "catalog_id",
+            "customer_id",
+            "product_id",
+            "product_name_snapshot",
+            "source_code_snapshot",
+            "status",
+            "origin",
+            "negotiated_price",
+            "minimum_quantity",
+            "package_size",
+            "name",
+            "source_code",
+            "sale_price",
+            "image_path",
+            "history_purchase_days",
+            "history_avg_unit_price",
+        },
+        "customer_catalog.v1.items",
+    )
+    require_row_keys(
+        payload["candidate_items"],
+        {"product_id", "source_code", "name", "unit", "brand_name", "category_name", "quantity", "revenue", "purchase_days", "avg_unit_price", "sale_price", "image_path"},
+        "customer_catalog.v1.candidate_items",
+    )
+
+
+def assert_customer_crm_contract(payload: dict) -> None:
+    require_keys(payload, {"contract", "customer", "profile", "actions"}, "customer_crm.v1")
+    check(payload["contract"] == "customer_crm.v1", "Contrato de /api/customer/crm mudou sem nova versao.")
+    require_keys(payload["customer"], {"id", "organization_id", "source_code", "name", "canonical_name", "document", "customer_type"}, "customer_crm.v1.customer")
+    require_keys(
+        payload["profile"],
+        {
+            "organization_id",
+            "customer_id",
+            "owner_user_id",
+            "owner_name",
+            "commercial_status",
+            "priority",
+            "next_action",
+            "next_action_at",
+            "internal_notes",
+            "tags",
+            "updated_at",
+            "persisted",
+        },
+        "customer_crm.v1.profile",
+    )
+    check(isinstance(payload["profile"]["tags"], list), "customer_crm.v1.profile.tags deveria ser lista.")
+    require_row_keys(
+        payload["actions"],
+        {"id", "action_type", "title", "due_at", "status", "priority", "owner_name", "notes", "created_at", "updated_at"},
+        "customer_crm.v1.actions",
+    )
+
+
+def assert_products_search_contract(payload: dict) -> None:
+    require_keys(payload, {"contract", "query", "rows"}, "products_search.v1")
+    check(payload["contract"] == "products_search.v1", "Contrato de /api/products/search mudou sem nova versao.")
+    require_row_keys(
+        payload["rows"],
+        {"product_id", "organization_id", "source_code", "name", "unit", "brand_name", "category_name", "sale_price", "image_path"},
+        "products_search.v1.rows",
+    )
+
+
+def assert_product_media_contract(payload: dict) -> None:
+    require_keys(payload, {"contract", "product_id", "public_path"}, "product_media.v1")
+    check(payload["contract"] == "product_media.v1", "Contrato de /api/product/media/upsert mudou sem nova versao.")
+    check(str(payload["public_path"]).startswith("/"), "product_media.v1 public_path deveria ser caminho publico absoluto.")
 
 
 def assert_products_top_contract(payload: list[dict]) -> None:

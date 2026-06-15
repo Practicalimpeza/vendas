@@ -25,6 +25,8 @@ async function authPost(path, payload) {
   });
 }
 
+const SELLER_PERMISSION_KEYS = ["seller", "customers", "products", "opportunities"];
+
 async function initAuthGate() {
   const context = await authFetch("/api/auth/me").catch(() => ({ authenticated: false, needs_bootstrap: false, modules: [] }));
   state.auth = context;
@@ -48,14 +50,21 @@ function userPermissions() {
   return new Set(user.permissions || []);
 }
 
+function isSellerUser(user = state.auth?.user) {
+  const permissions = new Set(user?.permissions || []);
+  return user?.role === "seller" || permissions.has("seller");
+}
+
 function canAccessView(view) {
   if (!state.auth?.authenticated) return true;
+  if (view === "seller") return ["seller", "customers", "products", "opportunities"].some((key) => userPermissions().has(key));
   if (view === "services") return userPermissions().has("customers");
   return userPermissions().has(view);
 }
 
 function viewOrder() {
-  return ["dashboard", "whatsapp", "quotes", "stock", "products", "customers", "opportunities", "suppliers", "pricing", "actions", "implementation", "imports", "engine", "distribution", "admin"];
+  const regularViews = ["dashboard", "whatsapp", "quotes", "stock", "products", "customers", "opportunities", "suppliers", "pricing", "actions", "implementation", "imports", "engine", "distribution", "admin"];
+  return isSellerUser() ? ["seller", ...regularViews] : [...regularViews, "seller"];
 }
 
 function allowedViews() {
@@ -73,6 +82,8 @@ function firstAllowedView() {
 function applyAuthContext(context) {
   state.auth = context;
   document.body.classList.remove("auth-locked");
+  document.body.classList.toggle("dev-auth-bypass", Boolean(context.dev_auth_bypass));
+  document.body.classList.toggle("seller-user", isSellerUser(context.user));
   const gate = document.querySelector("#authGate");
   if (gate) gate.hidden = true;
   document.querySelectorAll(".nav-item").forEach((button) => {
@@ -81,8 +92,9 @@ function applyAuthContext(context) {
   document.body.classList.toggle("single-module-user", isSingleModuleUser());
   const whatsappFloat = document.querySelector("#whatsappFloatButton");
   if (whatsappFloat) whatsappFloat.hidden = !canAccessView("whatsapp") || isSingleModuleUser();
+  const currentView = viewFromLocation();
   const importButton = document.querySelector("#topbarImportButton");
-  if (importButton) importButton.hidden = !canAccessView("imports");
+  if (importButton) importButton.hidden = !canAccessView("imports") || currentView !== "dashboard";
   renderUserMenu();
 }
 
@@ -98,9 +110,10 @@ function renderUserMenu() {
   menu.id = "userMenu";
   menu.className = "user-menu";
   menu.hidden = false;
+  const devBypass = Boolean(state.auth?.dev_auth_bypass || user?.dev_auth_bypass);
   menu.innerHTML = `
-    <span>${escapeHtml(user?.name || "Usuário")}</span>
-    <button class="secondary-button compact" type="button" id="logoutButton" title="Sair" aria-label="Sair">
+    <span>${escapeHtml(devBypass ? "Dev sem login" : user?.name || "Usuário")}</span>
+    <button class="secondary-button compact" type="button" id="logoutButton" title="Sair" aria-label="Sair"${devBypass ? " hidden" : ""}>
       <i data-lucide="log-out"></i>
     </button>
   `;
@@ -127,6 +140,13 @@ function settingsCard({ icon, title, body, action, target }) {
 function openSettingsModal(options = {}) {
   const cards = [
     settingsCard({
+      target: "dashboard",
+      icon: "layout-dashboard",
+      title: "Painel inicial",
+      body: "Blocos, visibilidade e composição salvos para o usuário atual.",
+      action: "Personalizar",
+    }),
+    settingsCard({
       target: "company",
       icon: "building-2",
       title: "Empresa",
@@ -139,6 +159,13 @@ function openSettingsModal(options = {}) {
       title: "Usuários e permissões",
       body: "Acessos, senhas, módulos liberados e administradores da empresa.",
       action: "Gerenciar",
+    }) : "",
+    canAccessView("distribution") ? settingsCard({
+      target: "distribution",
+      icon: "badge-check",
+      title: "Revendedor",
+      body: "Identidade do pacote, consultor aplicado, ativação e licença local.",
+      action: "Ver",
     }) : "",
     options.adminOnly ? "" :
     canAccessView("imports") ? settingsCard({
@@ -158,10 +185,10 @@ function openSettingsModal(options = {}) {
     }) : "",
   ].filter(Boolean).join("");
   openModal(
-    "Configurações",
+    "Personalização e configurações",
     `
       <section class="settings-hub">
-        <p>Itens administrativos ficam fora do dock para preservar a mesa de operação.</p>
+        <p>Ajustes do usuário, da empresa e do pacote ficam separados por papel.</p>
         <div class="settings-grid">${cards}</div>
       </section>
     `,
@@ -170,8 +197,17 @@ function openSettingsModal(options = {}) {
         const target = event.target.closest("[data-settings-target]")?.dataset.settingsTarget;
         if (!target) return;
         closeModal();
-        if (target === "company" && typeof openCompanyProfileModal === "function") openCompanyProfileModal();
+        if (target === "dashboard") {
+          if (typeof openDashboardPreferencesModal === "function") openDashboardPreferencesModal();
+          else setView("dashboard");
+          return;
+        }
+        if (target === "company" && typeof openCompanyProfileModal === "function") {
+          openCompanyProfileModal();
+          return;
+        }
         if (target === "users") setView("admin");
+        if (target === "distribution") setView("distribution");
         if (target === "imports") setView("imports");
         if (target === "implementation") setView("implementation");
       });
@@ -255,6 +291,14 @@ function initAdminPanel() {
   document.querySelector("#adminNewUser")?.addEventListener("click", () => resetAdminUserForm());
   document.querySelector("#adminCancelEdit")?.addEventListener("click", () => resetAdminUserForm());
   document.querySelector("#adminUserForm")?.addEventListener("submit", saveAdminUser);
+  document.querySelector("#adminUserIsAdmin")?.addEventListener("change", (event) => {
+    if (event.target.checked) document.querySelector("#adminUserIsSeller").checked = false;
+  });
+  document.querySelector("#adminUserIsSeller")?.addEventListener("change", (event) => {
+    if (!event.target.checked) return;
+    document.querySelector("#adminUserIsAdmin").checked = false;
+    renderPermissionGrid(SELLER_PERMISSION_KEYS);
+  });
   document.querySelector("#adminUsers")?.addEventListener("click", (event) => {
     const row = event.target.closest("[data-admin-user-id]");
     if (!row) return;
@@ -264,6 +308,12 @@ function initAdminPanel() {
   document.addEventListener("nexo:viewchange", (event) => {
     if (event.detail?.view === "admin") loadAdminUsers();
   });
+}
+
+function adminRoleLabel(role) {
+  if (role === "admin") return "Admin";
+  if (role === "seller") return "Vendedor";
+  return "Usuário";
 }
 
 async function loadAdminUsers() {
@@ -287,13 +337,13 @@ function renderAdminUsers() {
           <em>${escapeHtml(user.login_name || user.email)}</em>
         </span>
         <span class="admin-user-badges">
-          <b>${user.role === "admin" ? "Admin" : "Usuário"}</b>
+          <b>${adminRoleLabel(user.role)}</b>
           <b class="${user.active ? "" : "muted"}">${user.active ? "Ativo" : "Inativo"}</b>
         </span>
         <small>${escapeHtml(modules || "Sem módulos operacionais")}</small>
       </button>
     `;
-  }).join("") : `<div class="empty-state">Nenhum usu?rio cadastrado.</div>`;
+  }).join("") : `<div class="empty-state">Nenhum usuário cadastrado.</div>`;
   if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { "stroke-width": 2.1 } });
 }
 
@@ -318,8 +368,10 @@ function resetAdminUserForm() {
   if (!form) return;
   form.reset();
   document.querySelector("#adminUserId").value = "";
+  document.querySelector("#adminUserIsAdmin").checked = false;
+  document.querySelector("#adminUserIsSeller").checked = false;
   document.querySelector("#adminUserActive").checked = true;
-  document.querySelector("#adminUserFormTitle").textContent = "Novo usu?rio";
+  document.querySelector("#adminUserFormTitle").textContent = "Novo usuário";
   renderPermissionGrid(permissionModules().filter((item) => !["imports", "engine", "distribution"].includes(item.key)).map((item) => item.key));
   const feedback = document.querySelector("#adminUserFeedback");
   if (feedback) feedback.hidden = true;
@@ -332,8 +384,9 @@ function fillAdminUserForm(user) {
   document.querySelector("#adminUserEmail").value = user.email || "";
   document.querySelector("#adminUserPassword").value = "";
   document.querySelector("#adminUserIsAdmin").checked = user.role === "admin";
+  document.querySelector("#adminUserIsSeller").checked = user.role === "seller" || (user.permissions || []).includes("seller");
   document.querySelector("#adminUserActive").checked = Boolean(user.active);
-  document.querySelector("#adminUserFormTitle").textContent = user.name || "Editar usu?rio";
+  document.querySelector("#adminUserFormTitle").textContent = user.name || "Editar usuário";
   renderPermissionGrid(user.permissions || []);
   const feedback = document.querySelector("#adminUserFeedback");
   if (feedback) feedback.hidden = true;
@@ -363,7 +416,7 @@ async function saveAdminUser(event) {
     login_name: suggestedAdminLogin(),
     email: document.querySelector("#adminUserEmail").value.trim(),
     password: document.querySelector("#adminUserPassword").value,
-    role: document.querySelector("#adminUserIsAdmin").checked ? "admin" : "member",
+    role: document.querySelector("#adminUserIsAdmin").checked ? "admin" : document.querySelector("#adminUserIsSeller").checked ? "seller" : "member",
     active: document.querySelector("#adminUserActive").checked,
     permissions,
   };

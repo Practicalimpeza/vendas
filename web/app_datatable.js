@@ -21,6 +21,7 @@
 const DT_WINDOW = 140;
 const DT_CHUNK = 240;
 const DT_MIN_COL = 64;
+const DT_RESIZE_HIT_PX = 16;
 const DT_STORAGE_PREFIX = "nexo:dt:";
 const DT_NUMERIC_TYPES = new Set(["number", "int", "money", "percent"]);
 
@@ -102,12 +103,15 @@ function dtNormalizeColumns(columns) {
         value: col.value,
         text: col.text,
         render: col.render,
+        sortOptions: Array.isArray(col.sortOptions) ? col.sortOptions.filter((item) => item && item.id && item.label) : [],
+        minWidth: Math.max(Number(col.minWidth || 0), DT_MIN_COL),
         align: col.align || (DT_NUMERIC_TYPES.has(type) ? "num" : ""),
         sortable: col.sortable !== false,
         filterable: col.filter !== false && type !== "actions",
         searchable: col.searchable !== false && type !== "actions",
         optional: col.optional !== false,
         hidden: Boolean(col.hidden),
+        utility: Boolean(col.utility),
         emptyText: col.emptyText,
         tip: col.tip || "",
       };
@@ -135,6 +139,7 @@ function createDataTable(mount, config) {
   let renderToken = 0;
   let openMenu = null;
   let resizing = null;
+  let suppressHeaderClick = false;
 
   container.classList.add("nexo-dt");
   container.dataset.dtKey = key;
@@ -170,14 +175,14 @@ function createDataTable(mount, config) {
     } catch (error) {
       stored = {};
     }
-    const hiddenFromCols = columns.filter((col) => col.hidden).map((col) => col.id);
+    const hiddenFromCols = columns.filter((col) => col.hidden && col.optional !== false).map((col) => col.id);
     return {
       q: typeof stored.q === "string" ? stored.q : "",
       sort: Array.isArray(stored.sort) ? stored.sort.filter((item) => columnById.has(item.id)) : (config.initialSort || []),
       filters: stored.filters && typeof stored.filters === "object" ? stored.filters : {},
-      hidden: Array.isArray(stored.hidden) ? stored.hidden.filter((id) => columnById.has(id)) : hiddenFromCols,
+      hidden: Array.isArray(stored.hidden) ? stored.hidden.filter((id) => columnById.has(id) && columnById.get(id).optional !== false) : hiddenFromCols,
       order: Array.isArray(stored.order) ? sanitizeOrder(stored.order) : columns.map((col) => col.id),
-      widths: stored.widths && typeof stored.widths === "object" ? stored.widths : {},
+      widths: sanitizeWidths(stored.widths),
       density: stored.density === "compact" ? "compact" : "comfortable",
       freeze: Boolean(stored.freeze),
       mode: stored.mode === "cards" ? "cards" : "table",
@@ -195,6 +200,16 @@ function createDataTable(mount, config) {
     }
     for (const col of columns) if (!seen.has(col.id)) result.push(col.id);
     return result;
+  }
+
+  function sanitizeWidths(widths) {
+    if (!widths || typeof widths !== "object") return {};
+    const out = {};
+    for (const col of columns) {
+      const value = Number(widths[col.id] || 0);
+      if (value > 0) out[col.id] = Math.max(Math.round(value), col.minWidth || DT_MIN_COL);
+    }
+    return out;
   }
 
   function saveViewState() {
@@ -242,6 +257,7 @@ function createDataTable(mount, config) {
   function orderedColumns() {
     const pos = new Map(view.order.map((id, index) => [id, index]));
     return columns
+      .filter((col) => !col.utility)
       .slice()
       .sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : 1e9) - (pos.has(b.id) ? pos.get(b.id) : 1e9) || columns.indexOf(a) - columns.indexOf(b));
   }
@@ -329,6 +345,7 @@ function createDataTable(mount, config) {
     if (spec.kind === "text") return Boolean(spec.term);
     if (spec.kind === "range") return spec.min != null || spec.max != null;
     if (spec.kind === "set") return Array.isArray(spec.values) && spec.values.length > 0;
+    if (spec.kind === "not_empty") return true;
     return false;
   }
 
@@ -344,6 +361,7 @@ function createDataTable(mount, config) {
       return true;
     }
     if (spec.kind === "set") return spec.values.includes(facetValue(record, colId));
+    if (spec.kind === "not_empty") return Boolean(cell.text || cell.raw);
     return true;
   }
 
@@ -446,13 +464,14 @@ function createDataTable(mount, config) {
       .join("");
     const actionsCol = tableRowActions && rowActions.length ? `<col class="nexo-dt-actions-col">` : "";
     els.colgroup.innerHTML = colsHtml + actionsCol;
+    syncTableWidthFromColumns();
   }
 
   function renderHead() {
     const sortIndex = new Map(view.sort.map((item, index) => [item.id, { ...item, order: index + 1 }]));
     const ths = visibleColumns()
       .map((col) => {
-        const meta = sortIndex.get(col.id);
+        const meta = sortIndex.get(col.id) || col.sortOptions.map((item) => sortIndex.get(item.id)).find(Boolean);
         const dir = meta ? meta.dir : "";
         const hasFilter = filterIsActive(view.filters[col.id]);
         const cls = ["nexo-dt-th", col.align === "num" ? "num" : "", col.sortable ? "sortable" : "", dir ? `sort-${dir}` : "", hasFilter ? "filtered" : ""]
@@ -507,6 +526,7 @@ function createDataTable(mount, config) {
       if (spec.values.length <= 2) return spec.values.map((value) => facetLabel(col.id, value)).join(", ");
       return `${spec.values.length} selecionados`;
     }
+    if (spec.kind === "not_empty") return "preenchido";
     return "";
   }
 
@@ -659,6 +679,12 @@ function createDataTable(mount, config) {
     });
 
     els.theadRow.addEventListener("click", (event) => {
+      if (suppressHeaderClick) {
+        suppressHeaderClick = false;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (event.target.closest("[data-dt-resize]")) return;
       const caret = event.target.closest("[data-dt-colmenu]");
       const th = event.target.closest("[data-dt-col]");
@@ -736,7 +762,7 @@ function createDataTable(mount, config) {
     visibleColumns().forEach((col) => {
       if (!view.widths[col.id]) {
         const th = els.theadRow.querySelector(`th[data-dt-col="${CSS.escape(col.id)}"]`);
-        if (th) view.widths[col.id] = Math.round(th.getBoundingClientRect().width);
+        if (th) view.widths[col.id] = Math.max(Math.round(th.getBoundingClientRect().width), col.minWidth || DT_MIN_COL);
       }
     });
   }
@@ -746,44 +772,85 @@ function createDataTable(mount, config) {
       const colEl = els.colgroup.querySelector(`col[data-dt-colw="${CSS.escape(col.id)}"]`);
       if (colEl && view.widths[col.id]) colEl.style.width = `${Math.round(view.widths[col.id])}px`;
     });
+    syncTableWidthFromColumns();
+  }
+
+  function syncTableWidthFromColumns() {
+    const cols = visibleColumns();
+    if (!cols.length || !cols.every((col) => view.widths[col.id])) {
+      els.table.style.width = "";
+      els.table.style.minWidth = "";
+      return;
+    }
+    let total = cols.reduce((sum, col) => sum + Math.round(view.widths[col.id] || 0), 0);
+    if (tableRowActions && rowActions.length) {
+      const actionsCol = els.colgroup.querySelector(".nexo-dt-actions-col");
+      total += Math.round(actionsCol?.getBoundingClientRect?.().width || 52);
+    }
+    els.table.style.width = `${total}px`;
+    els.table.style.minWidth = `${total}px`;
   }
 
   function bindResize() {
-    els.theadRow.addEventListener("pointerdown", (event) => {
+    const resizeTargetFromEvent = (event) => {
       const handle = event.target.closest("[data-dt-resize]");
-      if (!handle) return;
-      const th = handle.closest("[data-dt-col]");
-      const colId = th?.dataset.dtCol;
-      if (!colId) return;
+      if (handle) {
+        const th = handle.closest("[data-dt-col]");
+        return th ? { th, colId: th.dataset.dtCol } : null;
+      }
+      if (event.target.closest("[data-dt-colmenu]")) return null;
+      const th = event.target.closest("[data-dt-col]");
+      if (!th) return null;
+      const rect = th.getBoundingClientRect();
+      const nearLeft = event.clientX - rect.left <= DT_RESIZE_HIT_PX;
+      const nearRight = rect.right - event.clientX <= DT_RESIZE_HIT_PX;
+      if (nearLeft) {
+        const prev = th.previousElementSibling?.matches?.("[data-dt-col]") ? th.previousElementSibling : null;
+        return prev ? { th: prev, colId: prev.dataset.dtCol } : null;
+      }
+      if (nearRight) return { th, colId: th.dataset.dtCol };
+      return null;
+    };
+
+    els.theadRow.addEventListener("pointerdown", (event) => {
+      const target = resizeTargetFromEvent(event);
+      if (!target?.colId) return;
+      const { th, colId } = target;
       event.preventDefault();
       event.stopPropagation();
+      suppressHeaderClick = true;
       measureWidths();
       els.table.style.tableLayout = "fixed";
       applyColWidths();
       const startX = event.clientX;
       const startW = view.widths[colId] || th.getBoundingClientRect().width;
-      resizing = { colId, startX, startW };
+      resizing = { colId, pointerId: event.pointerId, startX, startW };
       els.table.classList.add("nexo-dt-resizing");
       try {
-        handle.setPointerCapture?.(event.pointerId);
+        event.target.setPointerCapture?.(event.pointerId);
       } catch (error) {
         /* pointer capture indisponível: segue sem capturar */
       }
       const onMove = (moveEvent) => {
         if (!resizing) return;
-        const next = Math.max(DT_MIN_COL, Math.round(resizing.startW + (moveEvent.clientX - resizing.startX)));
-        view.widths[colId] = next;
-        const colEl = els.colgroup.querySelector(`col[data-dt-colw="${CSS.escape(colId)}"]`);
+        if (moveEvent.pointerId !== resizing.pointerId) return;
+        moveEvent.preventDefault();
+        const col = columnById.get(resizing.colId);
+        const next = Math.max(col?.minWidth || DT_MIN_COL, Math.round(resizing.startW + (moveEvent.clientX - resizing.startX)));
+        view.widths[resizing.colId] = next;
+        const colEl = els.colgroup.querySelector(`col[data-dt-colw="${CSS.escape(resizing.colId)}"]`);
         if (colEl) colEl.style.width = `${next}px`;
+        syncTableWidthFromColumns();
       };
-      const onUp = () => {
+      const onUp = (upEvent) => {
+        if (resizing && upEvent.pointerId !== resizing.pointerId) return;
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
         resizing = null;
         els.table.classList.remove("nexo-dt-resizing");
         saveViewState();
       };
-      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointermove", onMove, { passive: false });
       document.addEventListener("pointerup", onUp);
     });
   }
@@ -859,6 +926,7 @@ function createDataTable(mount, config) {
     const pop = document.createElement("div");
     pop.className = `nexo-dt-pop nexo-dt-floating ${extraClass}`.trim();
     pop.innerHTML = html;
+    pop.addEventListener("wheel", containFloatingWheel, { passive: false });
     document.body.appendChild(pop);
     positionFloating(pop, anchor);
     anchor.classList.add("active");
@@ -869,8 +937,8 @@ function createDataTable(mount, config) {
       document.addEventListener("pointerdown", onOutside, true);
       document.addEventListener("keydown", onEscape, true);
       window.addEventListener("resize", closeFloating, true);
-      els.scroll.addEventListener("scroll", closeFloating, true);
-      window.addEventListener("scroll", closeFloating, true);
+      els.scroll.addEventListener("scroll", onScrollOutside, true);
+      window.addEventListener("scroll", onScrollOutside, true);
     });
   }
 
@@ -894,14 +962,36 @@ function createDataTable(mount, config) {
     document.removeEventListener("pointerdown", onOutside, true);
     document.removeEventListener("keydown", onEscape, true);
     window.removeEventListener("resize", closeFloating, true);
-    els.scroll.removeEventListener("scroll", closeFloating, true);
-    window.removeEventListener("scroll", closeFloating, true);
+    els.scroll.removeEventListener("scroll", onScrollOutside, true);
+    window.removeEventListener("scroll", onScrollOutside, true);
   }
 
   function onOutside(event) {
     if (!openMenu) return;
     if (openMenu.pop.contains(event.target) || openMenu.anchor.contains(event.target)) return;
     closeFloating();
+  }
+
+  function onScrollOutside(event) {
+    if (!openMenu) return;
+    if (openMenu.kind === "columns") return;
+    if (openMenu.pop.contains(event.target) || openMenu.anchor.contains(event.target)) return;
+    closeFloating();
+  }
+
+  function containFloatingWheel(event) {
+    if (!openMenu?.pop?.contains(event.target)) return;
+    const scroller = event.target.closest?.(".nexo-dt-pop-body") || openMenu.pop.querySelector(".nexo-dt-pop-body") || openMenu.pop;
+    event.stopPropagation();
+    if (!scroller || scroller.scrollHeight <= scroller.clientHeight) {
+      event.preventDefault();
+      return;
+    }
+    const atTop = scroller.scrollTop <= 0;
+    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+    if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+      event.preventDefault();
+    }
   }
 
   function onEscape(event) {
@@ -936,6 +1026,17 @@ function createDataTable(mount, config) {
 
   function columnMenuHtml(col) {
     const sortEntry = view.sort.find((item) => item.id === col.id);
+    const optionSortEntry = col.sortOptions.map((item) => view.sort.find((sort) => sort.id === item.id)).find(Boolean);
+    const sortOptionsBlock = col.sortOptions.length
+      ? `<div class="nexo-dt-menu-filter"><div class="nexo-dt-menu-label">Ordenar por</div><div class="nexo-dt-menu-sort">
+          ${col.sortOptions.map((item) => {
+            const entry = view.sort.find((sort) => sort.id === item.id);
+            const dir = item.dir || "desc";
+            const active = entry ? ` active sort-${escapeAttr(entry.dir)}` : "";
+            return `<button type="button" data-dt-sort-option="${escapeAttr(item.id)}" data-dt-sort-option-dir="${escapeAttr(dir)}" class="${active.trim()}"><i data-lucide="${escapeAttr(item.icon || (dir === "asc" ? "arrow-up-narrow-wide" : "arrow-down-wide-narrow"))}"></i>${escapeHtml(item.label)}</button>`;
+          }).join("")}
+        </div></div>`
+      : "";
     const sortBlock = col.sortable
       ? `<div class="nexo-dt-menu-sort">
           <button type="button" data-dt-sort="asc" class="${sortEntry?.dir === "asc" ? "active" : ""}"><i data-lucide="arrow-up-narrow-wide"></i>Crescente</button>
@@ -945,13 +1046,22 @@ function createDataTable(mount, config) {
     const filterBlock = col.filterable
       ? `<div class="nexo-dt-menu-filter"><div class="nexo-dt-menu-label">Filtrar</div>${filterControlHtml(col, view.filters[col.id])}</div>`
       : "";
-    const clear = filterIsActive(view.filters[col.id]) || sortEntry
+    const clear = filterIsActive(view.filters[col.id]) || sortEntry || optionSortEntry
       ? `<div class="nexo-dt-menu-foot"><button type="button" data-dt-col-clear class="nexo-dt-pop-clear">Limpar coluna</button></div>`
       : "";
-    return `<div class="nexo-dt-menu-head">${escapeHtml(col.label)}</div>${sortBlock}${filterBlock}${clear}`;
+    return `<div class="nexo-dt-menu-head">${escapeHtml(col.label)}</div>${sortOptionsBlock}${sortBlock}${filterBlock}${clear}`;
   }
 
   function bindColumnMenu(pop, col) {
+    pop.querySelectorAll("[data-dt-sort-option]").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.dtSortOption;
+        const dir = btn.dataset.dtSortOptionDir || "desc";
+        const current = view.sort.find((item) => item.id === id)?.dir;
+        setSort(id, current === dir ? "" : dir);
+        closeFloating();
+      }),
+    );
     pop.querySelectorAll("[data-dt-sort]").forEach((btn) =>
       btn.addEventListener("click", () => {
         const dir = btn.dataset.dtSort;
@@ -962,8 +1072,9 @@ function createDataTable(mount, config) {
     );
     bindFilterControl(pop, col);
     pop.querySelector("[data-dt-col-clear]")?.addEventListener("click", () => {
+      const optionIds = new Set([col.id, ...col.sortOptions.map((item) => item.id)]);
       delete view.filters[col.id];
-      view.sort = view.sort.filter((item) => item.id !== col.id);
+      view.sort = view.sort.filter((item) => !optionIds.has(item.id));
       saveViewState();
       apply();
       closeFloating();
@@ -1307,6 +1418,9 @@ function createDataTable(mount, config) {
     applyView,
     getRows: () => filtered.map((record) => record.row),
     getState: () => ({ ...view }),
+    openColumns: (anchor = els.columnsBtn) => {
+      toggleToolbarMenu("columns", anchor || els.columnsBtn);
+    },
     destroy: () => {
       closeFloating();
       container.innerHTML = "";

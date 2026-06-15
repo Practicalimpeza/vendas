@@ -21,6 +21,8 @@ PRODUCT_LEGACY_IDENTIFIER_CLEANUP_MIGRATION_ID = "20260522_product_legacy_identi
 OPERATIONAL_DATA_SOURCES_MIGRATION_ID = "20260522_operational_data_sources"
 CORRUPT_PRODUCT_CODE_QUARANTINE_MIGRATION_ID = "20260522_corrupt_product_code_quarantine"
 PRODUCT_COVERAGE_AUTO_DEFAULT_MIGRATION_ID = "20260522_product_coverage_auto_default"
+CUSTOMER_CATALOG_MIGRATION_ID = "20260610_customer_catalog"
+CUSTOMER_CRM_PROFILE_MIGRATION_ID = "20260611_customer_crm_profile"
 
 
 def ensure_schema_migrations_table(conn: sqlite3.Connection) -> None:
@@ -708,6 +710,136 @@ def _neutralize_auto_target_coverage_days(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_customer_catalog_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS product_media (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL REFERENCES organizations(id),
+            product_id TEXT NOT NULL REFERENCES products(id),
+            media_type TEXT NOT NULL DEFAULT 'image',
+            public_path TEXT NOT NULL,
+            alt_text TEXT DEFAULT '',
+            is_primary INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            source_kind TEXT NOT NULL DEFAULT 'upload',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (organization_id, product_id, public_path)
+        );
+
+        CREATE TABLE IF NOT EXISTS customer_catalogs (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL REFERENCES organizations(id),
+            customer_id TEXT NOT NULL REFERENCES customers(id),
+            customer_canonical_name TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL DEFAULT 'Catalogo do cliente',
+            status TEXT NOT NULL DEFAULT 'draft',
+            owner_user_id TEXT DEFAULT '',
+            owner_name TEXT DEFAULT '',
+            valid_from TEXT DEFAULT '',
+            valid_until TEXT DEFAULT '',
+            review_at TEXT DEFAULT '',
+            public_notes TEXT DEFAULT '',
+            internal_notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (organization_id, customer_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS customer_catalog_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL REFERENCES organizations(id),
+            catalog_id TEXT NOT NULL REFERENCES customer_catalogs(id),
+            customer_id TEXT NOT NULL REFERENCES customers(id),
+            product_id TEXT NOT NULL REFERENCES products(id),
+            product_name_snapshot TEXT NOT NULL DEFAULT '',
+            source_code_snapshot TEXT NOT NULL DEFAULT '',
+            unit_snapshot TEXT NOT NULL DEFAULT '',
+            negotiated_price NUMERIC,
+            discount_pct NUMERIC,
+            minimum_quantity NUMERIC NOT NULL DEFAULT 0,
+            package_size NUMERIC NOT NULL DEFAULT 1,
+            valid_from TEXT DEFAULT '',
+            valid_until TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'draft',
+            origin TEXT NOT NULL DEFAULT 'manual',
+            public_notes TEXT DEFAULT '',
+            internal_notes TEXT DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (catalog_id, product_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS customer_catalog_events (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL REFERENCES organizations(id),
+            catalog_id TEXT NOT NULL REFERENCES customer_catalogs(id),
+            item_id INTEGER,
+            customer_id TEXT NOT NULL REFERENCES customers(id),
+            event_type TEXT NOT NULL,
+            actor_user_id TEXT DEFAULT '',
+            actor_name TEXT DEFAULT '',
+            note TEXT DEFAULT '',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_product_media_product ON product_media(organization_id, product_id, is_primary, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_customer_catalogs_customer ON customer_catalogs(organization_id, customer_id, status);
+        CREATE INDEX IF NOT EXISTS idx_customer_catalog_items_catalog ON customer_catalog_items(catalog_id, status, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_customer_catalog_items_product ON customer_catalog_items(organization_id, product_id, status);
+        CREATE INDEX IF NOT EXISTS idx_customer_catalog_events_catalog ON customer_catalog_events(catalog_id, created_at);
+        """
+    )
+
+
+def _ensure_customer_crm_profile_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS customer_crm_profiles (
+            organization_id TEXT NOT NULL REFERENCES organizations(id),
+            customer_id TEXT NOT NULL REFERENCES customers(id),
+            customer_canonical_name TEXT NOT NULL DEFAULT '',
+            owner_user_id TEXT DEFAULT '',
+            owner_name TEXT DEFAULT '',
+            commercial_status TEXT NOT NULL DEFAULT 'follow_up',
+            priority TEXT NOT NULL DEFAULT 'normal',
+            next_action TEXT DEFAULT '',
+            next_action_at TEXT DEFAULT '',
+            internal_notes TEXT DEFAULT '',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (organization_id, customer_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS customer_actions (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL REFERENCES organizations(id),
+            customer_id TEXT NOT NULL REFERENCES customers(id),
+            customer_canonical_name TEXT NOT NULL DEFAULT '',
+            action_type TEXT NOT NULL DEFAULT 'follow_up',
+            title TEXT NOT NULL DEFAULT '',
+            due_at TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'open',
+            priority TEXT NOT NULL DEFAULT 'normal',
+            owner_user_id TEXT DEFAULT '',
+            owner_name TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            completed_at TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_customer_crm_profiles_status ON customer_crm_profiles(organization_id, commercial_status, priority, next_action_at);
+        CREATE INDEX IF NOT EXISTS idx_customer_actions_customer ON customer_actions(organization_id, customer_id, status, due_at);
+        CREATE INDEX IF NOT EXISTS idx_customer_actions_due ON customer_actions(organization_id, status, due_at, priority);
+        """
+    )
+
+
 def _product_tables(conn: sqlite3.Connection) -> list[str]:
     tables = [
         row["name"]
@@ -1236,5 +1368,17 @@ def ensure_schema_upgrades(conn: sqlite3.Connection) -> None:
         conn,
         PRODUCT_COVERAGE_AUTO_DEFAULT_MIGRATION_ID,
         "Dias de cobertura automaticos neutralizados; horizonte passa a ser calculado pelo motor.",
+    )
+    _ensure_customer_catalog_schema(conn)
+    record_schema_migration(
+        conn,
+        CUSTOMER_CATALOG_MIGRATION_ID,
+        "Cria catalogo negociado por cliente, itens, eventos e midias de produto.",
+    )
+    _ensure_customer_crm_profile_schema(conn)
+    record_schema_migration(
+        conn,
+        CUSTOMER_CRM_PROFILE_MIGRATION_ID,
+        "Cria perfil CRM manual do cliente e trilho inicial de acoes comerciais.",
     )
     conn.commit()

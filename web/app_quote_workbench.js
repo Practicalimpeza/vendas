@@ -12,7 +12,6 @@ function quoteWorkbenchPanel(workbench) {
   const minimum = Number(supplier.minimum_order_value || 0);
   const value = Number(quoteTotals.estimated || totals.estimated_value_in_quote || 0);
   const items = Number(quoteTotals.itemCount || totals.items_in_quote || 0);
-  const alerts = Number(totals.alerts_count || 0);
   const cycleDays = Number(formation.days_to_order || 0);
   const missing = Math.max(0, minimum - value);
   const pctRaw = minimum > 0 ? (value / minimum) * 100 : (value > 0 ? 100 : 0);
@@ -26,47 +25,40 @@ function quoteWorkbenchPanel(workbench) {
   const canDiscardQuote = (currentQuote?.status || "") === "draft";
   const metaParts = [
     statusLabel,
-    `janela ${number(workbench?.window_days || state.quoteWindowDays)}d`,
     supplier.contact_name || "",
     supplier.contact_phone || "",
   ].filter(Boolean);
   return `
-    <section class="quote-workbench-panel ${escapeAttr(next.tone)}">
-      <div class="quote-workbench-topline">
-        <div class="quote-workbench-main">
-          <button class="qback" type="button" data-quote-step="supplier" aria-label="Voltar para fornecedores">&larr; Fornecedores</button>
-          <div class="quote-workbench-title">
-            <span>Fornecedor selecionado</span>
-            <h2>${escapeHtml(supplier.name || "Fornecedor")}</h2>
-            <div class="quote-workbench-meta">
-              ${metaParts.map((part) => `<em>${escapeHtml(part)}</em>`).join("")}
-            </div>
+    <section class="quote-workbench-panel composer ${escapeAttr(next.tone)}">
+      <div class="quote-workbench-compact">
+        <button class="qback" type="button" data-quote-step="supplier" aria-label="Voltar para fornecedores">&larr; Fornecedores</button>
+        <div class="quote-workbench-title">
+          <span>Fornecedor</span>
+          <h2>${escapeHtml(supplier.name || "Fornecedor")}</h2>
+          <div class="quote-workbench-meta">${metaParts.map((part) => `<em>${escapeHtml(part)}</em>`).join("")}</div>
+        </div>
+        <div class="quote-order-composer" aria-label="Pedido em montagem">
+          <div class="quote-order-items">
+            <span>Itens</span>
+            <strong>${number(items)}</strong>
+            <em>${number(quoteTotals.units || 0)} un. · ${number(customization.boxes || 0)} cx</em>
+          </div>
+          <div class="quote-order-total">
+            <span>Total</span>
+            <strong>${money(value)}</strong>
+            <em>pedido atual</em>
+          </div>
+          <div class="quote-order-minimum">
+            <span>Formação do pedido</span>
+            <strong class="${missing > 0 ? "warn" : "ok"}">${minimum > 0 ? money(minimum) : "-"}</strong>
+            <i class="quote-minimum-bar" aria-hidden="true"><b style="width:${pct}%"></b></i>
+            <em>${escapeHtml(minText)}${cycleDays > 0 && missing > 0 ? ` · ${number(cycleDays)}d` : ""}</em>
           </div>
         </div>
-
-        <div class="quote-workbench-actions">
-          ${canDiscardQuote ? `<button class="secondary-button" type="button" data-quote-command="discard">Descartar</button>` : ""}
-          <button class="action-button" type="button" data-quote-command="${escapeAttr(next.command)}" ${next.command === "quote" && !items ? "disabled" : ""}>${escapeHtml(next.label)}</button>
-          <span class="save-state" id="quoteWorkbenchStatus" aria-live="polite"></span>
+        <div class="quote-head-actions">
+          ${canDiscardQuote ? `<button class="secondary-button compact quote-head-discard" type="button" data-quote-command="discard">Descartar</button>` : ""}
+          <span class="save-state quote-head-state" id="quoteWorkbenchStatus" aria-live="polite"></span>
         </div>
-      </div>
-
-      <div class="quote-workbench-next">
-        <span>Próxima ação</span>
-        <strong>${escapeHtml(next.title)}</strong>
-        <em>${escapeHtml(next.body)}</em>
-      </div>
-
-      <div class="quote-workbench-metrics" aria-label="Resumo da cotação">
-        <div><span>Itens</span><strong>${number(items)}</strong><em>${alerts ? `${number(alerts)} alertas` : "sem alertas"}</em></div>
-        <div><span>Total</span><strong>${money(value)}</strong><em>${number(customization.boxes || 0)} caixas</em></div>
-        <div class="wide">
-          <span>Mínimo</span>
-          <strong class="${missing > 0 ? "warn" : "ok"}">${minimum > 0 ? money(minimum) : "-"}</strong>
-          <i class="quote-minimum-bar" aria-hidden="true"><b style="width:${pct}%"></b></i>
-          <em>${escapeHtml(minText)}${cycleDays > 0 && missing > 0 ? ` · ${number(cycleDays)}d para formar` : ""}</em>
-        </div>
-        <div><span>Ajustes</span><strong class="${customization.modified ? "warn" : "ok"}">${number(customization.modified || 0)}</strong><em>${number(quoteTotals.units || 0)} un.</em></div>
       </div>
     </section>
   `;
@@ -89,46 +81,46 @@ function quoteCommandState(workbench) {
   if (quoteAwaitingResponse) {
     return {
       tone: "info",
-      title: "Aguardando aprovação",
-      body: "Cotação enviada. Registre disponibilidade, quantidade confirmada, prazo ou observação quando o fornecedor responder.",
+      title: "Cotação enviada",
+      body: "Disponibilidade, quantidade confirmada, prazo e observação ficam na resposta do fornecedor.",
       command: "response",
-      label: "Registrar resposta",
+      label: "Resposta",
     };
   }
   if (quoteResponded) {
     return {
       tone: "good",
       title: "Resposta registrada",
-      body: "Gere o pedido apenas com os itens confirmados para projetar estoque.",
+      body: "Itens confirmados disponíveis para formar o pedido e projetar estoque.",
       command: "confirm",
-      label: "Gerar pedido",
+      label: "Pedido",
     };
   }
   if (currentQuote?.status === "draft" && totals.itemCount && !(minimum > 0 && missing > 0)) {
     return {
       tone: "info",
-      title: "Pronto para enviar",
-      body: `${number(totals.itemCount)} item(ns) no rascunho. Ao enviar, a lista fica aguardando resposta do fornecedor.`,
+      title: "Rascunho de cotação",
+      body: `${number(totals.itemCount)} item(ns) no rascunho, ${money(totals.estimated)} sem impostos.`,
       command: "quote",
-      label: "Revisar cotação",
+      label: "Cotação",
     };
   }
   if (!totals.itemCount && suggestedTotal) {
     return {
       tone: "warn",
-      title: "Montar cotação sugerida",
-      body: `${number(suggestedTotal)} item(ns) com sugestão de compra.`,
+      title: "Sugestões disponíveis",
+      body: `${number(suggestedTotal)} item(ns) com referência calculada nesta janela.`,
       command: "restore",
-      label: "Incluir sugeridos",
+      label: "Sugestões",
     };
   }
   if (alertsIncluded) {
     return {
       tone: "danger",
-      title: "Resolver alertas",
-      body: `${number(alertsIncluded)} item(ns) incluídos precisam de decisão.`,
+      title: "Sinais nos itens incluídos",
+      body: `${number(alertsIncluded)} item(ns) incluídos têm sinal operacional.`,
       command: "alerts",
-      label: "Ver alertas",
+      label: "Sinais",
     };
   }
   if (minimum > 0 && missing > 0) {
@@ -136,27 +128,27 @@ function quoteCommandState(workbench) {
     const candidateReview = formation.strategy === "candidate_review";
     return {
       tone: "warn",
-      title: longCycle ? "Ciclo de compra difícil" : candidateReview ? "Formar pedido com critério" : "Abaixo do mínimo",
-      body: formation.reason || `Faltam ${money(missing)} para fechar melhor com ${escapeHtml(supplier.name || "fornecedor")}.`,
+      title: longCycle ? "Ciclo longo" : candidateReview ? "Mínimo com candidatos" : "Abaixo do mínimo",
+      body: formation.reason || `Faltam ${money(missing)} para o pedido mínimo de ${escapeHtml(supplier.name || "fornecedor")}.`,
       command: suggestedPending ? "suggested" : basketPending ? "formation" : "formation",
-      label: suggestedPending ? "Ver essenciais" : basketPending ? "Ver cesta" : longCycle || candidateReview ? "Ver formação" : "Ver resumo",
+      label: suggestedPending ? "Sugestões" : basketPending ? "Cesta" : "Mínimo",
     };
   }
   if (totals.itemCount) {
     return {
       tone: "good",
-      title: "Cotação pronta",
+      title: "Itens na cotação",
       body: `${number(totals.itemCount)} item(ns), ${money(totals.estimated)} sem impostos.`,
       command: "quote",
-      label: "Revisar cotação",
+      label: "Cotação",
     };
   }
   return {
     tone: "muted",
-    title: "Sem compra sugerida",
-    body: "Fornecedor sem itens claros para cotar nesta janela.",
+    title: "Sem valor na janela",
+    body: "Fornecedor sem itens com valor calculado nesta leitura.",
     command: "suggested",
-    label: "Ver produtos",
+    label: "Produtos",
   };
 }
 
@@ -324,7 +316,7 @@ function selectedQuoteRows() {
 }
 
 function quoteOrderUnitCost(row) {
-  return Number(row?.cost_no_tax || 0);
+  return Number(row?.cost_no_tax || row?.unit_cost || row?.cost_with_tax || 0);
 }
 
 function quoteItemUpsertPayload(row, quantity, supplierId = state.selectedQuoteSupplierId) {
@@ -363,6 +355,25 @@ function quotePackageUnitLabel(unit) {
     SC: "saco",
     UN: "un",
   }[normalized] || normalized.toLowerCase();
+}
+
+function quotePackageDisplayLabel(unit, hasPackage = false) {
+  const label = quotePackageUnitLabel(unit);
+  return hasPackage && label === "un" ? "cx" : label;
+}
+
+function quoteCoverageFromQuantity(row, quantity) {
+  const daily = Number(row?.forecast_daily_demand || row?.avg_daily_window || 0);
+  if (daily <= 0) return null;
+  const stock = Number(row?.stock_units || 0);
+  const openOrder = Number(row?.open_order_quantity || 0);
+  return (stock + openOrder + Number(quantity || 0)) / daily;
+}
+
+function quoteCoverageText(days) {
+  return days === null || days === undefined || !Number.isFinite(Number(days))
+    ? "sem giro"
+    : quoteCoverageDaysLabel(Number(days));
 }
 
 function quoteCustomizationSummary(items = selectedQuoteRows()) {
@@ -485,6 +496,16 @@ function quoteRowSuggestedQuantity(row) {
   return Number(row.suggested_quantity || row.recommended_quote_quantity || row.technical_quantity || row.rounded_need || 0);
 }
 
+function quoteSuggestionBasis(row) {
+  const suggested = Number(row.suggested_quantity || 0);
+  const basket = Number(row.recommended_quote_quantity || 0);
+  const technical = Number(row.technical_quantity || row.rounded_need || 0);
+  if (suggested > 0) return { quantity: suggested, label: "sug.", tone: "", source: "Sugestao calculada" };
+  if (basket > 0) return { quantity: basket, label: "cesta", tone: "basket", source: "Cesta para minimo" };
+  if (technical > 0) return { quantity: technical, label: "ref.", tone: "muted", source: "Quantidade tecnica de referencia" };
+  return { quantity: 0, label: "", tone: "muted", source: "Sem sugestao" };
+}
+
 function quoteRowDisplayQuantity(row) {
   return row.in_quote ? Number(row.quote_quantity || 0) : quoteRowSuggestedQuantity(row);
 }
@@ -513,7 +534,7 @@ function quoteExplainTitle(row) {
   const math = quoteSuggestionMath(row);
   const daily = Number(row.forecast_daily_demand || 0);
   const parts = [
-    row.purchase_decision_label ? `Decisão: ${row.purchase_decision_label}` : "",
+    row.purchase_decision_label ? `Leitura: ${row.purchase_decision_label}` : "",
     daily > 0 ? `Demanda usada: ${number(daily)} un/dia (${row.demand_quantile_used || "quantil"})` : "",
     row.lead_time_days ? `Prazo: ${number(row.lead_time_days)}d` : "",
     row.review_cycle_days ? `Ciclo: ${number(row.review_cycle_days)}d` : "",
@@ -663,9 +684,7 @@ function quoteLiveSummaryMarkup() {
     : "sem mínimo";
   return `
     <span><strong>${number(visible.length)}</strong> visíveis</span>
-    <span><strong>${money(visibleMetrics.value)}</strong> valor filtrado</span>
-    <span><strong>${number(visibleMetrics.units)}</strong> un. filtradas</span>
-    <span><strong>${number(totals.itemCount)}</strong> na cotação</span>
+    <span><strong>${money(visibleMetrics.value)}</strong></span>
     <span class="${missing > 0 ? "warn" : ""}">${minimumText}</span>
   `;
 }
@@ -710,7 +729,7 @@ function updateQuoteAssemblyOverview() {
 function captureQuoteScrollState() {
   const detail = document.querySelector("#quoteDetail");
   if (!detail || detail.classList.contains("hidden")) return null;
-  const wrap = detail.querySelector(".quote-items-wrap");
+  const wrap = detail.querySelector(".quote-items-wrap, #quoteItemsTable .nexo-dt-scroll");
   const rows = Array.from(detail.querySelectorAll(".qrow"));
   const topRow = rows.find((row) => row.getBoundingClientRect().bottom > 96);
   return {
@@ -727,7 +746,7 @@ function restoreQuoteScrollState(scrollState) {
   if (!scrollState) return;
   const restore = () => {
     const detail = document.querySelector("#quoteDetail");
-    const wrap = detail?.querySelector(".quote-items-wrap");
+    const wrap = detail?.querySelector(".quote-items-wrap, #quoteItemsTable .nexo-dt-scroll");
     if (wrap) {
       wrap.scrollTop = scrollState.wrapTop || 0;
       wrap.scrollLeft = scrollState.wrapLeft || 0;
@@ -745,6 +764,53 @@ function restoreQuoteScrollState(scrollState) {
   window.requestAnimationFrame(() => window.requestAnimationFrame(restore));
 }
 
+const QUOTE_WORKBENCH_SESSION_KEY = "nexo:quote-workbench:open";
+
+function rememberOpenQuoteWorkbench(supplierId = state.selectedQuoteSupplierId) {
+  if (!supplierId) return;
+  try {
+    sessionStorage.setItem(QUOTE_WORKBENCH_SESSION_KEY, JSON.stringify({
+      supplierId,
+      windowDays: state.quoteWindowDays || "90",
+      step: state.quoteStep === "review" ? "review" : "assembly",
+    }));
+  } catch (error) {
+    /* sessão indisponível: a mesa só não será restaurada no refresh */
+  }
+}
+
+function clearOpenQuoteWorkbench() {
+  try {
+    sessionStorage.removeItem(QUOTE_WORKBENCH_SESSION_KEY);
+  } catch (error) {
+    /* sessão indisponível */
+  }
+}
+
+async function restoreOpenQuoteWorkbench() {
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(QUOTE_WORKBENCH_SESSION_KEY) || "null");
+  } catch (error) {
+    saved = null;
+  }
+  const supplierId = saved?.supplierId || "";
+  if (!supplierId) return false;
+  const exists = (state.quoteSuppliers || []).some((row) => row.supplier_id === supplierId);
+  if (!exists) {
+    clearOpenQuoteWorkbench();
+    return false;
+  }
+  if (saved.windowDays) {
+    state.quoteWindowDays = String(saved.windowDays);
+    const field = document.querySelector("#quoteWindowDays");
+    if (field) field.value = state.quoteWindowDays;
+  }
+  state.quoteStep = saved.step === "review" ? "review" : "supplier";
+  await loadQuoteSupplierWorkbench(supplierId, { restore: true });
+  return true;
+}
+
 function setQuoteStep(step) {
   const hasSupplier = Boolean(state.selectedQuoteSupplierId && (state.quoteWorkbench || state.quoteWorkbenchLoadingSupplierId));
   if (step !== "supplier" && !hasSupplier) step = "supplier";
@@ -753,6 +819,8 @@ function setQuoteStep(step) {
   if (step !== "supplier" && step !== "assembly" && step !== "review") step = "assembly";
   if (step === "review" && !quoteSelectedTotals().itemCount) step = "assembly";
   state.quoteStep = step;
+  if (state.quoteStep === "supplier") clearOpenQuoteWorkbench();
+  else rememberOpenQuoteWorkbench();
   updateQuoteFlow();
 }
 
@@ -903,7 +971,7 @@ function renderQuoteFinal() {
     const deltaClass = Math.abs(delta) > 0.0001 ? delta > 0 ? "up" : "down" : "";
     const purchaseUnit = row.purchase_unit || row.unit || "UN";
     const packageSize = Number(row.purchase_package_size || row.package_size || 1) || 1;
-    const packageUnitLabel = quotePackageUnitLabel(purchaseUnit);
+    const packageUnitLabel = quotePackageDisplayLabel(purchaseUnit, packageSize > 1);
     const orderQtyLabel = packageSize > 1
       ? `${number(quantity / packageSize)} ${packageUnitLabel}`
       : `${number(quantity)} ${purchaseUnit}`;
@@ -997,7 +1065,7 @@ function quoteDaysLabel(value, fallback = "-") {
 function quoteCoverageDaysLabel(value, fallback = "-") {
   const days = Number(value);
   if (!Number.isFinite(days)) return fallback;
-  if (days < 0) return "ruptura";
+  if (days < 0) return "0d";
   return `${number(days)}d`;
 }
 
@@ -1084,11 +1152,11 @@ function quoteWorkbenchGroups() {
   return [
     { key: "included", title: "Cotação em montagem", detail: "Itens que já entram na cotação.", tone: "good" },
     { key: "stockout", title: "Ruptura e urgência", detail: "Onde pode faltar produto ou já existe demanda sem estoque.", tone: "danger" },
-    { key: "formation", title: "Cesta para mínimo", detail: "Itens escolhidos ou candidatos para completar o fornecedor sem excesso ruim.", tone: "warn" },
-    { key: "package", title: "Caixa pesada", detail: "Embalagem ou ciclo podem gerar excesso.", tone: "warn" },
-    { key: "open_order", title: "Pedido aberto", detail: "Itens que pedem conferencia antes de duplicar compra.", tone: "info" },
-    { key: "suggested", title: "Compra sugerida", detail: "Itens prontos para revisar e cotar.", tone: "good" },
-    { key: "wait", title: "Aguardar ou observar", detail: "Itens sem ação clara nesta janela.", tone: "muted" },
+    { key: "formation", title: "Cesta para mínimo", detail: "Itens candidatos para compor valor do fornecedor.", tone: "warn" },
+    { key: "package", title: "Caixa sensível", detail: "Embalagem ou ciclo podem gerar excesso.", tone: "warn" },
+    { key: "open_order", title: "Pedido aberto", detail: "Itens com pedido já registrado.", tone: "info" },
+    { key: "suggested", title: "Referência calculada", detail: "Itens com quantidade de referência nesta janela.", tone: "good" },
+    { key: "wait", title: "Sem sugestão", detail: "Itens sem quantidade calculada nesta janela.", tone: "muted" },
     { key: "outmix", title: "Fora do mix", detail: "Produtos descontinuados, bloqueados ou fora do mix atual.", tone: "muted" },
   ];
 }
@@ -1096,7 +1164,7 @@ function quoteWorkbenchGroups() {
 function quoteGroupHeader(group, count) {
   return `
     <tr class="qgroup qgroup-${escapeAttr(group.tone)}">
-      <td colspan="9">
+      <td colspan="8">
         <div>
           <strong>${escapeHtml(group.title)}</strong>
           <span>${escapeHtml(group.detail)}</span>
@@ -1107,12 +1175,7 @@ function quoteGroupHeader(group, count) {
   `;
 }
 
-function quoteProductRowsFlat(rows) {
-  if (!rows.length) {
-    return `<tr><td colspan="9" class="empty-cell">Nenhum item no filtro atual.</td></tr>`;
-  }
-  return rows
-    .map((row) => {
+function quoteRowCells(row) {
       const inQuote = Boolean(row.in_quote);
       const quantity = inQuote ? Number(row.quote_quantity || 0) : "";
       const alert = (row.alerts || []).length > 0;
@@ -1140,20 +1203,16 @@ function quoteProductRowsFlat(rows) {
       const afterPurchaseCoverage = row.after_purchase_coverage_days === null || row.after_purchase_coverage_days === undefined
         ? null
         : Number(row.after_purchase_coverage_days);
-      const suggestedBoxes = hasPackage && suggested > 0 ? Math.ceil(suggested / pkg) : 0;
-      const costNo = Number(row.cost_no_tax || 0);
-      const lineTotal = inQuote ? Number(row.quote_quantity || 0) * quoteOrderUnitCost(row) : 0;
+      const suggestionBasis = quoteSuggestionBasis(row);
+      const suggestionQuantity = Number(suggestionBasis.quantity || 0);
+      const suggestedBoxes = hasPackage && suggestionQuantity > 0 ? Math.ceil(suggestionQuantity / pkg) : 0;
+      const costNo = quoteOrderUnitCost(row);
       const quoteQty = Number(row.quote_quantity || 0);
       const quoteBoxes = hasPackage && quoteQty > 0 ? Math.ceil(quoteQty / pkg) : 0;
-      const packageUnitLabel = quotePackageUnitLabel(purchaseUnit);
+      const packageDisplayLabel = quotePackageDisplayLabel(purchaseUnit, hasPackage);
       const packageSummary = quoteBoxes
-        ? `${number(quoteBoxes)} ${packageUnitLabel} / ${number(quoteQty)} un`
-        : hasPackage ? `${packageUnitLabel} ${number(pkg)} un` : "avulso";
-      const quickActions = [
-        suggested > 0 ? `<button class="qrow-quick" type="button" data-quick="suggested">Usar sug.</button>` : "",
-        hasPackage ? `<button class="qrow-quick" type="button" data-quick="one-package">1 ${packageUnitLabel}</button>` : "",
-        inQuote ? `<button class="qrow-quick" type="button" data-quick="zero">Zerar</button>` : "",
-      ].filter(Boolean).join("");
+        ? `${number(quoteBoxes)} ${packageDisplayLabel} / ${number(quoteQty)} un`
+        : hasPackage ? `${number(pkg)} un por ${packageDisplayLabel}` : "avulso";
       const quantityDelta = suggested > 0 && inQuote ? quoteQty - suggested : 0;
       const quantityDeltaLabel = Math.abs(quantityDelta) > 0.0001
         ? `${quantityDelta > 0 ? "+" : ""}${number(quantityDelta)} vs sugestão`
@@ -1176,11 +1235,6 @@ function quoteProductRowsFlat(rows) {
       ].filter(Boolean).join(" ");
       const ref = quoteDisplayCode(row);
       const stockCls = stock <= 0 ? "danger" : (coverage !== null && coverage < 7 ? "warn" : "");
-      const coverageLine = coverage === null ? "sem giro" : `cob. ${quoteCoverageDaysLabel(coverage)}`;
-      const mixChip = `<span class="qrow-mix ${row.mix_status === "in_mix" ? "hidden" : ""}" title="${escapeAttr(mixStatusText(row.mix_status))}">${escapeHtml(mixStatusText(row.mix_status))}</span>`;
-      const showMixAction = discontinued || row.mix_status === "force_buy";
-      const mixAction = discontinuedActionFor(row);
-      const demandTone = quoteDemandTone(row);
       const demandWindows = `${number(row.demand_30 || 0)} / ${number(row.demand_90 || 0)} / ${number(row.demand_180 || 0)} un`;
       const lastSale = row.days_since_last_sale === null || row.days_since_last_sale === undefined
         ? "sem ult. venda"
@@ -1192,124 +1246,129 @@ function quoteProductRowsFlat(rows) {
         ? null
         : Number(row.projected_coverage_days);
       const projectedCoverageLine = projectedCoverage === null ? "proj. sem giro" : `proj. ${quoteCoverageDaysLabel(projectedCoverage)}`;
-      const afterCoverageLine = quoteAfterCoverageLabel(row);
       const targetLine = math.targetStock > 0 ? `${number(math.targetStock)} un` : "-";
       const formationLine = row.minimum_fill_candidate && !isAutomaticQuoteSuggestion(row)
-        ? `${row.basket_role === "fill_selected" ? "cesta recomenda" : row.minimum_fill_auto_safe ? "ajuda no mínimo" : "avaliar mínimo"}${row.minimum_fill_value ? ` ${money(row.minimum_fill_value)}` : ""}`
+        ? `${row.basket_role === "fill_selected" ? "cesta" : row.minimum_fill_auto_safe ? "mínimo" : "candidato"}${row.minimum_fill_value ? ` ${money(row.minimum_fill_value)}` : ""}`
         : "";
-      const decisionLine = row.basket_decision_label || row.purchase_decision_label || "";
       const decisionTip = row.basket_decision_reason || row.purchase_decision_reason || row.reason || "";
-      const demandClass = quoteDemandLabel(row);
-      const demandHelper = quoteDemandHelper(row);
       const packageExcess = Number(row.after_purchase_excess_units || row.package_excess_units || 0);
-      const packageLine = hasPackage
-        ? `${escapeHtml(String(purchaseUnit).toUpperCase())} ${number(pkg)} un`
-        : "avulso";
       const packageCoverageLine = packageCoverageDays > 0 ? `1 caixa cobre ${quoteCoverageDaysLabel(packageCoverageDays)}` : "sem giro";
       const stockProjectedLine = openOrder > 0
         ? `${number(projectedStock)} proj. (+${number(openOrder)})`
         : `${number(projectedStock)} proj.`;
-      const statusLine = reason.label || decisionLine || "-";
-      return `
-        <tr class="${classes}" data-product-id="${escapeAttr(row.product_id)}" data-organization-id="${escapeAttr(row.organization_id)}" data-supplier-id="${escapeAttr(state.selectedQuoteSupplierId)}" data-suggested-quantity="${escapeAttr(row.suggested_quantity)}" data-package-size="${Number(pkg || 0)}" data-product-row="true">
-          <td class="col-inc">
-            <button class="qrow-toggle ${inQuote ? "on" : ""}" type="button" aria-pressed="${inQuote ? "true" : "false"}" title="${discontinued ? "Produto descontinuado" : inQuote ? "Remover da cotação" : "Adicionar à cotação"}" ${discontinued ? "disabled" : ""}>${inQuote ? "Cotação" : "Adicionar"}</button>
-          </td>
-          <td class="col-prod">
-            <div class="qrow-name">${escapeHtml(row.name)}</div>
-            <div class="qrow-sub">
-              <span class="qrow-ref">${escapeHtml(ref)}</span>
-              ${row.abc_class ? `<span>ABC ${escapeHtml(row.abc_class)}</span>` : ""}
-              ${row.brand_name ? `<span class="qrow-brand">${escapeHtml(row.brand_name)}</span>` : ""}
-              ${mixChip}
-              <button class="qrow-mix-action ${discontinued ? "restore" : ""} ${showMixAction ? "" : "hidden"}" type="button" data-mix-decision="${escapeAttr(mixAction.decision)}" title="${escapeAttr(mixAction.title)}">${escapeHtml(mixAction.label)}</button>
-              <button class="qrow-detail" type="button">Ver dados</button>
-            </div>
-            <div class="qrow-reason-text visible" title="${escapeAttr(decisionTip || reason.tip || "")}">${escapeHtml(statusLine)}</div>
-          </td>
-          <td class="col-demand">
-            <span class="qrow-demand-main ${escapeAttr(demandTone)}">${number(forecastDaily)} un/dia</span>
-            <span class="muted-line">30/90/180: ${escapeHtml(demandWindows)}</span>
-            <span class="muted-line">${escapeHtml(demandClass)}${demandHelper ? ` · ${escapeHtml(demandHelper)}` : ""}</span>
-            <span class="muted-line">${escapeHtml(lastSale)}</span>
-          </td>
-          <td class="col-stkgiro num">
-            <span class="qrow-stock-main ${stockCls}">${number(stock)} un</span>
-            <span class="muted-line">${escapeHtml(stockProjectedLine)}</span>
-            <span class="muted-line">cob. ${escapeHtml(projectedCoverageLine)}</span>
-            ${openOrder > 0 ? `<span class="muted-line">+${number(openOrder)} já pedido</span>` : ""}
-          </td>
-          <td class="col-cycle num">
-            <strong>${horizonDays ? `${number(horizonDays)}d` : "-"}</strong>
-            <span class="muted-line">prazo ${number(leadDays)}d · ciclo ${number(cycleDays)}d</span>
-            ${afterPurchaseCoverage !== null ? `<span class="muted-line">depois ${quoteCoverageDaysLabel(afterPurchaseCoverage)}</span>` : ""}
-            ${row.product_rebuy_interval_days ? `<span class="muted-line">item ${number(row.product_rebuy_interval_days)}d</span>` : ""}
-          </td>
-          <td class="col-sug">
-            ${suggested > 0
-              ? `<button class="link-sug" type="button" title="${escapeAttr(quoteExplainTitle(row))}">${number(suggested)}</button>`
-              : basketQuantity > 0
-                ? `<button class="link-sug basket" type="button" title="${escapeAttr(quoteExplainTitle(row))}">${number(basketQuantity)}</button>`
-                : technicalQuantity > 0
-                  ? `<span class="muted" title="${escapeAttr(quoteExplainTitle(row))}">${number(technicalQuantity)}</span>`
-                  : `<span class="muted">-</span>`}
-            <span class="muted-line">nec. ${number(rawNeed)} · alvo ${escapeHtml(targetLine)}</span>
-            ${reorderPoint > 0 ? `<span class="muted-line">ponto ${number(reorderPoint)}</span>` : ""}
-            ${decisionLine ? `<span class="muted-line" title="${escapeAttr(decisionTip)}">${escapeHtml(decisionLine)}</span>` : ""}
-            ${formationLine ? `<span class="muted-line" title="${escapeAttr(row.basket_decision_reason || row.minimum_fill_reason || "")}">${escapeHtml(formationLine)}</span>` : ""}
-          </td>
-          <td class="col-box">
-            <strong>${packageLine}</strong>
-            ${suggested > 0 && hasPackage ? `<span class="muted-line">${number(suggestedBoxes)} ${packageUnitLabel}${math.roundedByPackage ? " arred." : ""}</span>` : ""}
-            <span class="muted-line">${escapeHtml(packageCoverageLine)}</span>
-            ${packageExcess > 0 ? `<span class="muted-line warn">excesso ${number(packageExcess)} un</span>` : ""}
-          </td>
-          <td class="col-qty">
-            <div class="qrow-adjust">
-              <div class="qrow-adjust-line">
-                <div class="qrow-qty ${hasPackage ? "" : "simple"}">
-                  ${hasPackage ? `<button class="qrow-step" type="button" data-step="-${pkg}" title="-1 ${packageUnitLabel} (${number(pkg)} un)">-</button>` : ""}
-                  <input class="inline-input quote-quantity-input" type="text" inputmode="decimal" value="${inputValue(quantity)}" placeholder="${escapeAttr(number(suggested))}" aria-label="Quantidade" />
-                  ${hasPackage ? `<button class="qrow-step" type="button" data-step="${pkg}" title="+1 ${packageUnitLabel} (${number(pkg)} un)">+</button>` : ""}
-                </div>
-                <div class="qrow-order-fields">
-                  <span class="qrow-unit" title="Unidade de compra">${escapeHtml(String(purchaseUnit).toUpperCase())}</span>
-                  <span class="qrow-pack">${escapeHtml(packageSummary)}</span>
-                </div>
-              </div>
-              <div class="qrow-adjust-meta">
-                ${suggested > 0 ? `<span class="qrow-delta ${inQuote ? "" : "hidden"} ${Math.abs(quantityDelta) > 0.0001 ? "changed" : ""}">${escapeHtml(quantityDeltaLabel)}</span>` : ""}
-                <span class="save-state row-save-state" aria-live="polite"></span>
-              </div>
-              ${quickActions ? `<div class="qrow-quick-actions">${quickActions}</div>` : ""}
-            </div>
-          </td>
-          <td class="col-tot num">
-            ${inQuote && lineTotal > 0 ? money(lineTotal) : `<span class="muted">-</span>`}
-            ${costNo > 0 ? `<span class="muted-line">${money(costNo)}/un</span>` : ""}
-          </td>
-        </tr>
-      `;
+      const coverageLabel = coverage === null || coverage === undefined ? "—" : quoteCoverageDaysLabel(coverage);
+      const displayAfterCoverage = inQuote
+        ? quoteCoverageFromQuantity(row, quoteQty)
+        : afterPurchaseCoverage !== null ? afterPurchaseCoverage : quoteCoverageFromQuantity(row, suggestionQuantity);
+      const valueQuantity = inQuote && quoteQty > 0 ? quoteQty : suggestionQuantity;
+      const lineTotal = valueQuantity * quoteOrderUnitCost(row);
+      const packageValue = hasPackage && costNo > 0 ? costNo * pkg : 0;
+      const positionDetail = [
+        `Estoque atual: ${number(stock)} un`,
+        `Cobertura atual: ${quoteCoverageText(coverage)}`,
+        `Estoque projetado: ${stockProjectedLine}`,
+        `Cobertura projetada: ${quoteCoverageText(projectedCoverage)}`,
+        displayAfterCoverage !== null ? `Cobertura com pedido/sugestao: ${quoteCoverageText(displayAfterCoverage)}` : "",
+        `vendas 30/90/180: ${demandWindows}`,
+        `venda historica: ${number(row.demand_total || 0)} un`,
+        `maior venda unica: ${number(row.max_single_sale || 0)} un`,
+        lastSale,
+      ].filter(Boolean).join(" | ");
+      const statusLine = reason.label || "-";
+      const suggestedDisplay = suggestionQuantity > 0
+        ? `<span class="qc-suggestion-main ${escapeAttr(suggestionBasis.tone || "")}" title="${escapeAttr(quoteExplainTitle(row))}">${number(suggestionQuantity)} un</span>`
+        : `<span class="muted">-</span>`;
+      const suggestedBoxLine = hasPackage && suggestionQuantity > 0
+        ? `${number(suggestedBoxes)} ${packageDisplayLabel}`
+        : suggestionQuantity > 0 ? "avulso" : "-";
+      const afterCoverageLine = displayAfterCoverage !== null ? quoteCoverageDaysLabel(displayAfterCoverage) : "sem giro";
+      const targetTitle = [
+        `Alvo calculado: ${targetLine}`,
+        `Horizonte do pedido: ${horizonDays ? `${number(horizonDays)} dias` : "-"}`,
+        `Cobertura pos-entrega alvo: ${row.order_horizon_receipt_coverage_days ? `${number(row.order_horizon_receipt_coverage_days)} dias` : "-"}`,
+        `Ponto de pedido: ${reorderPoint > 0 ? `${number(reorderPoint)} un` : "-"}`,
+        `Necessidade bruta: ${number(rawNeed)} un`,
+        `Estoque de seguranca: ${number(row.safety_stock || 0)} un`,
+      ].join(" | ");
+      const suggestionTitle = [
+        `${suggestionBasis.source}: ${suggestionQuantity > 0 ? `${number(suggestionQuantity)} un` : "-"}`,
+        hasPackage ? `Em caixas: ${number(suggestedBoxes)} ${packageDisplayLabel} de ${number(pkg)} un` : "Compra avulsa",
+        `Cobertura estimada depois: ${afterCoverageLine}`,
+        `Necessidade bruta: ${number(rawNeed)} un`,
+        `Quantidade tecnica: ${number(technicalQuantity)} un`,
+        packageExcess > 0 ? `Excesso da embalagem: ${number(packageExcess)} un` : "",
+        packageCoverageLine,
+      ].filter(Boolean).join(" | ");
+      const historyTitle = [
+        `Historico total: ${number(row.demand_total || 0)} un`,
+        `Ultimos 30 dias: ${number(row.demand_30 || 0)} un`,
+        `Ultimos 90 dias: ${number(row.demand_90 || 0)} un`,
+        `Ultimos 180 dias: ${number(row.demand_180 || 0)} un`,
+        `Maior venda unica: ${number(row.max_single_sale || 0)} un`,
+        `Dias com venda em 180d: ${number(row.sale_days_180 || 0)}`,
+        lastSale,
+      ].join(" | ");
+      const valueTitle = [
+        `Valor unitario: ${costNo > 0 ? money(costNo) : "-"}`,
+        hasPackage ? `Valor por ${packageDisplayLabel}: ${packageValue > 0 ? money(packageValue) : "-"}` : "Sem caixa cadastrada",
+        `Quantidade considerada: ${number(valueQuantity)} un`,
+        `Total ${inQuote ? "do pedido" : "da referencia"}: ${lineTotal > 0 ? money(lineTotal) : "-"}`,
+      ].join(" | ");
+      const packageUnitText = hasPackage
+        ? `${number(pkg)} un/${escapeHtml(packageDisplayLabel)}`
+        : "avulso";
+      const suggestedUnitText = suggested > 0 ? `sug. ${number(suggested)} un` : "";
+      const orderMeta = [
+        hasPackage ? packageUnitText : "avulso",
+        quoteBoxes ? `${number(quoteBoxes)} ${packageDisplayLabel}` : suggestedBoxes ? `${number(suggestedBoxes)} ${packageDisplayLabel} sug.` : suggestedUnitText,
+        suggested > 0 && inQuote ? quantityDeltaLabel : "",
+      ].filter(Boolean).join(" · ");
+      return {
+        rowClass: classes,
+        productId: row.product_id,
+        organizationId: row.organization_id,
+        suggested: row.suggested_quantity,
+        pkg,
+        cotando: `<button class="qrow-toggle qc-cotando ${inQuote ? "on" : ""}" type="button" aria-pressed="${inQuote ? "true" : "false"}" title="${discontinued ? "Produto descontinuado" : inQuote ? "Remover do pedido" : "Adicionar ao pedido"}" ${discontinued ? "disabled" : ""}>${inQuote ? "Sim" : "Não"}</button>`,
+        produto: `<div class="qc-prod" title="${escapeAttr(decisionTip || row.name || "")}"><strong>${escapeHtml(row.name)}</strong><span class="qc-sub qc-ref">${escapeHtml(ref)}${row.abc_class ? ` · ABC ${escapeHtml(row.abc_class)}` : ""}${row.brand_name ? ` · ${escapeHtml(row.brand_name)}` : ""}</span></div>`,
+        posicao: `<div class="qc-pos" title="${escapeAttr(positionDetail)}"><div class="qc-pos-2up"><span><b>Est</b><strong class="${stockCls}">${number(stock)}</strong><em>un</em></span><span><b>Cob</b><strong class="${stockCls}">${escapeHtml(coverageLabel)}</strong></span></div><span class="qc-pos-giro">${escapeHtml(projectedCoverageLine)}</span></div>`,
+        alvo: `<div class="qc-stack qc-target" title="${escapeAttr(targetTitle)}"><strong>${escapeHtml(targetLine)}</strong><span>${horizonDays ? `${number(horizonDays)}d` : "sem horiz."}</span><em>${reorderPoint > 0 ? `ponto ${number(reorderPoint)}` : `nec. ${number(rawNeed)}`}</em></div>`,
+        sugestao: `<div class="qc-stack qc-suggestion ${escapeAttr(suggestionBasis.tone || "")}" title="${escapeAttr(suggestionTitle)}"><strong>${suggestedDisplay}</strong><span>${escapeHtml(suggestedBoxLine)}</span><em>${escapeHtml(afterCoverageLine)}</em></div>`,
+        historico: `<div class="qc-history" title="${escapeAttr(historyTitle)}"><strong>${number(row.demand_total || 0)} un</strong><span class="qc-history-windows"><b>30d</b>${number(row.demand_30 || 0)}<b>90d</b>${number(row.demand_90 || 0)}</span><em>maior venda ${number(row.max_single_sale || 0)}</em></div>`,
+        qty: `<div class="qc-order" title="${escapeAttr(packageSummary)}"><div class="qc-order-top"><span>${escapeHtml(orderMeta || packageUnitText)}</span></div><div class="qc-qty">${hasPackage ? `<button class="qrow-step" type="button" data-step="-${pkg}" title="-1 ${packageDisplayLabel} (${number(pkg)} un)">-</button>` : ""}<input class="inline-input quote-quantity-input" type="text" inputmode="decimal" value="${inputValue(quantity)}" placeholder="${escapeAttr(number(suggestionQuantity || suggested))}" aria-label="Quantidade" />${hasPackage ? `<button class="qrow-step" type="button" data-step="${pkg}" title="+1 ${packageDisplayLabel} (${number(pkg)} un)">+</button>` : ""}<span class="save-state row-save-state" aria-live="polite"></span></div></div>`,
+        valor: `<div class="qc-stack qc-value" title="${escapeAttr(valueTitle)}"><strong>${lineTotal > 0 ? money(lineTotal) : "—"}</strong><span>${costNo > 0 ? `${money(costNo)}/un` : "sem custo"}</span><em>${packageValue > 0 ? `${money(packageValue)}/${escapeHtml(packageDisplayLabel)}` : "sem caixa"}</em></div>`,
+      };
+}
+
+let quoteRowCellsToken = 0;
+const quoteRowCellsCacheStore = new WeakMap();
+function bumpQuoteRowCells() { quoteRowCellsToken += 1; }
+function quoteRowCellsCached(row) {
+  const hit = quoteRowCellsCacheStore.get(row);
+  if (hit && hit.token === quoteRowCellsToken) return hit.cells;
+  const cells = quoteRowCells(row);
+  quoteRowCellsCacheStore.set(row, { token: quoteRowCellsToken, cells });
+  return cells;
+}
+
+function quoteProductRowsFlat(rows) {
+  if (!rows.length) {
+    return `<tr><td colspan="8" class="empty-cell">Nenhum item no filtro atual.</td></tr>`;
+  }
+  bumpQuoteRowCells();
+  return rows
+    .map((row) => {
+      const c = quoteRowCellsCached(row);
+      return `<tr class="${c.rowClass}" data-product-id="${escapeAttr(c.productId)}" data-organization-id="${escapeAttr(c.organizationId)}" data-supplier-id="${escapeAttr(state.selectedQuoteSupplierId)}" data-suggested-quantity="${escapeAttr(c.suggested)}" data-package-size="${Number(c.pkg || 0)}" data-product-row="true"><td class="qc-c-cot">${c.cotando}</td><td class="qc-c-prod">${c.produto}</td><td class="qc-c-pos">${c.posicao}</td><td class="qc-c-num">${c.alvo}</td><td class="qc-c-num">${c.sugestao}</td><td class="qc-c-pos">${c.historico}</td><td class="qc-c-qty">${c.qty}</td><td class="qc-c-num">${c.valor}</td></tr>`;
     })
     .join("");
 }
 
 function quoteProductRows(rows) {
   if (!rows.length) {
-    return `<tr><td colspan="7" class="empty-cell">Nenhum item no filtro atual.</td></tr>`;
+    return `<tr><td colspan="8" class="empty-cell">Nenhum item no filtro atual.</td></tr>`;
   }
-  if ((state.quoteWorkbenchGroup || "flat") !== "signals") return quoteProductRowsFlat(rows);
-  const groups = quoteWorkbenchGroups();
-  const byGroup = rows.reduce((acc, row) => {
-    const key = quoteWorkbenchGroupForRow(row);
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(row);
-    return acc;
-  }, {});
-  return groups
-    .filter((group) => (byGroup[group.key] || []).length)
-    .map((group) => `${quoteGroupHeader(group, byGroup[group.key].length)}${quoteProductRowsFlat(byGroup[group.key])}`)
-    .join("");
+  return quoteProductRowsFlat(rows);
 }
 
 function quoteReason(row) {
@@ -1319,10 +1378,10 @@ function quoteReason(row) {
   const inMix = row.mix_status === "in_mix";
   const buyNow = row.buy_now || row.buy_now_flag;
   if (row.mix_status === "drop" || row.mix_status === "out_of_mix") return { label: "Descontinuado", cls: "", tip: "Produto visivel, sem compra futura" };
-  if (row.mix_status === "force_buy") return { label: "Comprar +1", cls: "danger", tip: "Compra forcada manualmente" };
+  if (row.mix_status === "force_buy") return { label: "Compra manual", cls: "danger", tip: "Entrada manual do operador" };
   if (row.status === "inactive") return { label: "Inativo", cls: "danger", tip: "Produto inativo no cadastro" };
-  if (buyNow || row.force_buy) return { label: "Forcar compra", cls: "danger", tip: "Compra forcada manualmente" };
-  if (row.package_review_required) return { label: "Revisar caixa", cls: "warn", tip: "Embalagem minima fica alta para o alvo técnico" };
+  if (buyNow || row.force_buy) return { label: "Compra manual", cls: "danger", tip: "Entrada manual do operador" };
+  if (row.package_review_required) return { label: "Caixa sensível", cls: "warn", tip: "Embalagem minima fica alta para o alvo técnico" };
   if (stock <= 0 && demand > 0) return { label: "Estoque zero c/ demanda", cls: "danger", tip: "Sem estoque, com vendas na janela" };
   if (stock <= 0) return { label: "Estoque zero", cls: "warn", tip: "Sem estoque, sem demanda na janela" };
   if (suggested > 0 && !inMix) return { label: "Fora do mix c/ demanda", cls: "warn", tip: "Não está no mix, mas tem sugestão" };
@@ -1341,6 +1400,93 @@ function renderQuoteWorkbenchHead(workbench) {
   `;
 }
 
+function quoteItemColumns() {
+  return [
+    { id: "cotando", label: "Cot.", type: "number", align: "", filter: false, searchable: false,
+      minWidth: 58, optional: false,
+      value: (r) => (r.in_quote ? 1 : 0), render: (r) => quoteRowCellsCached(r).cotando },
+    { id: "produto", label: "Produto", type: "text", align: "", filter: false, searchable: false,
+      minWidth: 170, optional: false,
+      value: (r) => r.name || "", render: (r) => quoteRowCellsCached(r).produto },
+    { id: "posicao", label: "EST/COB", type: "number", align: "", filter: false, searchable: false,
+      minWidth: 90,
+      value: (r) => Number(r.stock_units || 0), render: (r) => quoteRowCellsCached(r).posicao },
+    { id: "alvo", label: "Alvo", type: "number", align: "num", filter: false, searchable: false,
+      minWidth: 82,
+      value: (r) => Number(r.order_up_to || 0), render: (r) => quoteRowCellsCached(r).alvo },
+    { id: "sugestao", label: "Sugestão", type: "number", align: "num", filter: false, searchable: false,
+      minWidth: 92,
+      value: (r) => quoteRowSuggestedQuantity(r), render: (r) => quoteRowCellsCached(r).sugestao },
+    { id: "historico", label: "Histórico", type: "number", align: "", filter: false, searchable: false,
+      minWidth: 96,
+      value: (r) => Number(r.demand_total || 0), render: (r) => quoteRowCellsCached(r).historico },
+    { id: "qty", label: "Pedido", type: "number", align: "", filter: false, searchable: false,
+      minWidth: 132,
+      value: (r) => (r.in_quote ? Number(r.quote_quantity || 0) : 0), render: (r) => quoteRowCellsCached(r).qty },
+    { id: "valor", label: "Valor", type: "money", align: "num", filter: false, searchable: false,
+      minWidth: 96,
+      value: (r) => quoteRowDisplayQuantity(r) * quoteOrderUnitCost(r), render: (r) => quoteRowCellsCached(r).valor },
+  ];
+}
+
+async function workbenchMixToggle(row) {
+  if (!row) return;
+  const decision = discontinuedActionFor(row).decision;
+  const scrollState = captureQuoteScrollState();
+  try {
+    await apiPost("/api/products/mix-decision", {
+      organization_id: row.organization_id,
+      product_id: row.product_id,
+      decision,
+    });
+    if (decision === "drop" && row.in_quote) {
+      await apiPost("/api/quote-item/upsert", quoteItemUpsertPayload(row, 0));
+    }
+    if (decision === "drop") {
+      row.mix_status = "drop"; row.marker = "out_of_mix_permanent"; row.in_quote = false; row.quote_quantity = 0; row.suggested_quantity = 0;
+    } else if (decision === "force_buy") {
+      row.mix_status = "force_buy"; row.marker = "force_one_more_purchase";
+    } else {
+      row.mix_status = "in_mix"; row.marker = "";
+    }
+    updateWorkbenchTotalsFromRows();
+    applyWorkbenchView();
+    restoreQuoteScrollState(scrollState);
+    refreshAfterSave({ replenishment: true, quotes: true, actions: true, maturity: true }, { defer: true, delay: 300, preserveQuoteScroll: true });
+  } catch (error) {
+    const status = document.querySelector("#quoteWorkbenchStatus");
+    if (status) status.textContent = error.message || "Não foi possível atualizar o mix.";
+  }
+}
+
+let quoteItemsTable = null;
+function ensureQuoteItemsTable() {
+  if (quoteItemsTable && quoteItemsTable.element && document.body.contains(quoteItemsTable.element)) return quoteItemsTable;
+  const mount = document.querySelector("#quoteItemsTable");
+  if (!mount || typeof createDataTable !== "function") return null;
+  quoteItemsTable = createDataTable(mount, {
+    key: "quote-items-8",
+    columns: quoteItemColumns(),
+    rows: [],
+    rowKey: (r) => r.product_id,
+    rowAttrs: (r) => {
+      const c = quoteRowCellsCached(r);
+      return {
+        class: c.rowClass,
+        "data-product-id": c.productId || "",
+        "data-organization-id": c.organizationId || "",
+        "data-supplier-id": state.selectedQuoteSupplierId || "",
+        "data-suggested-quantity": String(c.suggested ?? ""),
+        "data-package-size": String(Number(c.pkg || 0)),
+        "data-product-row": "true",
+      };
+    },
+    emptyTitle: "Nenhum item no filtro atual.",
+    emptyHint: "Ajuste os filtros ou a busca.",
+  });
+  return quoteItemsTable;
+}
+
 function renderQuoteDetail(workbench) {
   state.quoteWorkbench = workbench || null;
   renderQuoteWorkbenchHead(workbench);
@@ -1352,92 +1498,32 @@ function renderQuoteDetail(workbench) {
   }
   document.querySelector("#quoteDetail").className = "quote-stage-panel";
   const filter = state.quoteWorkbenchFilter || "all";
-  const filterCounts = quoteWorkbenchFilterCounts(workbench);
   const only = state.quoteWorkbenchOnly || "all";
   document.querySelector("#quoteDetail").innerHTML = `
     <div class="quote-toolbar">
-      <div class="quote-toolbar-main">
-        <div class="quote-filter-zone">
-          <span class="quote-toolbar-label">Filtros rápidos</span>
-          <div class="quote-filter-pills" role="tablist">
-          <button class="qf-pill ${filter === "all" ? "active" : ""}" type="button" data-filter="all">Todos <em>${number(filterCounts.all)}</em></button>
-          <button class="qf-pill ${filter === "included" ? "active" : ""}" type="button" data-filter="included">Cotação <em>${number(filterCounts.included)}</em></button>
-          <button class="qf-pill ${filter === "suggested" ? "active" : ""}" type="button" data-filter="suggested">Sugestão <em>${number(filterCounts.suggested)}</em></button>
-          <button class="qf-pill ${filter === "stockout" ? "active" : ""}" type="button" data-filter="stockout">Ruptura <em>${number(filterCounts.stockout)}</em></button>
-          <button class="qf-pill ${filter === "formation" ? "active" : ""}" type="button" data-filter="formation">Mínimo <em>${number(filterCounts.formation)}</em></button>
-          <button class="qf-pill ${filter === "package" ? "active" : ""}" type="button" data-filter="package">Caixa <em>${number(filterCounts.package)}</em></button>
-          <button class="qf-pill ${filter === "alerts" ? "active" : ""}" type="button" data-filter="alerts">Pendências <em>${number(filterCounts.alerts)}</em></button>
-          <button class="qf-pill ${filter === "engine" ? "active" : ""}" type="button" data-filter="engine">Sinais <em>${number(filterCounts.engine)}</em></button>
-          <button class="qf-pill ${filter === "outmix" ? "active" : ""}" type="button" data-filter="outmix">Fora do mix <em>${number(filterCounts.outmix)}</em></button>
-          </div>
-        </div>
-        <div id="quoteLiveSummary" class="quote-live-summary" aria-live="polite">${quoteLiveSummaryMarkup()}</div>
-      </div>
       <div class="quote-toolbar-tools">
         <input id="quoteItemSearch" class="search-input compact" type="search" value="${inputValue(state.quoteItemSearch || "")}" placeholder="Buscar produto / ref" />
         <select id="quoteWorkbenchOnly" class="filter-select compact" title="Filtrar condição operacional">
           <option value="all" ${only === "all" ? "selected" : ""}>Todos os itens</option>
           <option value="selected" ${only === "selected" ? "selected" : ""}>Só marcados</option>
           <option value="unselected" ${only === "unselected" ? "selected" : ""}>Só fora da cotação</option>
+          <option value="suggested" ${filter === "suggested" ? "selected" : ""}>Com sugestão</option>
+          <option value="stockout" ${filter === "stockout" ? "selected" : ""}>Ruptura</option>
           <option value="open_order" ${only === "open_order" ? "selected" : ""}>Com pedido aberto</option>
           <option value="box" ${only === "box" ? "selected" : ""}>Com embalagem</option>
           <option value="modified" ${only === "modified" ? "selected" : ""}>Qtd. alterada</option>
           <option value="no_cost" ${only === "no_cost" ? "selected" : ""}>Sem custo</option>
         </select>
-        <select id="quoteWorkbenchGroup" class="filter-select compact" title="Organizar itens">
-          <option value="flat" ${(state.quoteWorkbenchGroup || "flat") === "flat" ? "selected" : ""}>Lista plana</option>
-          <option value="signals" ${(state.quoteWorkbenchGroup || "flat") === "signals" ? "selected" : ""}>Agrupar por decisão</option>
-        </select>
-        <label class="quote-number-filter">
-          <span>Giro mín.</span>
-          <input id="quoteMinDemand" class="inline-input compact" type="text" inputmode="decimal" value="${inputValue(state.quoteWorkbenchMinDemand || "")}" placeholder="un/dia" />
-        </label>
-        <label class="quote-number-filter">
-          <span>Valor mín.</span>
-          <input id="quoteMinValue" class="inline-input compact" type="text" inputmode="decimal" value="${inputValue(state.quoteWorkbenchMinValue || "")}" placeholder="R$" />
-        </label>
-        <label class="quote-number-filter">
-          <span>Cob. máx.</span>
-          <input id="quoteMaxCoverage" class="inline-input compact" type="text" inputmode="decimal" value="${inputValue(state.quoteWorkbenchMaxCoverage || "")}" placeholder="dias" />
-        </label>
-      </div>
-      <div class="quote-assembly-actions" aria-label="Ações de montagem">
-        <span>Ações no filtro</span>
-        <button class="secondary-button compact quote-mark-visible" type="button" title="Incluir todos os produtos visíveis no filtro atual">Marcar visíveis</button>
-        <button class="secondary-button compact quote-unmark-visible" type="button" title="Remover da cotação todos os produtos visíveis no filtro atual">Remover visíveis</button>
-        <button class="secondary-button compact quote-complete-minimum" type="button" title="Adicionar itens essenciais e a cesta recomendada até atingir o mínimo">Completar mínimo</button>
         <button class="secondary-button compact quote-restore-items" type="button" title="Incluir todos os sugeridos com a quantidade calculada">Usar sugestão</button>
-        <button class="secondary-button compact quote-round-packages" type="button" title="Arredondar itens marcados para caixas inteiras">Caixas inteiras</button>
-        <details class="quote-more-actions">
-          <summary>Mais</summary>
-          <div>
-            <button class="text-button quote-manual-item" type="button" title="Registrar item de catálogo que ainda não existe no ERP">Item avulso</button>
-            <button class="text-button quote-clear-items" type="button" title="Remover todos os itens marcados deste fornecedor">Limpar marcados</button>
-          </div>
-        </details>
       </div>
+      <div id="quoteLiveSummary" class="quote-live-summary" aria-live="polite">${quoteLiveSummaryMarkup()}</div>
+      <button class="secondary-button compact quote-open-columns" type="button" title="Escolher, ocultar e reordenar colunas"><i data-lucide="settings-2" aria-hidden="true"></i><span>Colunas</span></button>
     </div>
-    <div class="quote-items-wrap nexo-legacy-shell">
-      <table class="quote-items-table nexo-legacy-table">
-        <thead>
-          <tr>
-            ${quoteSortableHeader("included", "Cotação", "col-inc")}
-            ${quoteSortableHeader("product", "Produto", "col-prod")}
-            ${quoteSortableHeader("demand", "Giro e venda", "col-demand")}
-            ${quoteSortableHeader("stock", "Estoque proj.", "col-stkgiro num")}
-            ${quoteSortableHeader("horizon", "Ciclo", "col-cycle num")}
-            ${quoteSortableHeader("suggested", "Motor", "col-sug")}
-            ${quoteSortableHeader("package", "Caixa", "col-box")}
-            ${quoteSortableHeader("quantity", "Qtd. cotada", "col-qty")}
-            ${quoteSortableHeader("total", "Valor", "col-tot num")}
-          </tr>
-        </thead>
-        <tbody>${quoteProductRows(workbench.rows || [])}</tbody>
-      </table>
-    </div>
+    <div id="quoteItemsTable" class="quote-items-mount"></div>
     <div id="quoteOrderDock" class="quote-order-dock" aria-live="polite">${quoteOrderDockContent()}</div>
   `;
   applyWorkbenchView();
+  if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { "stroke-width": 2.1 } });
   updateQuoteFlow();
 }
 
@@ -1450,26 +1536,17 @@ function scheduleRenderQuotes(delay = 140) {
 }
 
 function renderQuotes(options = {}) {
-  const search = (document.querySelector("#quoteSupplierSearch")?.value || "").trim().toLowerCase();
-  const context = quoteSupplierContext(state.quoteSuppliers || []);
-  let suppliers = (state.quoteSuppliers || []).filter((row) => {
-    const searchOk = !search || supplierSearchText(row).includes(search);
-    return searchOk && quoteSupplierMatchesLenses(row, context) && quoteSupplierMatchesColumnFilters(row, context);
-  });
-  suppliers = sortQuoteSuppliers(suppliers, context);
-  const grid = document.querySelector("#quoteSuppliersTable");
-  const previousScrollTop = options.preserveScroll === false ? 0 : Number(grid?.scrollTop || 0);
+  const suppliers = state.quoteSuppliers || [];
   const preview = suppliers.find((row) => row.supplier_id === state.quoteSupplierPreviewId);
-  if (!preview) state.quoteSupplierPopupOpen = false;
-  state.quoteSupplierPreviewId = preview?.supplier_id || "";
+  if (!preview) {
+    state.quoteSupplierPopupOpen = false;
+    state.quoteSupplierPreviewId = "";
+  }
   const summary = document.querySelector("#quoteSupplierDeskSummary");
   if (summary) summary.innerHTML = quoteDeskSummary(suppliers);
-  if (grid) {
-    grid.innerHTML = quoteSupplierRows(suppliers);
-    if (options.preserveScroll !== false) grid.scrollTop = previousScrollTop;
-  }
+  const table = ensureQuoteSuppliersTable();
+  if (table) table.setRows(suppliers);
   renderQuoteSupplierFastState();
-  updateQuoteSupplierChips();
   if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { "stroke-width": 2.1 } });
   if (options.summaryOnly) return;
   if (suppliers[0]?.supplier_id) {
@@ -1530,6 +1607,7 @@ function prefetchQuoteSupplierWorkbench(supplierId) {
 
 async function loadQuoteSupplierWorkbench(supplierId, options = {}) {
   if (!supplierId) {
+    clearOpenQuoteWorkbench();
     renderQuoteDetail(null);
     return;
   }
@@ -1554,6 +1632,7 @@ async function loadQuoteSupplierWorkbench(supplierId, options = {}) {
     const workbench = await prefetchQuoteSupplierWorkbench(supplierId);
     state.quoteWorkbenchLoadingSupplierId = "";
     renderQuoteDetail(workbench);
+    if (state.quoteStep !== "supplier") rememberOpenQuoteWorkbench(supplierId);
   } catch (error) {
     state.quoteWorkbenchLoadingSupplierId = "";
     renderQuoteDetail(null);
@@ -1621,13 +1700,13 @@ function syncQuoteRow(rowEl, row) {
     toggle.classList.toggle("on", Boolean(row.in_quote));
     toggle.setAttribute("aria-pressed", row.in_quote ? "true" : "false");
     toggle.disabled = discontinued;
-    toggle.title = discontinued ? "Produto descontinuado" : row.in_quote ? "Remover da cotação" : "Adicionar à cotação";
-    toggle.textContent = row.in_quote ? "Cotação" : "Adicionar";
+    toggle.title = discontinued ? "Produto descontinuado" : row.in_quote ? "Remover do pedido" : "Adicionar ao pedido";
+    toggle.textContent = row.in_quote ? "Sim" : "Não";
   }
   const totalCell = rowEl.querySelector(".col-tot");
   if (totalCell) {
     const total = Number(row.quote_quantity || 0) * quoteOrderUnitCost(row);
-    const costNo = Number(row.cost_no_tax || 0);
+    const costNo = quoteOrderUnitCost(row);
     const costLine = costNo > 0 ? `<span class="muted-line">${money(costNo)}/un</span>` : "";
     totalCell.innerHTML = row.in_quote && total > 0
       ? `${money(total)}${costLine}`
@@ -1636,7 +1715,7 @@ function syncQuoteRow(rowEl, row) {
   const pack = rowEl.querySelector(".qrow-pack");
   const packageSize = Number(row.purchase_package_size || row.package_size || 0);
   const purchaseUnit = row.purchase_unit || row.unit || "UN";
-  const packageUnitLabel = quotePackageUnitLabel(purchaseUnit);
+  const packageUnitLabel = quotePackageDisplayLabel(purchaseUnit, packageSize > 1);
   const quantity = Number(row.quote_quantity || 0);
   if (pack) {
     pack.textContent = packageSize > 1 && quantity > 0
@@ -1772,6 +1851,7 @@ async function restoreSuggestedQuoteItems(options = {}) {
   if (!state.quoteWorkbench) return;
   const status = document.querySelector("#quoteWorkbenchStatus");
   const rows = (state.quoteWorkbench.rows || []).filter((row) => isAutomaticQuoteSuggestion(row) && !row.in_quote);
+  const quoteScrollState = captureQuoteScrollState();
   if (!rows.length) {
     if (status) status.textContent = "Nada novo para incluir";
     return;
@@ -1789,6 +1869,7 @@ async function restoreSuggestedQuoteItems(options = {}) {
     }
     updateWorkbenchTotalsFromRows();
     renderQuoteDetail(state.quoteWorkbench);
+    restoreQuoteScrollState(quoteScrollState);
     const nextStatus = document.querySelector("#quoteWorkbenchStatus");
     if (nextStatus) nextStatus.textContent = "Sugeridos incluidos";
     refreshAfterSave({ quotes: true }, { coalesce: true, defer: true, delay: 1200, preserveQuoteScroll: true });
@@ -1857,6 +1938,7 @@ async function clearWorkbenchQuoteItems() {
   if (!state.quoteWorkbench) return;
   const status = document.querySelector("#quoteWorkbenchStatus");
   const rows = (state.quoteWorkbench.rows || []).filter((row) => row.in_quote);
+  const quoteScrollState = captureQuoteScrollState();
   if (!rows.length) {
     if (status) status.textContent = "Nenhum item marcado";
     return;
@@ -1878,6 +1960,7 @@ async function clearWorkbenchQuoteItems() {
     state.quoteWorkbench.current_quote = null;
     updateWorkbenchTotalsFromRows();
     renderQuoteDetail(state.quoteWorkbench);
+    restoreQuoteScrollState(quoteScrollState);
     const nextStatus = document.querySelector("#quoteWorkbenchStatus");
     if (nextStatus) nextStatus.textContent = "Marcados removidos";
     refreshAfterSave({ quotes: true }, { coalesce: true, defer: true, delay: 1200, preserveQuoteScroll: true });
@@ -1890,6 +1973,7 @@ async function bulkSetVisibleQuoteItems(include) {
   if (!state.quoteWorkbench) return;
   const status = document.querySelector("#quoteWorkbenchStatus");
   const visible = quoteWorkbenchRowsForCurrentView();
+  const quoteScrollState = captureQuoteScrollState();
   const blocked = include ? visible.filter((row) => ["drop", "out_of_mix"].includes(row.mix_status)) : [];
   const rows = visible
     .filter((row) => !include || !["drop", "out_of_mix"].includes(row.mix_status))
@@ -1919,6 +2003,7 @@ async function bulkSetVisibleQuoteItems(include) {
     if (!include && !selectedQuoteRows().length) state.quoteWorkbench.current_quote = null;
     updateWorkbenchTotalsFromRows();
     renderQuoteDetail(state.quoteWorkbench);
+    restoreQuoteScrollState(quoteScrollState);
     const nextStatus = document.querySelector("#quoteWorkbenchStatus");
     if (nextStatus) {
       const skipped = include && blocked.length ? ` (${number(blocked.length)} descontinuado(s) ignorado(s))` : "";
@@ -1933,6 +2018,7 @@ async function bulkSetVisibleQuoteItems(include) {
 async function completeMinimumOrder() {
   if (!state.quoteWorkbench) return;
   const status = document.querySelector("#quoteWorkbenchStatus");
+  const quoteScrollState = captureQuoteScrollState();
   const minimum = Number(state.quoteWorkbench.supplier?.minimum_order_value || 0);
   const totals = quoteSelectedTotals();
   if (minimum <= 0) {
@@ -1983,6 +2069,7 @@ async function completeMinimumOrder() {
     }
     updateWorkbenchTotalsFromRows();
     renderQuoteDetail(state.quoteWorkbench);
+    restoreQuoteScrollState(quoteScrollState);
     const nextStatus = document.querySelector("#quoteWorkbenchStatus");
     if (nextStatus) nextStatus.textContent = added ? `${number(added)} item(ns) adicionados pela cesta` : "Nada alterado";
     refreshAfterSave({ quotes: true }, { coalesce: true, defer: true, delay: 1200, preserveQuoteScroll: true });
@@ -1994,6 +2081,7 @@ async function completeMinimumOrder() {
 async function roundIncludedToPackages() {
   if (!state.quoteWorkbench) return;
   const status = document.querySelector("#quoteWorkbenchStatus");
+  const quoteScrollState = captureQuoteScrollState();
   const rowsToRound = selectedQuoteRows()
     .filter((row) => Number(row.purchase_package_size || row.package_size || 0) > 1)
     .map((row) => {
@@ -2016,6 +2104,7 @@ async function roundIncludedToPackages() {
     }
     updateWorkbenchTotalsFromRows();
     renderQuoteDetail(state.quoteWorkbench);
+    restoreQuoteScrollState(quoteScrollState);
     const nextStatus = document.querySelector("#quoteWorkbenchStatus");
     if (nextStatus) nextStatus.textContent = "Caixas arredondadas";
     refreshAfterSave({ quotes: true }, { coalesce: true, defer: true, delay: 1200, preserveQuoteScroll: true });
@@ -2195,4 +2284,3 @@ async function discardQuote(quote, supplierId = state.selectedQuoteSupplierId, f
     if (buttonEl) buttonEl.disabled = false;
   }
 }
-

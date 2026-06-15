@@ -47,8 +47,16 @@ def excel_date(value: str) -> str:
 
 
 def read_rows(path: Path) -> list[list[str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as file:
-        return [[cell.strip() for cell in row] for row in csv.reader(file)]
+    last_error: UnicodeDecodeError | None = None
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            with path.open("r", encoding=encoding, newline="") as file:
+                return [[cell.strip() for cell in row] for row in csv.reader(file)]
+        except UnicodeDecodeError as error:
+            last_error = error
+    if last_error:
+        raise last_error
+    return []
 
 
 def hash_file(path: Path) -> str:
@@ -689,7 +697,7 @@ def import_all(source_dir: Path, db_path: Path, org: str, store: str) -> None:
             """
             INSERT INTO import_batches
                 (id, organization_id, store_id, source_system, status, import_mode, supersedes_batch_id, finished_at)
-            VALUES (?, ?, ?, 'practica_csv', 'finished', 'incremental_sync', ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, 'practica_csv', 'completed', 'incremental_sync', ?, CURRENT_TIMESTAMP)
             """,
             (batch_id, org, store, previous_batch["id"] if previous_batch else None),
         )

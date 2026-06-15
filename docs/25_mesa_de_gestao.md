@@ -14,6 +14,12 @@ selecionar itens e trabalhar em lote.
 O sistema organiza dados, traduz a operacao em linguagem de varejo e oferece
 instrumentos. O operador conduz.
 
+Contrato central:
+
+> O poder sempre esta na mao do operador. O sistema fornece a melhor maneira de
+> trabalhar: fluida, facil e clara, com a melhor quantidade de dados e
+> referencias possiveis para o operador tomar decisoes.
+
 Frase norte:
 
 > NexoVarejo e o Sistema Operacional de Gestao para empresas do varejo.
@@ -122,7 +128,7 @@ quando fizer sentido:
 
 ### Ritual diario
 
-O operador abre a Visao e entende:
+O operador abre o Painel e entende:
 
 - o que mudou desde a ultima leitura;
 - quais areas podem ser filtradas, abertas ou comparadas;
@@ -182,7 +188,7 @@ apenas funcionalidades de operacao diaria.
 Dock recomendado:
 
 - Hoje
-- Visao
+- Painel
 - Vendas
 - Clientes
 - Produtos
@@ -223,13 +229,14 @@ Implementacao atual:
 - `web/app.css` ganhou tokens `--mesa-*` para dock, paineis, bordas, trilhos e
   sombra;
 - o dock recebeu acabamento de instrumento central;
-- a Visao, o bloco Potencial e a Biblioteca de leituras usam a mesma linguagem
+- o Painel, o bloco Potencial e a Biblioteca de leituras usam a mesma linguagem
   de trilhos, materiais claros e estados de descoberta.
 
-### Visao
+### Painel
 
-A Visao e a tela-mae. Ela nao deve ser um dashboard generico. Deve ser uma mesa
-de leitura e comando.
+O Painel e a tela inicial do sistema. Ele nao deve ser um dashboard generico.
+Deve ser uma mesa de leitura e comando, com linguagem comum de sistema e
+personalizacao clara para usuario, empresa e revendedor.
 
 Blocos principais:
 
@@ -247,28 +254,32 @@ Blocos principais:
 
 Implementacao atual:
 
-- a primeira dobra da Visao agora comeca com uma barra **Mesa do operador**,
-  trazendo lentes rapidas (Essencial, Comprador, Comercial, Estoque e
-  Consultor) e comandos diretos para organizar, mostrar Base, abrir Analises e
-  conectar Dados;
-- o padrao **Essencial** abre apenas Indicadores e Mesa, para dar foco sem
-  tirar poder: o operador pode revelar Base, Analises e outros blocos quando
-  quiser profundidade;
-- o botao de sliders da Visao abre o modo **Organizar visao**;
-- hero, sinais, ferramentas e mapa de dados agora sao escolhidos pelo estado
-  real das fontes, alertas e leituras disponiveis, reduzindo conteudo fixo;
-- o operador pode arrastar blocos da mesa;
-- ha perfis rapidos para Essencial, Comprador, Comercial, Estoque e Consultor;
+- a primeira dobra do Painel nao usa mais faixa de presets ou lentes prontas; a
+  tela abre direto em um cockpit BI denso, com graficos, matriz executiva,
+  rankings compactos, tabelas curtas e dados crus;
+- o topbar do Painel fica reservado para contexto, usuario e **Importar dados**;
+  o botao **Organizar** saiu do topo;
+- cada bloco do cockpit tem seletor proprio de periodo (`30d`, `90d`, `6m`,
+  `12m`, `Tudo`), com dados cacheados por recorte para permitir comparacoes
+  independentes dentro da mesma tela;
+- cada bloco do cockpit pode ser ocultado diretamente e o ultimo bloco
+  **Adicionar** recoloca graficos, KPIs e tabelas ocultos;
+- o layout padrao abre apenas Analises; Pulso, Mesa, Potencial, Ferramentas,
+  Trilhas e Implantacao ficam fora da mesa ate o operador pedir;
+- as analises sao escolhidas pelo estado real das fontes e metricas
+  disponiveis, reduzindo conteudo fixo e linguagem prescritiva;
+- o operador pode arrastar blocos da mesa nos blocos legados;
 - cada bloco pode ficar em tamanho Foco, Normal ou Aberto;
-- blocos podem ser ocultados e restaurados pelo painel;
-- a Visao ganhou um bloco **Potencial da mesa**, mostrando fontes reconhecidas,
-  cruzamentos ja disponiveis e leituras que podem aparecer com mais dados;
-- o painel **Organizar visao** ganhou uma **Biblioteca de leituras**, com
-  graficos/leituras disponiveis e outras que ganham forca quando o operador
-  importa ou completa dados;
+- blocos legados podem ser ocultados e restaurados pelo painel; blocos do
+  cockpit sao ocultados/repostos dentro da propria grade;
+- a tela inicial evita blocos de potencial, recomendacao ou proximos passos;
+  importacao fica no topo como comando utilitario;
+- a estrutura HTML do Painel foi enxugada para containers de runtime, em vez de
+  manter uma grade estatica antiga de graficos que o cockpit substituia;
 - a preferencia fica salva localmente em `localStorage`
-  (`pulso.dashboard.layout.v5`), e a visibilidade da coluna Base fica em
-  `pulso.dashboard.base.visible`;
+  (`pulso.dashboard.layout.v14`);
+- a entrada de personalizacao fica no proprio Painel, separando ajustes do
+  usuario, dados da empresa e identidade do pacote/revendedor;
 - o bloco de implantacao existe, mas sai da mesa padrao para nao misturar
   rotina operacional com setup.
 
@@ -475,6 +486,13 @@ Melhor:
 - historico de cotacao;
 - confiabilidade operacional.
 
+Na montagem do pedido, a linha do item deve ser completa sem virar despejo de
+colunas. Categorias recomendadas: Produto (codigo, nome e sinais), Posicao
+(estoque e cobertura atual), Alvo (ideal calculado e ponto), Sugestao
+(unidades, caixas e cobertura nova), Historico (total, 30d, 90d e maior venda),
+Pedido (quantidade editavel) e Valor (total, unitario e caixa). Informacao
+complementar deve aparecer em hover quando couber melhor ali.
+
 ### Dados
 
 - ultima importacao;
@@ -489,7 +507,7 @@ Melhor:
 Versao 1 da Mesa de Gestao:
 
 1. Dock apenas com operacao diaria.
-2. Visao com Pulso, Indicadores, Sinais, Movimentos, Ferramentas, Base e
+2. Painel com Pulso, Indicadores, Sinais, Movimentos, Ferramentas, Base e
    Analises.
 3. Modo Organizar mesa com reordenacao por arrastar.
 4. Ordem salva localmente.
@@ -514,9 +532,13 @@ Versao 3:
 
 ## O que nao fazer
 
-- Nao transformar a Visao em um dashboard de graficos soltos.
+- Nao transformar o Painel em um dashboard de graficos soltos.
 - Nao colocar onboarding/importacao/admin no dock principal.
 - Nao usar linguagem de assistente que decide pelo operador.
+- Nao escrever a interface como se o sistema soubesse a decisao final: evitar
+  "devo fazer", "proximo clique", "cotar agora", "revisar agora" e chamadas
+  prescritivas. Prefira dados, referencias, filtros, lentes, comparacao,
+  simulacao e instrumentos de acao sob controle do operador.
 - Nao criar cards decorativos sem funcao operacional.
 - Nao esconder dados importantes atras de texto bonito.
 - Nao adicionar personalizacao sem restaurar padrao.

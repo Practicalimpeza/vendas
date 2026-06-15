@@ -1461,20 +1461,23 @@ def parse_xls_planilha(content_base64: str) -> tuple[list[dict], dict]:
         if sheets:
             return sheets, {"format": "xls_xml", "sheet_count": len(sheets)}
 
+    excel_error = None
+    try:
+        return parse_xls_with_excel_com(data)
+    except Exception as error:
+        excel_error = error
+
     biff_error = None
     try:
-        return parse_xls_biff(data)
+        sheets, metadata = parse_xls_biff(data)
+        metadata["excel_error"] = str(excel_error)[:300] if excel_error else ""
+        return sheets, metadata
     except Exception as error:
         biff_error = error
-    try:
-        sheets, metadata = parse_xls_with_excel_com(data)
-        metadata["biff_error"] = str(biff_error)[:300] if biff_error else ""
-        return sheets, metadata
-    except Exception as excel_error:
         raise ValueError(
             "Nao foi possivel ler este .xls diretamente. Salve/exporte esta planilha como .xlsx ou .csv e tente novamente. "
-            f"Detalhe tecnico: BIFF: {str(biff_error)[:220] if biff_error else 'indisponivel'} | Excel: {str(excel_error)[:220]}"
-        ) from excel_error
+            f"Detalhe tecnico: Excel: {str(excel_error)[:220] if excel_error else 'indisponivel'} | BIFF: {str(biff_error)[:220]}"
+        ) from error
 
 
 def parse_erp_file_bytes(file_name: str, raw_bytes: bytes) -> tuple[str, list[dict], dict, str, int]:
@@ -1526,7 +1529,7 @@ def load_latest_erp_mappings(conn: sqlite3.Connection) -> dict:
         SELECT summary_json
         FROM import_batches
         WHERE source_system = 'erp_planilha'
-          AND status = 'completed'
+          AND status IN ('completed', 'finished')
         ORDER BY finished_at DESC, started_at DESC
         LIMIT 25
         """
@@ -1616,7 +1619,7 @@ def load_latest_erp_mapping_profiles(conn: sqlite3.Connection) -> list[dict]:
         SELECT summary_json
         FROM import_batches
         WHERE source_system = 'erp_planilha'
-          AND status = 'completed'
+          AND status IN ('completed', 'finished')
         ORDER BY finished_at DESC, started_at DESC
         LIMIT 50
         """
@@ -1791,6 +1794,18 @@ def selected_mapping_from_payload(payload: dict) -> list[dict]:
     return clean_mappings
 
 
+def erp_mappings_need_manual_conflict_check(mappings: list[dict]) -> bool:
+    for sheet in mappings:
+        for column in sheet.get("columns") or []:
+            entity = scalar_text(column.get("entity"))
+            field = scalar_text(column.get("field"))
+            if field == "ignorar":
+                continue
+            if entity in {"identificador", "configuracao"}:
+                return True
+    return False
+
+
 def normalize_erp_record(row: list[str], columns: list[dict]) -> dict:
     normalized = {}
     raw = {}
@@ -1840,9 +1855,12 @@ def apply_erp_service_context(record: dict, context: dict) -> dict:
 
 
 def should_apply_erp_product_context(_normalized: dict) -> bool:
-    # Em vendas de produto, codigo herdado pode atribuir linhas sem CODIGO ao item anterior.
-    # Para reposicao confiavel, venda so entra quando o produto vem explicito na linha.
-    return False
+    has_product_sale = any(
+        scalar_text(_normalized.get(key))
+        for key in ("venda.data_venda", "venda.quantidade_vendida", "venda.valor_venda", "venda.valor_liquido")
+    )
+    has_service = scalar_text(_normalized.get("servico.nome_servico"))
+    return bool(has_product_sale and not has_service)
 
 
 def erp_product_id(org: str, code: str) -> str:
@@ -2027,6 +2045,35 @@ def upsert_erp_customer(conn: sqlite3.Connection, org: str, batch_id: str, code:
                     (clean_name, normalize(clean_name), canonical, batch_id, org, existing["id"]),
                 )
             return existing["id"]
+    existing = conn.execute(
+        "SELECT id FROM customers WHERE organization_id = ? AND id = ? ORDER BY id LIMIT 1",
+        (org, customer_id),
+    ).fetchone()
+    if existing:
+        controlled_fields = app_controlled_fields(conn, org, "customer", existing["id"])
+        if "name" in controlled_fields or not clean_code:
+            conn.execute(
+                """
+                UPDATE customers
+                SET last_seen_import_batch_id = ?
+                WHERE organization_id = ? AND id = ?
+                """,
+                (batch_id, org, existing["id"]),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE customers
+                SET source_code = ?,
+                    name = ?,
+                    normalized_name = ?,
+                    canonical_name = ?,
+                    last_seen_import_batch_id = ?
+                WHERE organization_id = ? AND id = ?
+                """,
+                (clean_code, clean_name, normalize(clean_name), canonical, batch_id, org, existing["id"]),
+            )
+        return existing["id"]
     conn.execute(
         """
         INSERT INTO customers
@@ -2298,7 +2345,6 @@ def materialize_erp_product_sale(
     store_id: str,
     record: dict,
     row_number: int,
-    existing_max_date: str = "",
 ) -> str:
     normalized = record.get("normalized") or {}
     has_sale = any(
@@ -2312,13 +2358,10 @@ def materialize_erp_product_sale(
         return "no_sale"
     if not code:
         return "missing_product_code"
-    if scalar_text(normalized.get("_meta.product_code_inherited")) == "1":
-        return "inferred_product_code"
+    inherited_product_code = scalar_text(normalized.get("_meta.product_code_inherited")) == "1"
     sold_at = iso_sale_date(normalized.get("venda.data_venda"))
     if not sold_at:
         return "invalid_date"
-    if existing_max_date and sold_at <= existing_max_date:
-        return "duplicate"
     quantity = parse_decimal(normalized.get("venda.quantidade_vendida"), 0.0) or 0.0
     gross_amount = parse_decimal(normalized.get("venda.valor_venda"), 0.0) or 0.0
     product_id = upsert_erp_product_from_record(
@@ -2357,7 +2400,7 @@ def materialize_erp_product_sale(
         """,
         (org, store_id, product_id, sold_at, payload_json, row_number, quantity, gross_amount, customer_id),
     ).fetchone():
-        return "duplicate"
+        return "duplicate_inherited" if inherited_product_code else "duplicate"
     conn.execute(
         """
         INSERT INTO product_sales
@@ -2379,7 +2422,7 @@ def materialize_erp_product_sale(
             payload_json,
         ),
     )
-    return "inserted"
+    return "inserted_inherited" if inherited_product_code else "inserted"
 
 
 def materialize_erp_service_sale(
@@ -2390,7 +2433,6 @@ def materialize_erp_service_sale(
     store_id: str,
     record: dict,
     row_number: int,
-    existing_max_date: str = "",
 ) -> str:
     normalized = record.get("normalized") or {}
     has_sale = any(
@@ -2402,8 +2444,6 @@ def materialize_erp_service_sale(
     emitted_at = iso_sale_date(normalized.get("venda.data_venda"))
     if not emitted_at:
         return "invalid_date"
-    if existing_max_date and emitted_at <= existing_max_date:
-        return "duplicate"
     quantity = parse_decimal(normalized.get("venda.quantidade_vendida"), 0.0) or 0.0
     gross_amount = parse_decimal(normalized.get("venda.valor_venda"), 0.0) or 0.0
     net_amount = parse_decimal(normalized.get("venda.valor_liquido"), gross_amount)
@@ -3164,13 +3204,20 @@ def materialize_erp_identifiers(
 
 
 def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
-    file_name, parsed_sheets, metadata, content_hash, file_size = parse_erp_file_payload(payload)
-    analyzed = [analyze_erp_sheet(sheet) for sheet in parsed_sheets]
     mappings = selected_mapping_from_payload(payload)
     mapping_by_sheet = {int(sheet["sheet_index"]): sheet for sheet in mappings}
     organization_id = default_organization_id(conn) or default_organization_slug()
     manual_conflict_choices = manual_conflict_choices_from_payload(payload)
     conflict_check_only = scalar_text(payload.get("conflict_check_only")).lower() in {"1", "true", "sim", "yes"}
+    if conflict_check_only and not erp_mappings_need_manual_conflict_check(mappings):
+        return {
+            "ok": True,
+            "requires_manual_resolution": False,
+            "manual_conflicts": [],
+            "summary": {"manual_conflicts": 0, "skipped": "sem_campos_manuais"},
+        }
+    file_name, parsed_sheets, metadata, content_hash, file_size = parse_erp_file_payload(payload)
+    analyzed = [analyze_erp_sheet(sheet) for sheet in parsed_sheets]
     if conflict_check_only:
         manual_conflicts = detect_erp_manual_identifier_conflicts(
             conn,
@@ -3213,6 +3260,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     product_sales_duplicates = 0
     product_sales_missing_product_code = 0
     product_sales_inferred_product_code = 0
+    product_sales_inherited_product_code = 0
+    product_sales_inherited_duplicates = 0
     product_sales_invalid_date = 0
     service_sales_imported = 0
     service_sales_duplicates = 0
@@ -3245,16 +3294,6 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
     )
     if not store_id:
         store_id = ensure_default_store(conn, organization_id)
-    product_sales_existing_max_date = one(
-        conn,
-        "SELECT MAX(substr(sold_at, 1, 10)) AS max_date FROM product_sales WHERE organization_id = ?",
-        (organization_id,),
-    ).get("max_date") or ""
-    service_sales_existing_max_date = one(
-        conn,
-        "SELECT MAX(substr(emitted_at, 1, 10)) AS max_date FROM service_sales WHERE organization_id = ?",
-        (organization_id,),
-    ).get("max_date") or ""
     conn.execute(
         """
         INSERT INTO import_batches
@@ -3421,14 +3460,17 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
                 store_id=store_id,
                 record=record,
                 row_number=row_number,
-                existing_max_date=product_sales_existing_max_date,
             )
-            if product_sale_status == "inserted":
+            if product_sale_status in {"inserted", "inserted_inherited"}:
                 product_sales_imported += 1
+                if product_sale_status == "inserted_inherited":
+                    product_sales_inherited_product_code += 1
                 if product_code:
                     product_sale_codes.add(product_code)
-            elif product_sale_status == "duplicate":
+            elif product_sale_status in {"duplicate", "duplicate_inherited"}:
                 product_sales_duplicates += 1
+                if product_sale_status == "duplicate_inherited":
+                    product_sales_inherited_duplicates += 1
             elif product_sale_status == "missing_product_code":
                 product_sales_missing_product_code += 1
             elif product_sale_status == "inferred_product_code":
@@ -3442,7 +3484,6 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
                 store_id=store_id,
                 record=record,
                 row_number=row_number,
-                existing_max_date=service_sales_existing_max_date,
             )
             if service_sale_status == "inserted":
                 service_sales_imported += 1
@@ -3605,6 +3646,15 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
             """,
             (batch_id, source_file_id, f"{product_sales_imported} vendas de produtos importadas."),
         )
+    if product_sales_inherited_product_code:
+        conn.execute(
+            """
+            INSERT INTO import_issues
+                (import_batch_id, source_file_id, severity, code, message)
+            VALUES (?, ?, 'info', 'erp_product_sale_inherited_product_code', ?)
+            """,
+            (batch_id, source_file_id, f"{product_sales_inherited_product_code} vendas usaram o produto da linha anterior por causa de exportacao agrupada do ERP."),
+        )
     if product_sales_missing_product_code:
         conn.execute(
             """
@@ -3712,6 +3762,8 @@ def api_erp_import_commit(conn: sqlite3.Connection, payload: dict) -> dict:
         "product_sales_duplicates": product_sales_duplicates,
         "product_sales_missing_product_code": product_sales_missing_product_code,
         "product_sales_inferred_product_code": product_sales_inferred_product_code,
+        "product_sales_inherited_product_code": product_sales_inherited_product_code,
+        "product_sales_inherited_duplicates": product_sales_inherited_duplicates,
         "product_sales_invalid_date": product_sales_invalid_date,
         "service_sales_imported": service_sales_imported,
         "service_sales_services_imported": len(service_sale_names),
@@ -4042,7 +4094,7 @@ def import_quality_report(conn: sqlite3.Connection) -> dict:
     changes_pending = changes_by_status.get("pending", 0)
     checks = []
     score = 100
-    if latest["status"] != "completed":
+    if latest["status"] not in {"completed", "finished"}:
         score -= 35
         checks.append(
             {
@@ -4205,7 +4257,7 @@ def import_refresh_targets(conn: sqlite3.Connection) -> list[dict]:
                 ROW_NUMBER() OVER (PARTITION BY sf.file_name ORDER BY ib.finished_at DESC, ib.started_at DESC) AS rn
             FROM source_files sf
             JOIN import_batches ib ON ib.id = sf.import_batch_id
-            WHERE ib.status = 'completed'
+            WHERE ib.status IN ('completed', 'finished')
               AND ib.organization_id = ?
               AND sf.file_name IS NOT NULL
               AND sf.file_name <> ''
@@ -4282,7 +4334,7 @@ def latest_import_file_metadata(conn: sqlite3.Connection, organization_id: str =
                 ROW_NUMBER() OVER (PARTITION BY sf.file_name ORDER BY ib.finished_at DESC, ib.started_at DESC) AS rn
             FROM source_files sf
             JOIN import_batches ib ON ib.id = sf.import_batch_id
-            WHERE ib.status = 'completed'
+            WHERE ib.status IN ('completed', 'finished')
               AND ib.organization_id = ?
               AND sf.file_name IS NOT NULL
               AND sf.file_name <> ''

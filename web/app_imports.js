@@ -1,5 +1,6 @@
 ﻿const IMPORT_STATUS_LABELS = {
   completed: "Concluido",
+  finished: "Concluido",
   pending: "Pendente",
   in_progress: "Em andamento",
   running: "Em andamento",
@@ -15,7 +16,7 @@ function importStatusLabel(status) {
 
 function importStatusClass(status) {
   const value = String(status || "").toLowerCase();
-  if (value === "completed") return "good";
+  if (["completed", "finished"].includes(value)) return "good";
   if (["failed", "error", "cancelled"].includes(value)) return "danger";
   if (["pending", "in_progress", "running"].includes(value)) return "warn";
   return "neutral";
@@ -68,6 +69,7 @@ function importBatchCountItems(batch) {
   const costProducts = Number(stats.cost_products || summary.cost_products_imported || 0);
   const productSalesRows = Number(stats.product_sales_rows || summary.product_sales_imported || 0);
   const productSalesProducts = Number(stats.product_sales_products || summary.product_sales_products_imported || 0);
+  const inheritedProductSales = Number(summary.product_sales_inherited_product_code || 0);
   const serviceSalesRows = Number(stats.service_sales_rows || summary.service_sales_imported || 0);
   const serviceSalesServices = Number(stats.service_sales_services || summary.service_sales_services_imported || 0);
   const ids = Number(summary.identifiers_imported || 0);
@@ -80,6 +82,7 @@ function importBatchCountItems(batch) {
   if (priceProducts || priceRows) counts.push(`${number(priceProducts || priceRows)} produtos com preço`);
   if (costProducts || costRows) counts.push(`${number(costProducts || costRows)} produtos com custo`);
   if (productSalesRows) counts.push(`${number(productSalesRows)} vendas de produto${productSalesProducts ? ` (${number(productSalesProducts)} produtos)` : ""}`);
+  if (inheritedProductSales) counts.push(`${number(inheritedProductSales)} vendas com produto herdado`);
   if (serviceSalesRows) counts.push(`${number(serviceSalesRows)} vendas de serviço${serviceSalesServices ? ` (${number(serviceSalesServices)} serviços)` : ""}`);
   if (summary.product_sales_duplicates) counts.push(`${number(summary.product_sales_duplicates)} vendas de produto já existentes`);
   if (summary.service_sales_duplicates) counts.push(`${number(summary.service_sales_duplicates)} vendas de serviço já existentes`);
@@ -96,12 +99,14 @@ function erpImportImpactText(summary = {}) {
   const priceProducts = Number(summary.price_products_imported || 0);
   const costProducts = Number(summary.cost_products_imported || 0);
   const productSales = Number(summary.product_sales_imported || 0);
+  const inheritedProductSales = Number(summary.product_sales_inherited_product_code || 0);
   const serviceSales = Number(summary.service_sales_imported || 0);
   if (productCodes) parts.push(`${number(productCodes)} produtos identificados`);
   if (invProducts) parts.push(`${number(invProducts)} produtos com estoque`);
   if (priceProducts) parts.push(`${number(priceProducts)} produtos com preço`);
   if (costProducts) parts.push(`${number(costProducts)} produtos com custo`);
   if (productSales) parts.push(`${number(productSales)} vendas de produto novas`);
+  if (inheritedProductSales) parts.push(`${number(inheritedProductSales)} com produto herdado da linha anterior`);
   if (serviceSales) parts.push(`${number(serviceSales)} vendas de serviço novas`);
   if (summary.product_sales_duplicates) parts.push(`${number(summary.product_sales_duplicates)} vendas de produto já existiam`);
   if (summary.service_sales_duplicates) parts.push(`${number(summary.service_sales_duplicates)} vendas de serviço já existiam`);
@@ -187,6 +192,19 @@ function setErpImportProfile(profile) {
   } else if (state.erpImport) {
     renderErpImportPreview(state.erpImport);
   }
+}
+
+function setErpImportAnalyzeBusy(isBusy) {
+  const button = document.querySelector("#erpImportAnalyze");
+  if (!button) return;
+  button.disabled = Boolean(isBusy);
+  button.textContent = isBusy ? "Analisando..." : state.erpImport ? "Reanalisar" : "Analisar";
+}
+
+function setErpImportConfirmDisabled(disabled) {
+  document.querySelectorAll("#erpImportConfirm, #erpImportConfirmBottom").forEach((button) => {
+    button.disabled = Boolean(disabled);
+  });
 }
 
 function erpImportProfileCopy() {
@@ -591,7 +609,7 @@ function renderErpImportPreview(payload) {
         <span>${state.erpImportProfile === "operador" ? `${number(sheet.row_count)} linhas e ${number(sheet.column_count)} colunas para conferência.` : `${number(sheet.row_count)} linhas validas, cabeçalho na linha ${number(sheet.header_line)}, ${number(sheet.column_count)} colunas.`}</span>
         ${state.erpImportProfile === "operador" ? renderErpAlignmentWarning(sheet.alignment || {}) : ""}
         ${renderErpSheetAssistant(sheet, sheetIndex, assistant)}
-        <details class="erp-map-details" ${state.erpImportProfile === "implantador" ? "open" : ""}>
+        <details class="erp-map-details" open>
           <summary>${state.erpImportProfile === "operador" ? "Conferir colunas reconhecidas" : "Mapeamento da aba"}</summary>
           <div class="table-wrap erp-map-table">
             <table>
@@ -609,6 +627,13 @@ function renderErpImportPreview(payload) {
       ${renderErpAssistantCard(assistant)}
       ${profile.showFieldGuide ? renderErpFieldGuide(options) : ""}
       ${sheetCards}
+      <div class="erp-preview-submit">
+        <div>
+          <strong>Pronto para gravar?</strong>
+          <span>Confira as colunas reconhecidas acima e grave o lote sem voltar ao topo.</span>
+        </div>
+        <button class="action-button" id="erpImportConfirmBottom" type="button">Confirmar e gravar lote</button>
+      </div>
     </div>
   `;
   renderErpManualConflicts([]);
@@ -618,21 +643,26 @@ function renderErpImportPreview(payload) {
       if (help) help.innerHTML = erpFieldHelpMarkup(select.value, optionLookup);
     });
   });
-  document.querySelector("#erpImportConfirm").disabled = false;
+  document.querySelector("#erpImportConfirmBottom")?.addEventListener("click", confirmErpImportMapping);
+  setErpImportAnalyzeBusy(false);
+  setErpImportConfirmDisabled(false);
 }
 
 async function analyzeErpImportFile() {
+  if (state.erpImportAnalyzing) return;
   const input = document.querySelector("#erpImportFile");
   const status = document.querySelector("#erpImportStatus");
-  const button = document.querySelector("#erpImportAnalyze");
   const file = input?.files?.[0];
   if (!file) {
     status.textContent = "Selecione uma planilha exportada do ERP.";
     return;
   }
-  button.disabled = true;
-  document.querySelector("#erpImportConfirm").disabled = true;
+  state.erpImportAnalyzing = true;
+  setErpImportAnalyzeBusy(true);
+  setErpImportConfirmDisabled(true);
+  state.erpImport = null;
   state.erpImportResult = null;
+  state.erpManualConflicts = [];
   status.textContent = "Analisando arquivo...";
   renderErpImportJourney("analyzing");
   document.querySelector("#erpImportPreview").innerHTML = "";
@@ -645,7 +675,8 @@ async function analyzeErpImportFile() {
   } catch (error) {
     status.textContent = error.message || "Não foi possível analisar a planilha.";
   } finally {
-    button.disabled = false;
+    state.erpImportAnalyzing = false;
+    setErpImportAnalyzeBusy(false);
   }
 }
 
@@ -677,9 +708,8 @@ function erpImportFormData({ conflictCheckOnly = false, manualChoices = null } =
 
 async function confirmErpImportMapping() {
   if (!state.erpImport || !state.erpImportFile) return;
-  const button = document.querySelector("#erpImportConfirm");
   const status = document.querySelector("#erpImportStatus");
-  button.disabled = true;
+  setErpImportConfirmDisabled(true);
   status.textContent = "Conferindo divergências manuais...";
   renderErpImportJourney("impact", { text: "Conferindo conflitos e impacto antes de gravar." });
   try {
@@ -713,7 +743,7 @@ async function confirmErpImportMapping() {
     renderErpImportJourney("error", { text: error.message || "Não foi possível gravar o lote." });
     status.textContent = error.message || "Não foi possível gravar o lote.";
   } finally {
-    button.disabled = Boolean(state.erpImportResult);
+    setErpImportConfirmDisabled(Boolean(state.erpImportResult));
   }
 }
 
@@ -901,6 +931,7 @@ function importIssueGuidance(item = {}) {
     erp_stock_without_product_code: ["bloqueio", "Estoque sem produto não entra na reposição.", "Mapeie ou exporte o código interno do produto junto com o saldo."],
     erp_product_sale_without_product_code: ["bloqueio", "Venda sem produto não entra em demanda, ABC ou reposição.", "Mapeie o código do produto na venda por item."],
     erp_product_sale_inferred_product_code: ["confiança", `O ${appName()} evitou atribuir venda ao item errado.`, "Use uma exportação onde cada linha de venda traga o código real do produto."],
+    erp_product_sale_inherited_product_code: ["auditoria", "Venda agrupada aproveitou o produto da linha anterior.", "Confira se esse arquivo do ERP está ordenado por produto antes de confiar no lote."],
     erp_identifier_without_product_code: ["bloqueio", "Código de barras ou referência de fornecedor ficou sem item de destino.", "Inclua o código interno do produto nessa planilha."],
     erp_settings_without_product_code: ["bloqueio", "Ajustes de compra ficaram sem produto para aplicar.", "Inclua código do produto junto dos parâmetros operacionais."],
     erp_unmapped_rows: ["auditoria", "Linhas ficaram apenas em auditoria.", "Revise o mapeamento das colunas antes de gravar de novo."],
@@ -1319,61 +1350,85 @@ function referenceFileMeta(file) {
   return parts.join(" - ") || "Sem histórico de importação.";
 }
 
+function uniqueReferenceFiles(files = []) {
+  const byName = new Map();
+  files.forEach((file) => {
+    const fileName = file.file_name || "";
+    const key = fileName.trim().toLowerCase();
+    if (!key) return;
+    const previous = byName.get(key);
+    const score = (item = {}) => [
+      item.exists && item.needs_update ? 4 : 0,
+      item.exists ? 2 : 0,
+      item.last_imported_at || "",
+    ].join("|");
+    if (!previous || score(file) > score(previous)) byName.set(key, file);
+  });
+  return Array.from(byName.values());
+}
+
+function pendingReferenceFiles() {
+  return uniqueReferenceFiles(state.imports?.local_reference?.files || [])
+    .filter((file) => file.exists && file.needs_update);
+}
+
+function referenceFilesSummary(files = []) {
+  const names = files.map((file) => file.file_name).filter(Boolean);
+  if (!names.length) return "";
+  const visible = names.slice(0, 3).join(", ");
+  const hiddenCount = names.length - 3;
+  return hiddenCount > 0 ? `${visible} e mais ${number(hiddenCount)}` : visible;
+}
+
 function renderRefreshTargets(targets = []) {
   const panel = document.querySelector("#refreshTargetsPanel");
   const list = document.querySelector("#refreshTargets");
   if (!panel || !list) return;
   const local = state.imports?.local_reference || {};
-  const files = local.files || [];
+  const files = uniqueReferenceFiles(local.files || []);
   const configured = Boolean(local.configured);
   const folderExists = Boolean(local.folder_exists);
-  const updateCount = files.filter((file) => file.exists && file.needs_update).length;
-  const existingCount = files.filter((file) => file.exists).length;
-  if (!configured && !files.length) {
+  const updateFiles = files.filter((file) => file.exists && file.needs_update);
+  const updateCount = updateFiles.length;
+  const status = document.querySelector("#refreshTargetStatus");
+  const preview = document.querySelector("#refreshTargetPreview");
+  const hidePanel = (!configured || (folderExists && !updateCount));
+  if (hidePanel) {
     panel.hidden = true;
     list.innerHTML = "";
+    if (status) status.textContent = "";
+    if (preview) preview.innerHTML = "";
+    state.refreshTargets = targets;
     return;
   }
-  const alertClass = !configured || !folderExists ? "warn" : updateCount ? "good" : "neutral";
-  const alertText = !configured
-    ? "Defina a pasta onde ficam os arquivos do ERP para habilitar a atualização rapida."
-    : !folderExists
-      ? "A pasta salva não foi encontrada. Confira o caminho antes de atualizar."
-      : updateCount
-        ? `${number(updateCount)} arquivo(s) de referência mudaram desde a última importação.`
-        : "Arquivos de referência iguais ao ultimo lote importado.";
   panel.hidden = false;
-  list.innerHTML = `
-    <div class="refresh-folder-card">
-      <label for="referenceFolderInput">Pasta de referência</label>
-      <div class="refresh-folder-row">
-        <input class="inline-input" id="referenceFolderInput" type="text" value="${escapeAttr(local.folder || "")}" placeholder="C:\\caminho\\das\\planilhas" />
-        <button class="secondary-button" id="referenceFolderSave" type="button">Salvar pasta</button>
+  if (!folderExists) {
+    list.innerHTML = `
+      <div class="refresh-local-summary warn">
+        <div>
+          <span>Pasta de referência</span>
+          <strong>A pasta salva não foi encontrada</strong>
+          <em>Confira o caminho para o sistema voltar a avisar quando houver planilha atualizada.</em>
+        </div>
+        <div class="refresh-folder-row">
+          <input class="inline-input" id="referenceFolderInput" type="text" value="${escapeAttr(local.folder || "")}" placeholder="C:\\caminho\\das\\planilhas" />
+          <button class="secondary-button" id="referenceFolderSave" type="button">Salvar pasta</button>
+        </div>
       </div>
-    </div>
-    <p class="refresh-local-alert ${escapeAttr(alertClass)}">${escapeHtml(alertText)}</p>
-    <div class="refresh-file-list">
-      ${files
-        .map((file) => {
-          const checked = file.exists && file.needs_update ? "checked" : "";
-          const disabled = file.exists ? "" : "disabled";
-          return `
-            <label class="refresh-file-row ${escapeAttr(referenceFileTone(file))}">
-              <input type="checkbox" data-reference-file="${escapeAttr(file.file_name || "")}" ${checked} ${disabled} />
-              <span>
-                <strong>${escapeHtml(file.file_name || "Arquivo")}</strong>
-                <em>${escapeHtml(referenceFileMeta(file))}</em>
-              </span>
-              <b>${escapeHtml(referenceFileStatusText(file))}</b>
-            </label>
-          `;
-        })
-        .join("") || `<div class="info-card"><strong>Nenhuma fonte conhecida</strong><span>Importe as planilhas pelo fluxo manual uma vez.</span></div>`}
-    </div>
-    <div class="refresh-confirm-row">
-      <button class="action-button" id="refreshSelectedLocalBtn" type="button" ${configured && folderExists && existingCount ? "" : "disabled"}>Atualizar selecionados</button>
-      <button class="secondary-button" id="selectModifiedReferenceFiles" type="button" ${updateCount ? "" : "disabled"}>Selecionar alterados</button>
-      <button class="secondary-button" id="selectAllReferenceFiles" type="button" ${existingCount ? "" : "disabled"}>Selecionar todos</button>
+    `;
+    state.refreshTargets = targets;
+    return;
+  }
+  list.innerHTML = `
+    <div class="refresh-local-summary good">
+      <div>
+        <span>Atualização disponível</span>
+        <strong>${number(updateCount)} planilha(s) de referência foram alteradas</strong>
+        <em>${escapeHtml(referenceFilesSummary(updateFiles) || "Arquivos detectados na pasta configurada.")}</em>
+      </div>
+      <div class="refresh-confirm-row">
+        <button class="action-button" id="refreshSelectedLocalBtn" type="button">Atualizar planilhas</button>
+      </div>
     </div>
   `;
   state.refreshTargets = targets;
@@ -1437,21 +1492,24 @@ async function refreshSelectedLocalFiles() {
   const selected = [...document.querySelectorAll("[data-reference-file]:checked")]
     .map((input) => input.dataset.referenceFile)
     .filter(Boolean);
+  const pending = pendingReferenceFiles().map((file) => file.file_name).filter(Boolean);
+  const fileNames = selected.length ? selected : pending;
   const status = document.querySelector("#refreshTargetStatus");
   const button = document.querySelector("#refreshSelectedLocalBtn");
   if (!status) return;
-  if (!selected.length) {
-    status.textContent = "Selecione pelo menos um arquivo.";
+  if (!fileNames.length) {
+    status.textContent = "Nenhuma planilha alterada para atualizar.";
     return;
   }
   if (button) button.disabled = true;
-  status.textContent = `Atualizando ${number(selected.length)} arquivo(s)...`;
+  status.textContent = `Atualizando ${number(fileNames.length)} planilha(s)...`;
   try {
-    const result = await apiPost("/api/imports/refresh-local", { file_names: selected });
+    const result = await apiPost("/api/imports/refresh-local", { file_names: fileNames });
     state.imports = result.imports;
     renderImports(result.imports);
     const message = renderLocalRefreshResults(result.results || []);
-    document.querySelector("#refreshTargetStatus").textContent = message || "Atualização concluida.";
+    const currentStatus = document.querySelector("#refreshTargetStatus");
+    if (currentStatus) currentStatus.textContent = message || "Atualização concluida.";
   } catch (error) {
     status.textContent = error.message || "Não foi possível atualizar os arquivos.";
     if (button) button.disabled = false;
@@ -1581,7 +1639,7 @@ function renderImports(payload) {
     ["Linhas mapeadas", number(qualitySummary.mapped_rows || 0), "green"],
     ["Issues", number(issues.length), issues.length ? "amber" : "green"],
     ["Mudanças detectadas", number(changes.length), ""],
-    ["Ultimo status", importStatusLabel(lastBatch.status), lastBatch.status === "completed" ? "green" : "amber"],
+    ["Ultimo status", importStatusLabel(lastBatch.status), ["completed", "finished"].includes(lastBatch.status) ? "green" : "amber"],
     ["Blocos cobertos", number((payload.readiness?.plan || []).filter((item) => importPlanStatus(item).cls === "good").length), "green"],
     ["Parciais", number((payload.readiness?.plan || []).filter((item) => importPlanStatus(item).cls === "warn").length), "amber"],
     ["Faltando", number((payload.readiness?.plan || []).filter((item) => importPlanStatus(item).cls === "danger").length), ""],

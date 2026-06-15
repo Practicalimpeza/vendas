@@ -55,6 +55,12 @@
   customers: [],
   customerMode: "operational",
   selectedCustomerId: "",
+  customerCrm: null,
+  customerCatalog: null,
+  customerCatalogSearchTimer: null,
+  customerSalesOrderDraftItems: [],
+  customerSalesOrderSearchRows: [],
+  customerSalesOrderSearchTimer: null,
   services: [],
   imports: null,
   implementation: null,
@@ -178,6 +184,7 @@ function quoteFormulaDefaultSettings() {
 
 const VIEW_ROUTES = {
   dashboard: "/painel",
+  seller: "/vendedor",
   actions: "/hoje",
   engine: "/motor",
   products: "/produtos",
@@ -201,6 +208,7 @@ const ROUTE_VIEWS = {
 };
 const NAV_ICONS = {
   dashboard: "layout-dashboard",
+  seller: "smartphone",
   actions: "list-todo",
   engine: "brain-circuit",
   products: "package-search",
@@ -240,14 +248,24 @@ const SUPPLIER_WORKBENCH_SUPPLIER_KEYS = [
   "latest_quote_at",
   "latest_quote_id",
   "estimated_value",
+  "stock_value",
+  "turnover_value",
+  "supplier_daily_purchase_value",
 ];
 const VIEW_META = {
   dashboard: {
-    label: "Visão",
-    eyebrow: "Leitura da empresa",
-    subtitle: "Receita, mix, estoque, clientes, compras e margem em uma leitura única.",
-    question: "Como a empresa está agora?",
-    next: "Padrão em 30 dias; 90d, 6m e 12m servem para tendência e sazonalidade.",
+    label: "Painel",
+    eyebrow: "Resumo executivo",
+    subtitle: "Indicadores, vendas, estoque, clientes, compras e margem em um painel ajustável.",
+    question: "O que precisa de atenção agora?",
+    next: "Blocos, ordem e períodos podem ser ajustados por usuário.",
+  },
+  seller: {
+    label: "Vendedor",
+    eyebrow: "Portal mobile",
+    subtitle: "Acesso rápido para clientes, produtos, vendas e pedidos em PDF.",
+    question: "Qual cliente ou produto precisa de atenção agora?",
+    next: "Abra a carteira, consulte produtos ou monte um pedido.",
   },
   quotes: {
     label: "Compras",

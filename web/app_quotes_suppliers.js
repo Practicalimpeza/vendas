@@ -1,7 +1,7 @@
 ﻿// Mesa de compras: ranking, filtros e detalhe flutuante de fornecedores.
 
 const QUOTE_SUPPLIER_HELP = {
-  cycle: "Intervalo estimado, em dias, para este fornecedor voltar à mesa de compra. Ciclos longos pedem compras com mais cobertura; ciclos curtos podem ser revistos com mais frequência.",
+  cycle: "Intervalo estimado, em dias, para este fornecedor voltar à mesa de compra. Ciclos longos e curtos entram como referência para cobertura e frequência de revisão.",
 };
 
 function supplierOpenQuoteState(row) {
@@ -11,11 +11,11 @@ function supplierOpenQuoteState(row) {
   const count = number(openQuotes);
   if (status === "sent") {
     return {
-      label: "Aguardando aprovação",
-      shortLabel: `${count} aguard. aprovação`,
-      chipLabel: `${count} aguard. aprovação`,
-      actionLabel: "Registrar resposta",
-      reason: "Cotação enviada ao fornecedor; registre a resposta para gerar o pedido.",
+      label: "Cotação enviada",
+      shortLabel: `${count} enviada`,
+      chipLabel: `${count} cotação enviada`,
+      actionLabel: "Abrir cotação",
+      reason: "Cotação enviada ao fornecedor.",
       cls: "info",
       score: 7600,
     };
@@ -25,8 +25,8 @@ function supplierOpenQuoteState(row) {
       label: "Resposta registrada",
       shortLabel: `${count} respondida`,
       chipLabel: `${count} resposta registrada`,
-      actionLabel: "Gerar pedido",
-      reason: "Resposta do fornecedor já registrada; gere o pedido para revisão.",
+      actionLabel: "Abrir cotação",
+      reason: "Resposta do fornecedor registrada.",
       cls: "ok",
       score: 7800,
     };
@@ -35,8 +35,8 @@ function supplierOpenQuoteState(row) {
     label: "Cotação em rascunho",
     shortLabel: `${count} rascunho`,
     chipLabel: `${count} cotação em rascunho`,
-    actionLabel: "Retomar cotação",
-    reason: "Cotação ainda não marcada como enviada ao fornecedor.",
+    actionLabel: "Abrir cotação",
+    reason: "Cotação em montagem.",
     cls: "warn",
     score: 7000,
   };
@@ -50,23 +50,22 @@ function supplierWorkbenchStatus(row) {
   const alerts = Number(row.alert_count || 0);
   const openQuoteState = supplierOpenQuoteState(row);
   const formationRank = row.order_formation_rank || "";
-  const formationLabel = row.order_formation_label || "";
   const formationStrategy = row.order_formation_strategy || "";
   if (openQuoteState) return { label: openQuoteState.label, cls: openQuoteState.cls, score: openQuoteState.score, rank: "open" };
   if (formationStrategy === "wait_or_negotiate") {
-    return { label: "Ciclo difícil", cls: "warn", score: 1800 + buyNow * 20 + alerts * 15 + Math.min(500, total / 10), rank: "below_min" };
+    return { label: "Ciclo longo", cls: "warn", score: 1800 + buyNow * 20 + alerts * 15 + Math.min(500, total / 10), rank: "below_min" };
   }
-  if (total <= 0 && urgent + buyNow <= 0) return { label: "Sem compra", cls: "", score: -1000, rank: "none" };
-  if (formationRank === "ready") return { label: formationLabel || "Pronto para cotar", cls: "ok", score: 6000 + urgent * 100 + buyNow * 20 + alerts * 10, rank: "ready" };
-  if (formationRank === "risk") return { label: formationLabel || "Revisar alertas", cls: "danger", score: 5000 + urgent * 100 + buyNow * 20, rank: "risk" };
-  if (formationRank === "no_min") return { label: formationLabel || "Sem mínimo", cls: "warn", score: 3000 + urgent * 100 + buyNow * 20, rank: "no_min" };
+  if (total <= 0 && urgent + buyNow <= 0) return { label: "Sem valor", cls: "", score: -1000, rank: "none" };
+  if (formationRank === "ready") return { label: "Mínimo atingido", cls: "ok", score: 6000 + urgent * 100 + buyNow * 20 + alerts * 10, rank: "ready" };
+  if (formationRank === "risk") return { label: "Ruptura ou sinais", cls: "danger", score: 5000 + urgent * 100 + buyNow * 20, rank: "risk" };
+  if (formationRank === "no_min") return { label: "Sem mínimo", cls: "warn", score: 3000 + urgent * 100 + buyNow * 20, rank: "no_min" };
   if (formationRank === "below_min") {
-    const label = formationStrategy === "wait_or_negotiate" ? "Ciclo difícil" : formationLabel || "Abaixo do mínimo";
+    const label = formationStrategy === "wait_or_negotiate" ? "Ciclo longo" : "Abaixo do mínimo";
     return { label, cls: "warn", score: 2000 + buyNow * 20 + alerts * 15 + Math.min(500, total / 10), rank: "below_min" };
   }
   if (minimum <= 0) return { label: "Sem mínimo", cls: "warn", score: 3000 + urgent * 100 + buyNow * 20, rank: "no_min" };
-  if (total >= minimum) return { label: "Pronto para cotar", cls: "ok", score: 6000 + urgent * 100 + buyNow * 20 + alerts * 10, rank: "ready" };
-  if (urgent > 0) return { label: "Revisar alertas", cls: "danger", score: 5000 + urgent * 100 + buyNow * 20, rank: "risk" };
+  if (total >= minimum) return { label: "Mínimo atingido", cls: "ok", score: 6000 + urgent * 100 + buyNow * 20 + alerts * 10, rank: "ready" };
+  if (urgent > 0) return { label: "Ruptura ou sinais", cls: "danger", score: 5000 + urgent * 100 + buyNow * 20, rank: "risk" };
   return { label: "Abaixo do mínimo", cls: "warn", score: 2000 + buyNow * 20 + alerts * 15, rank: "below_min" };
 }
 
@@ -90,7 +89,7 @@ function supplierMinimumMeta(row) {
 function quoteSupplierLensDefinitions() {
   return [
     { key: "all", label: "Todos", match: () => true },
-    { key: "rupture", label: "Ruptura agora", match: (row) => Number(row.urgent_count || 0) > 0 },
+    { key: "rupture", label: "Ruptura", match: (row) => Number(row.urgent_count || 0) > 0 },
     {
       key: "near_minimum",
       label: "Perto do mínimo",
@@ -170,6 +169,7 @@ function quoteSupplierMatchesColumnFilters(row, context) {
   if (supplierTerm && ![row.supplier_name, row.contact_name, row.contact_phone].join(" ").toLowerCase().includes(supplierTerm)) return false;
   const meta = supplierMinimumMeta(row);
   const estimated = Number(row.estimated_value || 0);
+  const buyNow = Number(row.buy_now_count || 0);
   const urgent = Number(row.urgent_count || 0);
   const alerts = Number(row.alert_count || 0);
   const cycle = Number(row.supplier_days_to_order || 0);
@@ -190,9 +190,10 @@ function quoteSupplierMatchesColumnFilters(row, context) {
   if (filters.cycle === "long" && cycle < 60) return false;
   if (filters.cycle === "short" && !(cycle > 0 && cycle < 60)) return false;
   if (filters.cycle === "none" && cycle > 0) return false;
+  if (filters.risk === "buy_now" && buyNow <= 0) return false;
   if (filters.risk === "rupture" && urgent <= 0) return false;
-  if (filters.risk === "signals" && urgent <= 0 && alerts <= 0) return false;
-  if (filters.risk === "none" && (urgent > 0 || alerts > 0)) return false;
+  if (filters.risk === "signals" && alerts <= 0) return false;
+  if (filters.risk === "none" && (buyNow > 0 || urgent > 0 || alerts > 0)) return false;
   if (filters.open === "quote" && openQuotes <= 0) return false;
   if (filters.open === "order" && openOrders <= 0) return false;
   if (filters.open === "any" && openQuotes + openOrders <= 0) return false;
@@ -216,7 +217,7 @@ function supplierSignalChips(row) {
   else if (meta.minimum > 0 && meta.total > 0) signals.push({ label: `faltam ${money(meta.missing)}`, tone: meta.pct >= 65 ? "warn" : "muted" });
   if (cycleDays >= 60) signals.push({ label: `ciclo ${number(cycleDays)}d`, tone: "warn" });
   if (alerts && !urgent) signals.push({ label: `${number(alerts)} sinais`, tone: "muted" });
-  if (Number(row.out_of_mix_count || 0)) signals.push({ label: "revisar mix", tone: "muted" });
+  if (Number(row.out_of_mix_count || 0)) signals.push({ label: "fora do mix", tone: "muted" });
   return signals.slice(0, 4);
 }
 
@@ -228,8 +229,6 @@ function supplierSearchText(row) {
     row.contact_phone,
     row.contact_name,
     status.label,
-    row.order_formation_label,
-    row.order_formation_reason,
     signals,
   ].join(" ").toLowerCase();
 }
@@ -316,7 +315,8 @@ function sortQuoteSuppliers(rows, context) {
       const pctB = metaB.minimum > 0 ? metaB.pct : -1;
       return byDir(pctA - pctB, Number(b.estimated_value || 0) - Number(a.estimated_value || 0) || supplierFallback);
     }
-    if (key === "risk") return byDir(Number(a.urgent_count || 0) - Number(b.urgent_count || 0), Number(b.alert_count || 0) - Number(a.alert_count || 0) || supplierFallback);
+    if (key === "skus") return byDir(Number(a.active_skus || 0) - Number(b.active_skus || 0), supplierFallback);
+    if (key === "target") return byDir(Number(a.target_order_value || 0) - Number(b.target_order_value || 0), supplierFallback);
     if (key === "cycle") return byDir(Number(a.supplier_days_to_order || 0) - Number(b.supplier_days_to_order || 0), supplierFallback);
     if (key === "open_quote") return byDir(Number(a.open_quote_count || 0) - Number(b.open_quote_count || 0), Number(b.open_quote_estimated_value || 0) - Number(a.open_quote_estimated_value || 0) || supplierFallback);
     if (key === "nexo") return byDir(statusA.score - statusB.score, supplierFallback);
@@ -340,30 +340,279 @@ function quoteDeskSummary(rows = state.quoteSuppliers || []) {
   }, 0);
   const blocks = [
     { label: "Fornecedores", value: number(rows.length), detail: "visíveis", lens: "all" },
-    { label: "Sugerido", value: money(totalSuggested), detail: "ordenar valor", sort: "value" },
-    { label: "Falta p/ mínimos", value: money(missingToMinimum), detail: `${number(nearMinimum)} perto`, lens: "near_minimum" },
+    { label: "Valor", value: money(totalSuggested), detail: "total filtrado", sort: "value" },
+    { label: "Abaixo do mínimo", value: money(missingToMinimum), detail: `${number(nearMinimum)} perto`, lens: "near_minimum" },
     { label: "Ruptura", value: number(rupture), detail: "itens", lens: "rupture" },
     { label: "Ciclo longo", value: number(longCycle), detail: "fornecedores", lens: "long_cycle" },
-    { label: "Abertos", value: number(openOrders + openQuotes), detail: `${number(openOrders)} pedidos / ${number(openQuotes)} cotações`, lens: openQuotes ? "open_quote" : "open_order" },
+    { label: "Abertos", value: number(openOrders + openQuotes), detail: `${number(openOrders)} ped. / ${number(openQuotes)} cot.`, lens: openQuotes ? "open_quote" : "open_order" },
   ];
   return `
     <div class="purchase-overview purchase-overview-numeric">
       <div class="purchase-overview-metrics">
-        ${blocks.map((block) => {
-          const active = block.sort
-            ? (state.quoteSupplierSort || "supplier") === block.sort
-            : activeLenses.includes(block.lens || "all");
-          return `
-          <button class="purchase-overview-card ${active ? "active" : ""}" type="button" ${block.sort ? `data-quote-summary-sort="${escapeAttr(block.sort)}"` : `data-quote-summary-lens="${escapeAttr(block.lens || "all")}"`}>
+        ${blocks.map((block) => `
+          <div class="purchase-overview-card">
             <span>${escapeHtml(block.label)}</span>
             <strong>${escapeHtml(block.value)}</strong>
             <em>${escapeHtml(block.detail)}</em>
-          </button>
-        `;
-        }).join("")}
+          </div>
+        `).join("")}
       </div>
     </div>
   `;
+}
+
+// Status real da última cotação/pedido do fornecedor (cruza state.purchaseOrders).
+function quoteSupplierActivity(row) {
+  const orders = (state.purchaseOrders || []).filter((order) => order.supplier_id === row.supplier_id);
+  const orderRank = { received: 5, partial_received: 4, sent: 3, approved: 2, pending_confirmation: 1 };
+  const latestOrder = orders
+    .slice()
+    .sort((a, b) => (orderRank[b.status] || 0) - (orderRank[a.status] || 0)
+      || String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+  if (latestOrder) {
+    const map = {
+      pending_confirmation: { label: "Aguardando confirmação", cls: "warn" },
+      approved: { label: "Pedido aprovado", cls: "good" },
+      sent: { label: "Pedido enviado", cls: "info" },
+      partial_received: { label: "Recebido parcial", cls: "info" },
+      received: { label: "Recebido", cls: "good" },
+    };
+    const meta = map[latestOrder.status] || { label: latestOrder.status || "Pedido", cls: "info" };
+    const when = latestOrder.received_at || latestOrder.approved_at || latestOrder.created_at;
+    return { label: meta.label, cls: meta.cls, detail: when ? shortDate(when) : "", rank: 6 };
+  }
+  const status = row.latest_quote_status || "";
+  const quoteMap = {
+    draft: { label: "Cotação em rascunho", cls: "warn" },
+    sent: { label: "Cotação enviada", cls: "info" },
+    responded: { label: "Resposta registrada", cls: "good" },
+  };
+  if (quoteMap[status]) {
+    return { label: quoteMap[status].label, cls: quoteMap[status].cls, detail: row.latest_quote_at ? shortDate(row.latest_quote_at) : "", rank: 3 };
+  }
+  return { label: "—", cls: "muted", detail: "sem cotação", rank: 0 };
+}
+
+function quoteSupplierTableSignals(row) {
+  return supplierSignalChips(row).filter((chip) => {
+    const label = (chip.label || "").toLowerCase();
+    if (label.startsWith("faltam") || label === "mínimo atingido") return false;
+    if (label.startsWith("ciclo ")) return false;
+    if (label.includes("cotação") || label.includes("pedido aberto")) return false;
+    return true;
+  });
+}
+
+function quoteSupplierPct(part, total) {
+  const value = Number(part || 0);
+  const target = Number(total || 0);
+  if (target <= 0) return value > 0 ? 100 : 0;
+  return (value / target) * 100;
+}
+
+function quoteSupplierDailyValue(row) {
+  return Number(row.supplier_daily_purchase_value || 0);
+}
+
+function quoteSupplierTurnoverValue(row) {
+  const dailyValue = quoteSupplierDailyValue(row);
+  return Number(row.turnover_value || 0) || (dailyValue > 0 ? dailyValue * 30 : 0);
+}
+
+function quoteSupplierCoverageDays(row) {
+  const stock = Number(row.stock_value || 0);
+  const turnover = quoteSupplierTurnoverValue(row);
+  return stock > 0 && turnover > 0 ? (stock / turnover) * 30 : 0;
+}
+
+function quoteSupplierCoverageLabel(days) {
+  if (!days) return "—";
+  if (days >= 365) return `${number(days / 30)}m`;
+  return `${number(days)}d`;
+}
+
+function quoteSupplierDaysToMinimum(row) {
+  const minimum = Number(row.minimum_order_value || 0);
+  const dailyValue = quoteSupplierDailyValue(row);
+  return Number(row.supplier_days_to_minimum || 0) || (minimum > 0 && dailyValue > 0 ? minimum / dailyValue : 0);
+}
+
+function quoteSupplierPctTier(pct) {
+  if (pct >= 100) return "met";
+  if (pct >= 70) return "near";
+  return "low";
+}
+
+function quoteSupplierContactLine(row) {
+  return row.contact_phone || row.contact_email || row.contact_name || "";
+}
+
+function quoteSupplierSummaryLine(row) {
+  const parts = [];
+  const skus = Number(row.active_skus || 0);
+  const urgent = Number(row.urgent_count || 0);
+  const openQuotes = Number(row.open_quote_count || 0);
+  if (skus > 0) parts.push(`${number(skus)} SKUs`);
+  if (urgent > 0) parts.push(`${number(urgent)} rupt.`);
+  if (openQuotes > 0) parts.push(`${number(openQuotes)} cot. aberta`);
+  return parts.join(" · ") || quoteSupplierContactLine(row);
+}
+
+function quoteSupplierDirectoryColumns() {
+  return [
+    {
+      id: "supplier_name",
+      label: "Fornecedor",
+      type: "text",
+      minWidth: 150,
+      value: (r) => r.supplier_name || "",
+      text: (r) => `${r.supplier_name || ""} ${r.contact_name || ""} ${r.contact_phone || ""}`,
+      render: (r) => `<strong class="qsup-name">${escapeHtml(r.supplier_name || "—")}</strong><span class="muted-line">${escapeHtml(quoteSupplierSummaryLine(r))}</span>`,
+    },
+    {
+      id: "pedido",
+      label: "Pedido",
+      type: "money",
+      align: "num",
+      minWidth: 140,
+      value: (r) => Number(r.estimated_value || 0),
+      sortOptions: [
+        { id: "pedido_total", label: "Total do pedido", dir: "desc" },
+        { id: "pedido_pct", label: "% do mínimo", dir: "desc" },
+        { id: "pedido_falta", label: "Falta para mínimo", dir: "asc" },
+        { id: "pedido_minimo", label: "Pedido mínimo", dir: "desc" },
+      ],
+      render: (r) => {
+        const m = supplierMinimumMeta(r);
+        const tier = quoteSupplierPctTier(m.pct);
+        const width = Math.min(100, Math.max(0, m.pct));
+        const minimum = m.minimum > 0 ? compactMoney(m.minimum) : "sem mínimo";
+        const missing = m.missing > 0 ? `faltam ${compactMoney(m.missing)}` : "mínimo ok";
+        const activity = quoteSupplierActivity(r);
+        return `<div class="qsup-decision qsup-money-block"><strong>${money(m.total)}</strong><span>min ${escapeHtml(minimum)}</span><em class="${tier}">${number(m.pct)}% · ${escapeHtml(missing)}</em><i class="qsup-bar ${tier}" aria-hidden="true"><b style="width:${width}%"></b></i>${activity.rank ? `<small>${escapeHtml(activity.label)}</small>` : ""}</div>`;
+      },
+    },
+    {
+      id: "estoque",
+      label: "Estoque",
+      type: "money",
+      align: "num",
+      minWidth: 190,
+      value: (r) => Number(r.stock_value || 0),
+      sortOptions: [
+        { id: "estoque_valor", label: "Estoque atual", dir: "desc" },
+        { id: "giro_valor", label: "Giro/mês", dir: "desc" },
+        { id: "cobertura_dias", label: "Cobertura", dir: "asc" },
+      ],
+      render: (r) => {
+        const stock = Number(r.stock_value || 0);
+        const turnover = quoteSupplierTurnoverValue(r);
+        const coverageDays = quoteSupplierCoverageDays(r);
+        return `<div class="qsup-triple"><span title="Valor estimado do estoque atual dos produtos deste fornecedor"><b>Estoque</b><strong>${compactMoney(stock)}</strong></span><span title="Giro histórico estimado por mês, calculado pelo consumo dos produtos deste fornecedor"><b>Giro</b><strong>${turnover > 0 ? compactMoney(turnover) : "—"}</strong></span><span title="Cobertura aproximada: estoque atual dividido pelo giro histórico"><b>Cobertura</b><strong>${quoteSupplierCoverageLabel(coverageDays)}</strong></span></div>`;
+      },
+    },
+    {
+      id: "saude",
+      label: "Ritmo",
+      type: "percent",
+      align: "num",
+      minWidth: 130,
+      sortOptions: [
+        { id: "ritmo_dias", label: "Dias p/ mínimo", dir: "asc" },
+        { id: "ritmo_giro", label: "Giro/mês", dir: "desc" },
+      ],
+      value: (r) => {
+        const days = quoteSupplierDaysToMinimum(r);
+        return days > 0 ? days : 9999;
+      },
+      render: (r) => {
+        const turnover = quoteSupplierTurnoverValue(r);
+        const days = quoteSupplierDaysToMinimum(r);
+        const main = days > 0 ? `${number(days)}d p/min` : "sem giro";
+        return `<div class="qsup-health" title="Ritmo = giro histórico contra pedido mínimo. É uma medida contínua, não uma classificação fixa do fornecedor."><strong class="neutral">${escapeHtml(main)}</strong><span>giro/mês ${turnover > 0 ? compactMoney(turnover) : "—"}</span></div>`;
+      },
+    },
+    {
+      id: "condicao",
+      label: "Condição",
+      type: "int",
+      align: "",
+      minWidth: 120,
+      value: (r) => Number(r.average_lead_time_days || r.lead_time_days || 0),
+      sortOptions: [
+        { id: "cond_prazo", label: "Prazo médio", dir: "asc" },
+        { id: "cond_desconto", label: "Meta desconto", dir: "desc" },
+        { id: "cond_revisao", label: "Revisão", dir: "asc" },
+      ],
+      render: (r) => {
+        const lead = Number(r.average_lead_time_days || r.lead_time_days || 0);
+        const review = Number(r.order_review_cycle_days || 0);
+        const discountTarget = Number(r.target_order_value || 0);
+        const minimum = Number(r.minimum_order_value || 0);
+        const discountLine = discountTarget > minimum ? `desconto ${compactMoney(discountTarget)}` : "desconto —";
+        return `<div class="qsup-condition"><strong>${lead > 0 ? `${number(lead)}d` : "—"}</strong><span>prazo médio</span><em>${escapeHtml(discountLine)}</em>${review > 0 ? `<small>rev. ${number(review)}d</small>` : ""}</div>`;
+      },
+    },
+    {
+      id: "contato",
+      label: "Contato",
+      type: "text",
+      minWidth: 140,
+      value: (r) => `${r.contact_name || ""} ${r.contact_phone || ""} ${r.contact_email || ""}`,
+      render: (r) => {
+        const main = r.contact_name || r.contact_phone || r.contact_email || "—";
+        const sub = r.contact_name ? (r.contact_phone || r.contact_email || "") : (r.contact_phone && r.contact_email ? r.contact_email : "");
+        return `<div class="qsup-contact"><strong>${escapeHtml(main)}</strong>${sub ? `<span>${escapeHtml(sub)}</span>` : ""}</div>`;
+      },
+    },
+    { id: "pedido_total", label: "Pedido: total", type: "money", value: (r) => Number(r.estimated_value || 0), hidden: true, utility: true, searchable: false, filter: false },
+    { id: "pedido_pct", label: "Pedido: % mínimo", type: "percent", value: (r) => supplierMinimumMeta(r).pct, hidden: true, utility: true, searchable: false, filter: false },
+    { id: "pedido_falta", label: "Pedido: falta", type: "money", value: (r) => {
+      const m = supplierMinimumMeta(r);
+      return m.minimum > 0 ? m.missing : 999999999;
+    }, hidden: true, utility: true, searchable: false, filter: false },
+    { id: "pedido_minimo", label: "Pedido mínimo", type: "money", value: (r) => Number(r.minimum_order_value || 0), hidden: true, utility: true, searchable: false, filter: false },
+    { id: "estoque_valor", label: "Estoque atual", type: "money", value: (r) => Number(r.stock_value || 0), hidden: true, utility: true, searchable: false, filter: false },
+    { id: "giro_valor", label: "Giro/mês", type: "money", value: (r) => quoteSupplierTurnoverValue(r), hidden: true, utility: true, searchable: false, filter: false },
+    { id: "cobertura_dias", label: "Cobertura", type: "int", value: (r) => quoteSupplierCoverageDays(r) || 999999, hidden: true, utility: true, searchable: false, filter: false },
+    { id: "ritmo_dias", label: "Dias p/ mínimo", type: "int", value: (r) => quoteSupplierDaysToMinimum(r) || 999999, hidden: true, utility: true, searchable: false, filter: false },
+    { id: "ritmo_giro", label: "Ritmo: giro/mês", type: "money", value: (r) => quoteSupplierTurnoverValue(r), hidden: true, utility: true, searchable: false, filter: false },
+    { id: "cond_prazo", label: "Prazo médio", type: "int", value: (r) => Number(r.average_lead_time_days || r.lead_time_days || 0), hidden: true, utility: true, searchable: false, filter: false },
+    { id: "cond_desconto", label: "Meta desconto", type: "money", value: (r) => Number(r.target_order_value || 0), hidden: true, utility: true, searchable: false, filter: false },
+    { id: "cond_revisao", label: "Revisão", type: "int", value: (r) => Number(r.order_review_cycle_days || 0), hidden: true, utility: true, searchable: false, filter: false },
+  ];
+}
+
+let quoteSuppliersTable = null;
+
+function ensureQuoteSuppliersTable() {
+  if (quoteSuppliersTable) return quoteSuppliersTable;
+  const mount = document.querySelector("#quoteSuppliersTable");
+  if (!mount || typeof createDataTable !== "function") return null;
+  quoteSuppliersTable = createDataTable(mount, {
+    key: "quote-suppliers-5",
+    columns: quoteSupplierDirectoryColumns(),
+    rows: [],
+    searchPlaceholder: "Buscar fornecedor, contato…",
+    rowKey: (r) => r.supplier_id,
+    rowAttrs: (r) => ({ "data-supplier-id": r.supplier_id || "", class: "quote-supplier-dt-row" }),
+    onRowClick: (r) => openQuoteSupplierPreview(r.supplier_id),
+    emptyTitle: "Nenhum fornecedor encontrado",
+    emptyHint: "Ajuste a busca ou os filtros das colunas.",
+    initialSort: [{ id: "pedido", dir: "desc" }],
+    rowActions: [
+      { id: "abrir", label: "Abrir mesa", icon: "shopping-cart", title: "Montar pedido deste fornecedor", onClick: (r) => loadQuoteSupplierWorkbench(r.supplier_id) },
+    ],
+  });
+  return quoteSuppliersTable;
+}
+
+function openQuoteSupplierPreview(supplierId) {
+  if (!supplierId) return;
+  state.quoteSupplierPreviewId = supplierId;
+  state.quoteSupplierPopupOpen = true;
+  renderQuoteSupplierInspectorState();
+  prefetchQuoteSupplierWorkbench(supplierId).catch(() => {});
 }
 
 function supplierMinimumProgress(row) {
@@ -478,10 +727,33 @@ async function saveQuoteSupplierProfile(button) {
 
 function quoteSupplierFilterControl(key, options, label) {
   const current = quoteSupplierColumnFilterValue(key);
+  if (!options.length) {
+    return `
+      <label class="purchase-filter-search">
+        <span>Buscar</span>
+        <input type="search" data-quote-supplier-col-filter="${escapeAttr(key)}" value="${escapeAttr(current)}" placeholder="Digite o fornecedor" aria-label="Buscar em ${escapeAttr(label)}" autocomplete="off" />
+      </label>
+    `;
+  }
   const opts = options
-    .map(([value, text]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(text)}</option>`)
+    .map(([value, text]) => `
+      <button
+        class="purchase-filter-option ${current === value ? "active" : ""}"
+        type="button"
+        data-quote-supplier-filter-option="${escapeAttr(key)}"
+        data-filter-value="${escapeAttr(value)}"
+        data-filter-text="${escapeAttr(text)}"
+        aria-pressed="${current === value ? "true" : "false"}"
+      >${escapeHtml(text)}</button>
+    `)
     .join("");
-  return `<select data-quote-supplier-col-filter="${escapeAttr(key)}" aria-label="Filtrar ${escapeAttr(label)}">${opts}</select>`;
+  return `
+    <label class="purchase-filter-search">
+      <span>Buscar</span>
+      <input type="search" data-quote-supplier-filter-search="${escapeAttr(key)}" placeholder="Digite para filtrar" aria-label="Buscar em ${escapeAttr(label)}" autocomplete="off" />
+    </label>
+    <span class="purchase-filter-options" data-quote-supplier-filter-options="${escapeAttr(key)}">${opts}</span>
+  `;
 }
 
 function closeQuoteSupplierFilterPanels(exceptPanel = null) {
@@ -490,7 +762,7 @@ function closeQuoteSupplierFilterPanels(exceptPanel = null) {
   });
 }
 
-function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = []) {
+function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = [], extraClass = "") {
   const active = (state.quoteSupplierSort || "supplier") === sortKey;
   const dir = active ? (state.quoteSupplierSortDir || quoteSupplierDefaultSortDir(sortKey)) : quoteSupplierDefaultSortDir(sortKey);
   const ariaSort = !active ? "none" : dir === "asc" ? "ascending" : "descending";
@@ -514,7 +786,7 @@ function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = []) {
     `
     : "";
   return `
-    <span class="purchase-supplier-th ${filtered ? "filtered" : ""}" role="columnheader" aria-sort="${ariaSort}">
+    <span class="purchase-supplier-th ${extraClass} ${filtered ? "filtered" : ""}" role="columnheader" aria-sort="${ariaSort}">
       <button class="purchase-sort-button ${active ? "active" : ""}" type="button" data-quote-supplier-sort="${escapeAttr(sortKey)}" aria-pressed="${active ? "true" : "false"}"${sortDirAttr}${helpAttrs}>
         <span>${escapeHtml(label)}</span>
         <i aria-hidden="true">${marker}</i>
@@ -526,14 +798,12 @@ function quoteSupplierHeader(label, sortKey, filterKey, filterOptions = []) {
 
 function quoteSupplierHeaderCells() {
   return `
-    ${quoteSupplierHeader("Fornecedor", "supplier")}
-    ${quoteSupplierHeader("Sugerido", "value", "value", [["", "Todos"], ["positive", "Com valor"], ["high", "Alto valor"], ["zero", "Sem sugestão"]])}
-    ${quoteSupplierHeader("Mínimo", "minimum", "minimum", [["", "Todos"], ["configured", "Com mínimo"], ["missing", "Sem mínimo"], ["met", "Mínimo ok"]])}
-    ${quoteSupplierHeader("Situação", "minimum_gap", "gap", [["", "Todos"], ["missing", "Falta mínimo"], ["ok", "OK"], ["none", "Sem mínimo"]])}
-    ${quoteSupplierHeader("% mínimo", "minimum_pct", "pct", [["", "Todos"], ["under_65", "< 65%"], ["near", "65-99%"], ["met", ">= 100%"]])}
+    ${quoteSupplierHeader("Fornecedor", "supplier", "supplier")}
+    ${quoteSupplierHeader("Pedido mínimo", "minimum_pct", "pct", [["", "Todos"], ["under_65", "< 65%"], ["near", "65-99%"], ["met", ">= 100%"]], "ps-th-order")}
+    ${quoteSupplierHeader("Valor sugerido", "value", "value", [["", "Todos"], ["positive", "Com valor"], ["high", "Alto valor"], ["zero", "Sem valor"]])}
+    ${quoteSupplierHeader("Sinais", "nexo", "risk", [["", "Todos"], ["rupture", "Ruptura"], ["buy_now", "Reposição"], ["signals", "Sinais"], ["none", "Sem sinais"]])}
     ${quoteSupplierHeader("Ciclo", "cycle", "cycle", [["", "Todos"], ["short", "< 60d"], ["long", ">= 60d"], ["none", "Sem ciclo"]])}
-    ${quoteSupplierHeader("Ruptura", "risk", "risk", [["", "Todos"], ["rupture", "Ruptura"], ["signals", "Com sinais"], ["none", "Sem sinal"]])}
-    ${quoteSupplierHeader("Aberto", "open_quote", "open", [["", "Todos"], ["any", "Qualquer"], ["quote", "Cotação"], ["order", "Pedido"], ["none", "Nenhum"]])}
+    ${quoteSupplierHeader("Cotação", "open_quote", "open", [["", "Todos"], ["any", "Com cotação/pedido"], ["quote", "Com cotação"], ["order", "Com pedido"], ["none", "Sem aberto"]])}
   `;
 }
 
@@ -551,57 +821,71 @@ function quoteSupplierRows(rows) {
   const body = rows
     .map((row) => {
       const active = state.quoteSupplierPopupOpen && row.supplier_id === state.quoteSupplierPreviewId ? "active" : "";
-      const status = supplierWorkbenchStatus(row);
       const minVal = Number(row.minimum_order_value || 0);
       const estVal = Number(row.estimated_value || 0);
+      const targetVal = Number(row.target_order_value || 0);
+      const missing = Math.max(0, minVal - estVal);
       const pct = minVal > 0 ? (estVal / minVal) * 100 : (estVal > 0 ? 100 : 0);
       const progressPct = Math.min(100, Math.max(0, pct));
-      const urgentCount = Number(row.urgent_count || 0);
-      const alertCount = Number(row.alert_count || 0);
+      const pctTier = minVal <= 0 ? "none" : pct >= 100 ? "met" : pct >= 65 ? "near" : "low";
+      const orderGapLabel = minVal <= 0
+        ? "sem mínimo"
+        : missing > 0 ? `faltam ${compactMoney(missing)}` : "atingido";
       const openQuoteCount = Number(row.open_quote_count || 0);
       const pendingOrderCount = Number(row.pending_order_count || 0);
       const openQuoteState = supplierOpenQuoteState(row);
       const skus = Number(row.active_skus || 0);
       const cycleDays = Number(row.supplier_days_to_order || 0);
-      const missing = Math.max(0, minVal - estVal);
-      const gapValue = minVal <= 0 ? "-" : missing > 0 ? money(missing) : "OK";
-      const gapLabel = minVal <= 0 ? "sem mínimo" : missing > 0 ? "falta" : "mínimo ok";
-      const cycleText = cycleDays > 0 ? `${number(cycleDays)}d` : "-";
-      const openTotal = openQuoteCount + pendingOrderCount;
+      const leadDays = Number(row.average_lead_time_days || row.lead_time_days || 0);
+      const reviewDays = Number(row.order_review_cycle_days || 0);
+      const cycleText = cycleDays > 0 ? `${number(cycleDays)}d` : "—";
+      const cycleSub = [leadDays > 0 ? `lead ${number(leadDays)}d` : "", reviewDays > 0 ? `rev ${number(reviewDays)}d` : ""].filter(Boolean).join(" · ") || "ciclo calculado";
+      const contactLine = row.contact_phone || row.contact_name || "";
       const supplierId = escapeAttr(row.supplier_id);
+      const signalToneClass = { good: "ok", muted: "", danger: "danger", warn: "warn", info: "info", ok: "ok" };
+      const signals = supplierSignalChips(row).filter((chip) => {
+        const label = (chip.label || "").toLowerCase();
+        if (label.startsWith("faltam") || label === "mínimo atingido") return false;
+        if (label.startsWith("ciclo ")) return false;
+        if (label.includes("cotação") || label.includes("pedido aberto")) return false;
+        return true;
+      });
+      const signalsMarkup = signals.length
+        ? `<span class="ps-signal-list">${signals.map((chip) => `<span class="ps-signal ${escapeAttr(signalToneClass[chip.tone] ?? "")}">${escapeHtml(chip.label)}</span>`).join("")}</span>`
+        : `<em class="ps-quiet">sem sinais</em>`;
+      const quoteStatus = openQuoteCount
+        ? openQuoteState?.label || "Cotação aberta"
+        : pendingOrderCount
+          ? "Pedido pendente"
+          : "—";
+      const quoteSub = openQuoteCount
+        ? `${number(openQuoteCount)} aberta${openQuoteCount > 1 ? "s" : ""}`
+        : pendingOrderCount
+          ? `${number(pendingOrderCount)} pedido${pendingOrderCount > 1 ? "s" : ""}`
+          : "sem cotação";
       return `
-        <div class="purchase-supplier-row ${active} qrank-${status.rank}" role="row" data-supplier-id="${supplierId}">
+        <div class="purchase-supplier-row ${active}" role="row" data-supplier-id="${supplierId}">
           <span class="ps-col ps-name">
             <strong>${escapeHtml(row.supplier_name)}</strong>
-            <em>${skus ? `${number(skus)} SKUs ativos` : "Sem SKUs ativos"}</em>
+            <em>${number(skus)} SKUs${contactLine ? ` · ${escapeHtml(contactLine)}` : ""}</em>
           </span>
-          <span class="ps-col ps-money">
-            <strong>${money(estVal)}</strong>
-            <em>sugerido</em>
+          <span class="ps-col ps-order" data-tier="${pctTier}">
+            <strong class="ps-pct">${minVal > 0 ? `${number(pct)}%` : "—"}</strong>
+            <span class="ps-progress" title="${escapeAttr(minVal > 0 ? `${money(estVal)} de ${money(minVal)}` : "mínimo não cadastrado")}" aria-hidden="true"><i style="width:${progressPct}%"></i></span>
+            <em>${escapeHtml(orderGapLabel)} · mín ${minVal > 0 ? compactMoney(minVal) : "—"}</em>
           </span>
-          <span class="ps-col ps-minimum">
-            <strong>${minVal > 0 ? money(minVal) : "-"}</strong>
-            <span class="ps-progress" aria-hidden="true"><i style="width:${progressPct}%"></i></span>
+          <span class="ps-col ps-value">
+            <strong>${estVal > 0 ? compactMoney(estVal) : "—"}</strong>
+            <em>${targetVal > 0 ? `alvo ${compactMoney(targetVal)}` : "sugerido na janela"}</em>
           </span>
-          <span class="ps-col ps-gap ${missing > 0 ? "warn" : minVal > 0 ? "good" : ""}">
-            <strong>${escapeHtml(gapValue)}</strong>
-            <em>${escapeHtml(gapLabel)}</em>
-          </span>
-          <span class="ps-col ps-pct">
-            <strong>${minVal > 0 ? `${number(pct)}%` : "-"}</strong>
-            <em>do mínimo</em>
-          </span>
-          <span class="ps-col">
+          <span class="ps-col ps-signals">${signalsMarkup}</span>
+          <span class="ps-col ps-cycle">
             <strong>${escapeHtml(cycleText)}</strong>
-            <em>ciclo</em>
+            <em>${escapeHtml(cycleSub)}</em>
           </span>
-          <span class="ps-col ps-risk ${urgentCount ? "danger" : alertCount ? "warn" : ""}">
-            <strong>${number(urgentCount)}</strong>
-            <em>${alertCount ? `${number(alertCount)} sinais` : "rupturas"}</em>
-          </span>
-          <span class="ps-col ps-open ${openTotal ? "warn" : ""}">
-            <strong>${number(openTotal)}</strong>
-            <em>${openQuoteCount ? openQuoteState?.shortLabel || `${number(openQuoteCount)} cotação` : pendingOrderCount ? `${number(pendingOrderCount)} pedido` : "abertos"}</em>
+          <span class="ps-col ps-quote-status">
+            <strong>${escapeHtml(quoteStatus)}</strong>
+            <em>${escapeHtml(quoteSub)}</em>
           </span>
         </div>
       `;
@@ -648,15 +932,15 @@ function quoteSupplierInspector(row) {
   const leadDays = Number(row.average_lead_time_days || row.lead_time_days || 0);
   const reviewCycleDays = Number(row.order_review_cycle_days || 0);
   const difficulty = row.order_difficulty || "auto";
-  const reason = openQuoteState?.reason || row.order_formation_reason || status.label;
-  const recommendation = openQuoteState?.label || row.order_formation_recommendation || (status.rank === "ready" ? "Cotar agora" : "Revisar fornecedor");
-  const primaryActionLabel = openQuoteState?.actionLabel || (status.rank === "open" || openQuotes > 0 ? "Retomar cotação" : "Criar cotação");
+  const reason = openQuoteState?.reason || status.label;
+  const recommendation = openQuoteState?.label || status.label;
+  const primaryActionLabel = openQuoteState?.actionLabel || "Abrir mesa";
   const progressWidth = Math.min(100, Math.max(0, progress.pct));
   const progressText = minimum > 0 ? `${number(fillPct)}% do mínimo; ${progress.label}` : progress.label;
   const editing = state.quoteSupplierEditingId === row.supplier_id;
   const disabled = editing ? "" : "disabled";
   const topNumbers = [
-    ["Sugestão de compra", money(total), ""],
+    ["Valor sugerido", money(total), ""],
     ["Pedido mínimo", minimum > 0 ? money(minimum) : "-", ""],
     [minimumDeltaLabel, minimumDeltaValue, minimumDeltaTone],
   ];
@@ -667,7 +951,7 @@ function quoteSupplierInspector(row) {
     ["SKUs ativos", number(activeSkus)],
     ["Rupturas", number(urgent)],
     ["Alertas", number(alerts)],
-    ["Compra agora", number(buyNow)],
+    ["Reposição", number(buyNow)],
     ["Aberto", openQuotes || openOrders ? `${number(openQuotes)} cot. / ${number(openOrders)} ped.` : "-"],
     ["Valor aberto", openQuoteValue > 0 ? money(openQuoteValue) : "-"],
     ["Dificuldade", supplierDifficultyLabel(difficulty)],
@@ -741,4 +1025,3 @@ function quoteSupplierInspector(row) {
     </section>
   `;
 }
-

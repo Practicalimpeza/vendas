@@ -48,17 +48,17 @@ function sumRows(rows, key) {
 
 function openQuickActionModal(action) {
   if (!action) return;
-  const decisions = action.decisions || ["Registrar decis?o"];
+  const decisions = action.decisions || ["Registrar decisão"];
   const count = (action.target_ids || []).length;
   openModal(
-    action.title || "Registrar decis?o",
+    action.title || "Registrar decisão",
     `
       <div class="modal-context">
         <strong>${escapeHtml(action.scope || action.label || "Ação rápida")}</strong>
-        <span>${action.bulk ? `Edi??o em massa: ${number(count)} item(ns) no escopo.` : "Decis?o individual capturada para melhorar as pr?ximas recomenda??es."}</span>
+        <span>${action.bulk ? `Edição em massa: ${number(count)} item(ns) no escopo.` : "Decisão individual capturada para melhorar as próximas recomendações."}</span>
       </div>
       <label class="modal-field">
-        <span>Decis?o</span>
+        <span>Decisão</span>
         <select class="inline-input" id="quickDecision">
           ${decisions.map((decision) => `<option value="${escapeAttr(decision)}">${escapeHtml(decision)}</option>`).join("")}
         </select>
@@ -67,10 +67,10 @@ function openQuickActionModal(action) {
         <span>Observação para o ${escapeHtml(appName())} aprender</span>
         <textarea class="inline-input quick-note" id="quickNote" rows="4" placeholder="Ex.: fornecedor já combinado, cliente não compra mais, produto estratégico mesmo com baixa margem..."></textarea>
       </label>
-      <div class="modal-preview good">Esse registro vira mem?ria operacional no audit log e ajuda a calibrar as pr?ximas a??es.</div>
+      <div class="modal-preview good">Esse registro vira memória operacional no audit log e ajuda a calibrar as próximas ações.</div>
       <div class="modal-actions">
         <button class="secondary-button" type="button" id="quickCancel">Cancelar</button>
-        <button class="action-button" type="button" id="quickSave">${action.bulk ? "Salvar em lote" : "Salvar decis?o"}</button>
+        <button class="action-button" type="button" id="quickSave">${action.bulk ? "Salvar em lote" : "Salvar decisão"}</button>
       </div>
       <span class="save-state" id="quickSaveState" aria-live="polite"></span>
     `,
@@ -92,7 +92,7 @@ function openQuickActionModal(action) {
             applied_to_count: (action.target_ids || []).length || 1,
             metadata: action.metadata || {},
           });
-          saveState.textContent = action.bulk ? "Lote registrado" : "Decis?o registrada";
+          saveState.textContent = action.bulk ? "Lote registrado" : "Decisão registrada";
           setTimeout(closeModal, 450);
         } catch (error) {
           saveState.textContent = error.message;

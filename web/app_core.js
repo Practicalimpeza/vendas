@@ -2,7 +2,7 @@
 const num = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 
 async function api(path) {
-  const response = await fetch(path, { credentials: "same-origin" });
+  const response = await fetch(path, { credentials: "same-origin", cache: "no-store" });
   const text = await response.text();
   let data = {};
   try {
@@ -109,6 +109,42 @@ async function apiPostForm(path, formData) {
   }
   if (!response.ok) throw new Error(data.error || `Erro ao enviar ${path}`);
   return data;
+}
+
+async function apiPostBlob(path, payload) {
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (error) {
+      data = { error: text || response.statusText };
+    }
+    throw new Error(data.error || `Erro ao gerar arquivo em ${path}`);
+  }
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  return {
+    blob: await response.blob(),
+    filename: match ? match[1] : "download.pdf",
+  };
+}
+
+function downloadBlob(blob, filename = "download.pdf") {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 function escapeHtml(value) {

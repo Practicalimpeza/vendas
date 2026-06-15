@@ -253,7 +253,7 @@
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   text-transform: uppercase;
   white-space: nowrap;
   user-select: none;
@@ -262,19 +262,28 @@
 .nexo-dt-th-inner {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 11px 14px;
+  min-width: 0;
+  position: relative;
+  padding: 11px 12px;
 }
 .nexo-dt-th.num {
   text-align: right;
 }
 .nexo-dt-th.num .nexo-dt-th-inner {
-  justify-content: flex-end;
+  justify-content: stretch;
 }
 .nexo-dt-th-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nexo-dt-th.num .nexo-dt-th-label {
+  text-align: right;
 }
 .nexo-dt-th.sortable .nexo-dt-th-label {
   cursor: pointer;
@@ -299,6 +308,8 @@
 }
 .nexo-dt-th.sortable .nexo-dt-th-label::after {
   content: "\2195";
+  display: inline-block;
+  margin-left: 4px;
 }
 .nexo-dt-th.sort-asc .nexo-dt-th-label::after {
   content: "\2191";
@@ -315,14 +326,16 @@
   font-weight: 800;
 }
 .nexo-dt-th-caret {
-  position: relative;
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -361,8 +374,8 @@
 .nexo-dt-resize {
   position: absolute;
   top: 0;
-  right: -4px;
-  width: 9px;
+  right: 0;
+  width: 14px;
   height: 100%;
   cursor: col-resize;
   z-index: 5;
@@ -371,7 +384,7 @@
 .nexo-dt-resize::after {
   content: "";
   position: absolute;
-  right: 4px;
+  right: 0;
   top: 22%;
   height: 56%;
   width: 2px;

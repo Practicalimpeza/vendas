@@ -71,7 +71,7 @@ const ONBOARDING_STEPS = [
   { key: "admin", label: "Acesso", icon: "shield-check" },
   { key: "branding", label: "Documentos", icon: "file-badge" },
   { key: "data", label: "Dados", icon: "database" },
-  { key: "review", label: "Revis?o", icon: "check-circle-2" },
+  { key: "review", label: "Revisão", icon: "check-circle-2" },
 ];
 
 let onboardingState = {
@@ -255,23 +255,23 @@ function onboardingImportPreviewMarkup() {
           <div><span>Colunas</span><strong>${number(summary.columns || 0)}</strong></div>
           <div><span>Abas</span><strong>${number((preview.sheets || []).length || 1)}</strong></div>
         </div>
-        <p>${escapeHtml(assistant.action || "O arquivo foi lido. Na pr?xima tela voc? confere o mapeamento antes de gravar qualquer dado.")}</p>
+        <p>${escapeHtml(assistant.action || "O arquivo foi lido. Na próxima tela você confere o mapeamento antes de gravar qualquer dado.")}</p>
         ${feeds.length ? `<div class="onboarding-file-tags">${feeds.slice(0, 5).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
-        ${warnings.length ? `<div class="onboarding-file-alert"><strong>Aten??o no formato</strong><span>${escapeHtml(warnings[0].message || "Algumas linhas parecem desalinhadas com o cabe?alho.")}</span></div>` : ""}
+        ${warnings.length ? `<div class="onboarding-file-alert"><strong>Atenção no formato</strong><span>${escapeHtml(warnings[0].message || "Algumas linhas parecem desalinhadas com o cabeçalho.")}</span></div>` : ""}
         ${missing.length || lowConfidence.length ? `<div class="onboarding-file-alert"><strong>O que conferir depois</strong><span>${escapeHtml([...missing.map((item) => item.label || item.field), ...lowConfidence].slice(0, 5).join(", "))}</span></div>` : ""}
       </section>
     `;
   }
   if (error) {
-    return `<div class="onboarding-file-empty danger"><strong>N?o conseguimos ler esse arquivo ainda.</strong><span>${escapeHtml(error)}</span></div>`;
+    return `<div class="onboarding-file-empty danger"><strong>Não conseguimos ler esse arquivo ainda.</strong><span>${escapeHtml(error)}</span></div>`;
   }
   if (loading) {
-    return `<div class="onboarding-file-empty"><strong>Analisando o arquivo...</strong><span>Lendo estrutura, colunas e poss?veis usos no sistema.</span></div>`;
+    return `<div class="onboarding-file-empty"><strong>Analisando o arquivo...</strong><span>Lendo estrutura, colunas e possíveis usos no sistema.</span></div>`;
   }
   if (file) {
     return `<div class="onboarding-file-empty"><strong>${escapeHtml(file.name)}</strong><span>Arquivo selecionado. Clique em Analisar primeira leitura para ver o que o sistema entende.</span></div>`;
   }
-  return `<div class="onboarding-file-empty"><strong>Nenhum arquivo escolhido.</strong><span>Escolha qualquer primeira base dispon?vel: produtos, estoque, vendas, clientes, fornecedores, servi?os, pre?os ou movimenta??es.</span></div>`;
+  return `<div class="onboarding-file-empty"><strong>Nenhum arquivo escolhido.</strong><span>Escolha qualquer primeira base disponível: produtos, estoque, vendas, clientes, fornecedores, serviços, preços ou movimentações.</span></div>`;
 }
 
 function onboardingLogoUploadMarkup() {
@@ -285,7 +285,7 @@ function onboardingLogoUploadMarkup() {
         <img src="${escapeAttr(logo)}" alt="Logo" />
         <div>
           <strong>${fileName ? escapeHtml(fileName) : "Logo da empresa"}</strong>
-          <span>${fileName ? "Arquivo selecionado" : "PNG, JPG, WEBP ou SVG at? 2 MB"}</span>
+          <span>${fileName ? "Arquivo selecionado" : "PNG, JPG, WEBP ou SVG até 2 MB"}</span>
         </div>
       </div>
       <label class="secondary-button onboarding-logo-upload-button">
@@ -381,8 +381,8 @@ function onboardingStepMarkup() {
     return `
       <div class="onboarding-section-copy">
         <span>Empresa cliente</span>
-        <h1>Informe s? o essencial para come?ar.</h1>
-        <p>Os demais dados podem ser completados depois no perfil da empresa. Agora o importante ? identificar a instala??o e preparar os documentos.</p>
+        <h1>Informe só o essencial para começar.</h1>
+        <p>Os demais dados podem ser completados depois no perfil da empresa. Agora o importante é identificar a instalação e preparar os documentos.</p>
       </div>
       <div class="onboarding-grid two">
         ${onboardingInput("company.trade_name", "Nome da empresa", { required: true, maxlength: 160, placeholder: "Ex.: Loja Central", autocomplete: "organization", name: "organization" })}
@@ -393,11 +393,11 @@ function onboardingStepMarkup() {
       <details class="onboarding-extra-fields">
         <summary>Completar dados opcionais</summary>
         <div class="onboarding-grid two">
-          ${onboardingInput("company.legal_name", "Raz?o social", { maxlength: 200, autocomplete: "organization", name: "company" })}
+          ${onboardingInput("company.legal_name", "Razão social", { maxlength: 200, autocomplete: "organization", name: "company" })}
           ${onboardingInput("company.phone", "Telefone", { maxlength: 60, autocomplete: "tel", inputmode: "tel", name: "tel" })}
           ${onboardingInput("company.email", "E-mail", { type: "email", maxlength: 160, autocomplete: "email", name: "email" })}
           ${onboardingInput("company.website", "Site", { maxlength: 180, autocomplete: "url", name: "url" })}
-          ${onboardingInput("company.country", "Pa?s", { maxlength: 80, autocomplete: "country-name", name: "country-name" })}
+          ${onboardingInput("company.country", "País", { maxlength: 80, autocomplete: "country-name", name: "country-name" })}
         </div>
       </details>
     `;
@@ -406,15 +406,15 @@ function onboardingStepMarkup() {
     return `
       <div class="onboarding-section-copy">
         <span>Documentos</span>
-        <h1>Escolha a logo da empresa para relat?rios e PDFs.</h1>
-        <p>A identidade do sistema j? vem pronta. Aqui voc? define como a empresa aparece nos documentos gerados pela instala??o.</p>
+        <h1>Escolha a logo da empresa para relatórios e PDFs.</h1>
+        <p>A identidade do sistema já vem pronta. Aqui você define como a empresa aparece nos documentos gerados pela instalação.</p>
       </div>
       ${onboardingLogoUploadMarkup()}
       <div class="onboarding-brand-preview">
         <img src="${escapeAttr(data.branding.logo_preview || data.branding.logo_path || appLogoPath())}" alt="Logo" />
         <div>
           <strong>${escapeHtml(data.company.trade_name || data.company.legal_name || "Nome da empresa")}</strong>
-          <span>Pr?via da marca nos documentos</span>
+          <span>Prévia da marca nos documentos</span>
         </div>
       </div>
     `;
@@ -424,13 +424,13 @@ function onboardingStepMarkup() {
       <div class="onboarding-section-copy">
         <span>Acesso seguro</span>
         <h1>Crie o primeiro administrador.</h1>
-        <p>Essa pessoa entra primeiro, termina a implanta??o, importa os dados e cria os outros usu?rios da empresa.</p>
+        <p>Essa pessoa entra primeiro, termina a implantação, importa os dados e cria os outros usuários da empresa.</p>
       </div>
       <div class="onboarding-grid two">
         ${onboardingInput("admin.name", "Nome do administrador", { required: true, maxlength: 120 })}
         ${onboardingInput("admin.email", "E-mail opcional", { type: "email", maxlength: 160 })}
         ${onboardingInput("admin.login_name", "Login", { required: true, maxlength: 80, placeholder: "Gerado pelo nome se ficar em branco" })}
-        ${onboardingInput("admin.password", "Senha inicial", { type: "password", required: true, maxlength: 120, placeholder: `M?nimo ${onboardingPasswordMinLength()} caracteres` })}
+        ${onboardingInput("admin.password", "Senha inicial", { type: "password", required: true, maxlength: 120, placeholder: `Mínimo ${onboardingPasswordMinLength()} caracteres` })}
       </div>
     `;
   }
@@ -438,14 +438,14 @@ function onboardingStepMarkup() {
     return `
       <div class="onboarding-section-copy">
         <span>Primeiro contato</span>
-        <h1>Seus arquivos come?am a virar clareza sobre a empresa.</h1>
-        <p>O sistema l? produtos, estoque, vendas, clientes, fornecedores, servi?os, pre?os e movimenta??es para montar uma vis?o operacional da empresa: o que est? acontecendo, o que merece aten??o e quais dados ainda faltam para decidir melhor.</p>
+        <h1>Seus arquivos começam a virar clareza sobre a empresa.</h1>
+        <p>O sistema lê produtos, estoque, vendas, clientes, fornecedores, serviços, preços e movimentações para montar uma visão operacional da empresa: o que está acontecendo, o que merece atenção e quais dados ainda faltam para decidir melhor.</p>
       </div>
       <div class="onboarding-wow-strip">
         ${[
-          ["Opera??o", "Prioridades, pend?ncias e sinais importantes aparecem em uma mesa ?nica."],
+          ["Operação", "Prioridades, pendências e sinais importantes aparecem em uma mesa única."],
           ["Dados com sentido", "Produtos, vendas, estoque, clientes e fornecedores deixam de ser planilhas soltas."],
-          ["Decis?o di?ria", "Margem, relacionamento, reposi??o, pre?os e tarefas ganham contexto."],
+          ["Decisão diária", "Margem, relacionamento, reposição, preços e tarefas ganham contexto."],
         ].map(([title, detail]) => `
           <article>
             <strong>${escapeHtml(title)}</strong>
@@ -453,16 +453,16 @@ function onboardingStepMarkup() {
           </article>
         `).join("")}
       </div>
-      <section class="onboarding-intro-panel" aria-label="Como o sistema come?a">
+      <section class="onboarding-intro-panel" aria-label="Como o sistema começa">
         <div class="onboarding-intro-head">
-          <span>Como a implanta??o funciona</span>
-          <strong>Voc? traz os arquivos. O sistema entende o significado. A empresa ganha uma base viva para gerenciar a opera??o.</strong>
+          <span>Como a implantação funciona</span>
+          <strong>Você traz os arquivos. O sistema entende o significado. A empresa ganha uma base viva para gerenciar a operação.</strong>
         </div>
         <div class="onboarding-intro-flow">
           ${[
-            ["1", "Come?ar", "Criamos a empresa e o primeiro acesso em poucos passos."],
+            ["1", "Começar", "Criamos a empresa e o primeiro acesso em poucos passos."],
             ["2", "Ler dados", "O importador analisa arquivos do ERP, planilhas ou bases soltas e mostra o que entendeu."],
-            ["3", "Operar", "Com a base lida, produtos, clientes, vendas, estoque, pre?os e rotinas viram prioridades claras de gest?o."],
+            ["3", "Operar", "Com a base lida, produtos, clientes, vendas, estoque, preços e rotinas viram prioridades claras de gestão."],
           ].map(([number, title, detail]) => `
             <article>
               <span>${escapeHtml(number)}</span>
@@ -474,9 +474,9 @@ function onboardingStepMarkup() {
       </section>
       <div class="onboarding-value-list">
         ${[
-          ["Sem precisar importar tudo no primeiro dia", "A empresa pode come?ar com o arquivo que tiver mais f?cil e completar a base depois."],
-          ["Dados com significado", "C?digos, unidades, v?nculos, hist?rico e valores deixam de ser apenas colunas e passam a alimentar decis?es."],
-          ["Mesa de opera??o", "A rotina deixa de depender de relat?rios soltos e passa a mostrar prioridades, riscos e a??es do dia."],
+          ["Sem precisar importar tudo no primeiro dia", "A empresa pode começar com o arquivo que tiver mais fácil e completar a base depois."],
+          ["Dados com significado", "Códigos, unidades, vínculos, histórico e valores deixam de ser apenas colunas e passam a alimentar decisões."],
+          ["Mesa de operação", "A rotina deixa de depender de relatórios soltos e passa a mostrar prioridades, riscos e ações do dia."],
         ].map(([title, detail]) => `
           <article>
             <i data-lucide="check-circle-2"></i>
@@ -490,16 +490,16 @@ function onboardingStepMarkup() {
   if (step === "data") {
     return `
       <div class="onboarding-section-copy">
-        <span>Primeira importa??o</span>
+        <span>Primeira importação</span>
         <h1>Mostre um arquivo e veja o sistema começar a entender a empresa.</h1>
-        <p>Voc? n?o precisa preparar tudo antes de come?ar. Escolha a primeira base dispon?vel e o sistema faz uma leitura inicial sem gravar nada.</p>
+        <p>Você não precisa preparar tudo antes de começar. Escolha a primeira base disponível e o sistema faz uma leitura inicial sem gravar nada.</p>
       </div>
       <section class="onboarding-data-lab" aria-label="Primeira leitura de dados">
         <div class="onboarding-data-picker">
           <div>
             <span>Primeira leitura</span>
-            <strong>Escolha uma planilha ou exporta??o do ERP</strong>
-            <p>Produtos, estoque, vendas, clientes, fornecedores, servi?os, pre?os ou movimenta??es. A leitura serve para orientar; a grava??o acontece s? no importador assistido.</p>
+            <strong>Escolha uma planilha ou exportação do ERP</strong>
+            <p>Produtos, estoque, vendas, clientes, fornecedores, serviços, preços ou movimentações. A leitura serve para orientar; a gravação acontece só no importador assistido.</p>
           </div>
           <label class="secondary-button onboarding-data-file">
             <i data-lucide="file-up"></i>
@@ -510,12 +510,12 @@ function onboardingStepMarkup() {
         </div>
         ${onboardingImportPreviewMarkup()}
       </section>
-      <section class="onboarding-intro-panel compact" aria-label="Como a primeira importa??o funciona">
+      <section class="onboarding-intro-panel compact" aria-label="Como a primeira importação funciona">
         <div class="onboarding-intro-flow">
           ${[
-            ["1", "Ler", "O sistema identifica linhas, colunas e o prov?vel conte?do do arquivo."],
-            ["2", "Entender", "Voc? v? o que essa base pode alimentar na opera??o."],
-            ["3", "Gravar depois", "Na pr?xima tela, confere o mapeamento antes de salvar."],
+            ["1", "Ler", "O sistema identifica linhas, colunas e o provável conteúdo do arquivo."],
+            ["2", "Entender", "Você vê o que essa base pode alimentar na operação."],
+            ["3", "Gravar depois", "Na próxima tela, confere o mapeamento antes de salvar."],
           ].map(([number, title, detail]) => `
             <article>
               <span>${escapeHtml(number)}</span>
@@ -527,12 +527,12 @@ function onboardingStepMarkup() {
       </section>
       <div class="onboarding-import-bridge">
         <div>
-          <span>Pr?ximo passo</span>
-          <strong>${onboardingState.importPreview ? "Leitura feita. Agora vale conferir e gravar." : "O caminho recomendado ? fazer a primeira leitura e abrir o importador."}</strong>
-          <p>${onboardingState.importPreview ? "A pr?xima tela reaproveita o fluxo assistido para conferir colunas, resolver ambiguidades e gravar com seguran?a." : "Se preferir, voc? pode pular a leitura agora e escolher o arquivo direto no importador assistido."}</p>
+          <span>Próximo passo</span>
+          <strong>${onboardingState.importPreview ? "Leitura feita. Agora vale conferir e gravar." : "O caminho recomendado é fazer a primeira leitura e abrir o importador."}</strong>
+          <p>${onboardingState.importPreview ? "A próxima tela reaproveita o fluxo assistido para conferir colunas, resolver ambiguidades e gravar com segurança." : "Se preferir, você pode pular a leitura agora e escolher o arquivo direto no importador assistido."}</p>
         </div>
         <div class="onboarding-destination-grid">
-          ${onboardingDestinationChoice("imports", "Abrir importa??o", "Ir direto para upload e mapeamento de planilhas.", "upload-cloud")}
+          ${onboardingDestinationChoice("imports", "Abrir importação", "Ir direto para upload e mapeamento de planilhas.", "upload-cloud")}
           ${onboardingDestinationChoice("dashboard", "Abrir painel", "Entrar na mesa e importar depois.", "layout-dashboard")}
         </div>
       </div>
@@ -540,17 +540,17 @@ function onboardingStepMarkup() {
   }
   return `
     <div class="onboarding-section-copy">
-      <span>Revis?o final</span>
+      <span>Revisão final</span>
       <h1>Pronto para abrir a empresa no sistema.</h1>
-      <p>Confira os pontos principais. Ao concluir, o sistema cria a empresa, o primeiro acesso e prepara a pr?xima leitura de dados.</p>
+      <p>Confira os pontos principais. Ao concluir, o sistema cria a empresa, o primeiro acesso e prepara a próxima leitura de dados.</p>
     </div>
     <div class="onboarding-review">
       ${[
         ["Empresa", data.company.trade_name || data.company.legal_name || "Empresa"],
         ["Documentos", data.branding.logo_upload ? "Logo enviada" : "Usar logo atual"],
         ["Administrador", data.admin.name || data.admin.login_name || "A definir"],
-        ["Primeiros dados", "Importa??o assistida"],
-        ["Depois", data.operation.next_after_onboarding === "dashboard" ? "Abrir painel" : "Abrir importa??o"],
+        ["Primeiros dados", "Importação assistida"],
+        ["Depois", data.operation.next_after_onboarding === "dashboard" ? "Abrir painel" : "Abrir importação"],
       ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
     </div>
   `;
@@ -567,7 +567,7 @@ async function analyzeOnboardingImportFile() {
   try {
     onboardingState.importPreview = await apiPostForm("/api/erp/import-preview", formData);
   } catch (error) {
-    onboardingState.importPreviewError = error.message || "N?o foi poss?vel analisar o arquivo.";
+    onboardingState.importPreviewError = error.message || "Não foi possível analisar o arquivo.";
   } finally {
     onboardingState.importPreviewLoading = false;
     renderOnboarding();
@@ -588,18 +588,18 @@ function onboardingPreviewMarkup() {
       </div>
       <div class="onboarding-progress-ring" style="--progress: ${completion}">
         <strong>${completion}%</strong>
-        <span>implanta??o</span>
+        <span>implantação</span>
       </div>
       <div class="onboarding-document-preview">
-        <span>Previa de documento</span>
+        <span>Prévia de documento</span>
         <strong>${escapeHtml(data.company.trade_name || data.company.legal_name || "Nome da empresa")}</strong>
         <em>${escapeHtml(data.company.document || "CNPJ / CPF")}</em>
         <p>${escapeHtml([data.company.city, data.company.state].filter(Boolean).join(" - ") || "Cidade / UF")}</p>
       </div>
       <div class="onboarding-next-card">
-        <span>Depois da instala??o</span>
-        <strong>${data.operation.next_after_onboarding === "dashboard" ? "Painel inicial" : "Importa??o assistida"}</strong>
-        <p>${data.operation.next_after_onboarding === "dashboard" ? "A instala??o abre no painel, com a importa??o dispon?vel no menu." : "A instala??o abre direto no upload de planilhas e mapeamento dos dados."}</p>
+        <span>Depois da instalação</span>
+        <strong>${data.operation.next_after_onboarding === "dashboard" ? "Painel inicial" : "Importação assistida"}</strong>
+        <p>${data.operation.next_after_onboarding === "dashboard" ? "A instalação abre no painel, com a importação disponível no menu." : "A instalação abre direto no upload de planilhas e mapeamento dos dados."}</p>
       </div>
     </aside>
   `;
@@ -619,7 +619,7 @@ function renderOnboarding() {
           <img src="${escapeAttr(onboardingState.data.branding.logo_preview || onboardingState.data.branding.logo_path || appLogoPath())}" alt="${escapeAttr(appName())}" />
           <div>
             <strong>${escapeHtml(onboardingState.data.branding.app_name || appName())}</strong>
-            <span>Implanta??o inicial</span>
+            <span>Implantação inicial</span>
           </div>
         </div>
         <div class="onboarding-stepper" aria-label="Etapas do onboarding">
@@ -641,7 +641,7 @@ function renderOnboarding() {
           <div class="onboarding-feedback" id="onboardingFeedback" hidden></div>
           <footer class="onboarding-actions">
             <button class="secondary-button" type="button" id="onboardingBack" ${onboardingState.stepIndex === 0 ? "disabled" : ""}>Voltar</button>
-            <button class="action-button" type="button" id="onboardingNext">${onboardingState.stepIndex === ONBOARDING_STEPS.length - 1 ? "Concluir instala??o" : "Continuar"}</button>
+            <button class="action-button" type="button" id="onboardingNext">${onboardingState.stepIndex === ONBOARDING_STEPS.length - 1 ? "Concluir instalação" : "Continuar"}</button>
           </footer>
         </section>
         ${onboardingPreviewMarkup()}
@@ -721,7 +721,7 @@ function bindOnboardingEvents(gate) {
     const allowed = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
     if (!allowed.includes(file.type) || file.size > 2_000_000) {
       logoInput.value = "";
-      showOnboardingFeedback("Envie uma logo PNG, JPG, WEBP ou SVG com at? 2 MB.", "warn");
+      showOnboardingFeedback("Envie uma logo PNG, JPG, WEBP ou SVG com até 2 MB.", "warn");
       return;
     }
     const reader = new FileReader();
@@ -865,7 +865,7 @@ async function nextOnboardingStep() {
   const button = document.querySelector("#onboardingNext");
   if (button) {
     button.disabled = true;
-    button.textContent = "Criando instala??o";
+    button.textContent = "Criando instalação";
   }
   try {
     ensureCompanyOrganizationId();
@@ -875,15 +875,15 @@ async function nextOnboardingStep() {
     state.appConfig = { ...state.appConfig, ...(result.public_config || {}) };
     applyAppConfig();
     const destination = onboardingState.data.operation.next_after_onboarding === "dashboard" ? "/painel" : "/importacao?onboarding=import";
-    showOnboardingFeedback(destination.includes("importação") ? "Instala??o criada. Abrindo a importa??o assistida..." : "Instala??o criada. Abrindo a mesa...", "good");
+    showOnboardingFeedback(destination.includes("importacao") ? "Instalação criada. Abrindo a importação assistida..." : "Instalação criada. Abrindo a mesa...", "good");
     window.setTimeout(() => {
       window.location.href = destination;
     }, 650);
   } catch (error) {
-    showOnboardingFeedback(error.message || "N?o foi poss?vel concluir a instala??o.", "danger");
+    showOnboardingFeedback(error.message || "Não foi possível concluir a instalação.", "danger");
     if (button) {
       button.disabled = false;
-      button.textContent = "Concluir instala??o";
+      button.textContent = "Concluir instalação";
     }
   }
 }

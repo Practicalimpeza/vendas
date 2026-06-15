@@ -39,7 +39,7 @@ HOST = "127.0.0.1"
 LAUNCHER_MODE = (os.environ.get("PULSO_LAUNCHER_MODE") or "client").strip().lower()
 if LAUNCHER_MODE not in {"client", "partner", "platform"}:
     LAUNCHER_MODE = "client"
-LAUNCHER_BUILD = "20260523_remove_flow"
+LAUNCHER_BUILD = "20260528_launcher_feedback"
 LAUNCHER_PORTS = {"client": 8765, "partner": 8766, "platform": 8767}
 LAUNCHER_PORT = LAUNCHER_PORTS.get(LAUNCHER_MODE, 8765)
 APP_START_PORT = 8010
@@ -1287,11 +1287,11 @@ APP_HTML = r"""<!doctype html>
 
     async function startTenant(id, name) {
       runbar.hidden = false;
-      statusText.textContent = `Abrindo ${name} nesta janela...`;
+      statusText.textContent = `Iniciando ${name} nesta janela...`;
       stopButton.disabled = true;
       try {
         const payload = await api("/api/start", { method: "POST", body: JSON.stringify({ tenant: id }) });
-        statusText.textContent = `${name} está abrindo em ${payload.url || "porta local"}...`;
+        statusText.textContent = `${name} pronto; abrindo ${payload.url || "porta local"}...`;
         stopButton.disabled = false;
         if (payload.url) {
           window.location.assign(payload.url);
@@ -2280,19 +2280,9 @@ def open_last_client_directly(tenant: str) -> bool:
 
 
 def main() -> None:
-    last_tenant = valid_last_client_tenant()
     existing_url = existing_launcher_url()
     if existing_url:
-        if last_tenant and open_last_from_existing_launcher(existing_url, last_tenant):
-            return
         open_app_window(existing_url, f"launcher_{LAUNCHER_MODE}")
-        return
-    if last_tenant and open_last_client_directly(last_tenant):
-        try:
-            while True:
-                time.sleep(3600)
-        except KeyboardInterrupt:
-            stop_app_server()
         return
     port = choose_port(LAUNCHER_PORT, HOST)
     server = ThreadingHTTPServer((HOST, port), LauncherHandler)

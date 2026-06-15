@@ -219,7 +219,7 @@ def minimum_fill_profile(row: dict) -> dict:
             "order_formation_role": "required",
             "minimum_fill_quantity": round(quantity, 2),
             "minimum_fill_value": round(quantity * cost, 2),
-            "minimum_fill_reason": "Item obrigatorio pela necessidade tecnica do motor.",
+            "minimum_fill_reason": "Item obrigatorio pela necessidade tecnica calculada.",
             "minimum_fill_rank": 1000 + int(float(row.get("priority") or 0)),
         }
     if not in_mix or status in {"blocked", "ignored", "out_of_mix", "no_demand", "excess"}:
@@ -255,7 +255,7 @@ def minimum_fill_profile(row: dict) -> dict:
     if row.get("package_blocks_auto"):
         reason = "Candidato manual: a caixa pesa no estoque e precisa decisao do comprador."
     elif status == "mix_review":
-        reason = "Candidato manual: o motor pede revisao antes de comprar."
+        reason = "Candidato manual: a regra de embalagem pede revisao antes de comprar."
     return {
         **base,
         "order_formation_role": "fill_candidate" if candidate else "defer",
@@ -339,7 +339,7 @@ def supplier_basket_plan(*, supplier: dict, workbench_rows: list[dict], formatio
             quantity = float(row.get("suggested_quantity") or 0)
             role = "required"
             label = row.get("purchase_decision_label") or "Essencial"
-            reason = row.get("purchase_decision_reason") or row.get("reason") or "Item entra pela necessidade tecnica do motor."
+            reason = row.get("purchase_decision_reason") or row.get("reason") or "Item entra pela necessidade tecnica calculada."
             score = 1000 + float(row.get("priority") or 0)
         elif selected_fill:
             quantity = float(row.get("minimum_fill_quantity") or 0)
@@ -1177,6 +1177,10 @@ def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
                 "out_of_mix": 0,
                 "value": 0.0,
                 "alerts": 0,
+                "stock_value": 0.0,
+                "ideal_value": 0.0,
+                "quota_value": 0.0,
+                "turnover_value": 0.0,
                 "rows": [],
                 "difficulty": row.get("supplier_difficulty") or "",
                 "days_to_order": row.get("supplier_days_to_order"),
@@ -1186,6 +1190,27 @@ def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
         )
         m["rows"].append(row)
         m["active_skus"] += 1
+        unit_cost = purchase_costs.get(row["product_id"], 0.0)
+        stock_units = max(float(row.get("stock_units") or 0), 0.0)
+        projected_units = max(float(row.get("projected_stock_units") or stock_units), 0.0)
+        suggested_units = max(float(row.get("suggested_quantity") or 0), 0.0)
+        ideal_units = max(float(row.get("order_up_to") or 0), 0.0)
+        ideal_purchase_units = max(ideal_units - projected_units, suggested_units, 0.0)
+        after_units = max(float(row.get("after_purchase_stock_units") or (projected_units + suggested_units)), 0.0)
+        if unit_cost > 0:
+            m["stock_value"] += stock_units * unit_cost
+            m["ideal_value"] += ideal_purchase_units * unit_cost
+            m["quota_value"] += after_units * unit_cost
+            demand_30_units = max(float(row.get("demand_30") or 0), 0.0)
+            demand_90_units = max(float(row.get("demand_90") or 0), 0.0)
+            demand_180_units = max(float(row.get("demand_180") or 0), 0.0)
+            if demand_180_units > 0:
+                monthly_turnover_units = demand_180_units / 6
+            elif demand_90_units > 0:
+                monthly_turnover_units = demand_90_units / 3
+            else:
+                monthly_turnover_units = demand_30_units
+            m["turnover_value"] += monthly_turnover_units * unit_cost
         if row["status"] == "buy_now":
             m["buy_now"] += 1
         elif row["status"] == "urgent":
@@ -1221,6 +1246,10 @@ def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
                 "out_of_mix": 0,
                 "value": 0.0,
                 "alerts": 0,
+                "stock_value": 0.0,
+                "ideal_value": 0.0,
+                "quota_value": 0.0,
+                "turnover_value": 0.0,
                 "rows": [],
                 "difficulty": "",
                 "days_to_order": None,
@@ -1243,6 +1272,15 @@ def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
             buy_now_count=int(m["buy_now"]),
             alert_count=int(m["alerts"]),
         )
+        minimum_value = float(s["minimum_order_value"] or 0)
+        daily_purchase_value = float(formation.get("daily_purchase_value") or 0)
+        manual_cycle_days = int(s["order_review_cycle_days"] or 0)
+        days_to_minimum = None
+        if minimum_value > 0 and daily_purchase_value > 0:
+            days_to_minimum = minimum_value / daily_purchase_value
+        health_cycle_days = float(manual_cycle_days or days_to_minimum or 0)
+        health_value = daily_purchase_value * health_cycle_days if health_cycle_days > 0 else 0.0
+        health_pct = (health_value / minimum_value * 100.0) if minimum_value > 0 else None
         out.append(
             {
                 "supplier_id": s["id"],
@@ -1270,6 +1308,15 @@ def api_supplier_workbench_list(conn: sqlite3.Connection) -> list[dict]:
                 "latest_quote_status": quote_info.get("latest_quote_status") or "",
                 "estimated_value": round(m["value"], 2),
                 "suggested_value": round(m["value"], 2),
+                "stock_value": round(m["stock_value"], 2),
+                "ideal_value": round(m["ideal_value"], 2),
+                "quota_value": round(m["quota_value"], 2),
+                "turnover_value": round(daily_purchase_value * 30, 2) if daily_purchase_value > 0 else round(m["turnover_value"], 2),
+                "supplier_days_to_minimum": round(days_to_minimum, 1) if days_to_minimum is not None else None,
+                "supplier_health_cycle_days": round(health_cycle_days, 1) if health_cycle_days > 0 else None,
+                "supplier_health_cycle_manual": bool(manual_cycle_days),
+                "supplier_health_value": round(health_value, 2),
+                "supplier_health_pct": round(health_pct, 1) if health_pct is not None else None,
                 "open_quote_estimated_value": round(open_quote_value, 2),
                 **supplier_order_formation_fields(formation),
             }

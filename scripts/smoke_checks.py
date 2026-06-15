@@ -29,12 +29,15 @@ from api_contracts import (  # noqa: E402
     assert_app_config_contract,
     assert_actions_today_contract,
     assert_commercial_intelligence_contract,
+    assert_customer_catalog_contract,
+    assert_customer_crm_contract,
     assert_customers_top_contract,
     assert_health_contract,
     assert_imports_contract,
     assert_installation_contract,
     assert_onboarding_contract,
     assert_pricing_contract,
+    assert_products_search_contract,
     assert_products_top_contract,
     assert_purchase_order_detail_contract,
     assert_purchase_orders_contract,
@@ -49,7 +52,10 @@ from api_contracts import (  # noqa: E402
 )
 from action_center import api_actions_today  # noqa: E402
 from app_config import app_public_config, white_label_config  # noqa: E402
+from auth import api_auth_me, upsert_user  # noqa: E402
 from commercial import api_commercial_intelligence, api_customers, api_services  # noqa: E402
+from customer_catalog import api_customer_catalog, api_products_search, upsert_customer_catalog_item  # noqa: E402
+from customer_crm import api_customer_crm, upsert_customer_crm  # noqa: E402
 from db_helpers import normalize_code  # noqa: E402
 from db_helpers import mark_app_controlled_fields  # noqa: E402
 from erp_import_flow import (  # noqa: E402
@@ -86,6 +92,7 @@ from quotes import (  # noqa: E402
 from replenishment import api_replenishment  # noqa: E402
 from replenishment_v2 import api_replenishment_v2  # noqa: E402
 from replenishment_v2_scenarios import run as run_replenishment_v2_scenarios  # noqa: E402
+from sales_orders import export_sales_order_pdf  # noqa: E402
 from schema_upgrades import ensure_schema_upgrades  # noqa: E402
 from schema_upgrades import LEGACY_SCHEMA_MIGRATION_ID  # noqa: E402
 from schema_upgrades import OPERATIONAL_DATA_SOURCES_MIGRATION_ID  # noqa: E402
@@ -301,6 +308,9 @@ def smoke_schema_and_import_bootstrap() -> None:
             )
             check(import_practica.money("1.234,56") == 1234.56, "Parser de dinheiro perdeu formato brasileiro.")
             check(import_practica.normalize("\u00c1lcool 70%") == "alcool_70", "Normalizacao da importacao mudou.")
+            cp1252_csv = Path(tmp_dir) / "cp1252.csv"
+            cp1252_csv.write_bytes(b"codigo,nome\n1,\xc1lcool\n")
+            check(import_practica.read_rows(cp1252_csv)[1][1] == "\u00c1lcool", "Leitor CSV legado nao aceitou cp1252.")
         finally:
             conn.close()
 
@@ -412,6 +422,15 @@ def smoke_import_preserves_app_controlled_fields() -> None:
         check(len(customers) == 1, "Importacao criou cliente duplicado ao receber nome diferente.")
         check(customers[0]["name"] == "Cliente ajustado no app", "Importacao sobrescreveu nome de cliente controlado no app.")
 
+        customer_a = upsert_erp_customer(conn, ORG_ID, "batch_local_guard_new", "", "Cliente Sem Codigo - Matriz")
+        customer_b = upsert_erp_customer(conn, ORG_ID, "batch_local_guard_new", "", "Cliente Sem Codigo - Filial")
+        canonical_customers = conn.execute(
+            "SELECT id, name FROM customers WHERE organization_id = ? AND id = ?",
+            (ORG_ID, customer_a),
+        ).fetchall()
+        check(customer_a == customer_b, "Clientes sem codigo e mesmo canonico nao foram agrupados.")
+        check(len(canonical_customers) == 1, "Importacao criou duplicidade para cliente sem codigo.")
+
         conn.execute(
             """
             INSERT INTO suppliers
@@ -513,6 +532,7 @@ def smoke_static_assets() -> None:
             "app_pricing.js",
             "app_imports.js",
             "app_customers.js",
+            "app_seller_portal.js",
             "app_company_profile.js",
             "app_actions_engine.js",
             "app_auth.js",
@@ -599,6 +619,9 @@ def smoke_static_assets() -> None:
         "summary.v1",
         "replenishment.v1",
         "commercial_intelligence.v1",
+        "customer_catalog.v1",
+        "customer_crm.v1",
+        "products_search.v1",
         "pricing.v1",
         "actions_today.v1",
         "imports.v1",
@@ -610,11 +633,24 @@ def smoke_static_assets() -> None:
     static_selectors = set(re.findall(r"""querySelector(?:All)?\(["']#([A-Za-z0-9_-]+)["']\)""", js))
     static_selectors |= set(re.findall(r"""getElementById\(["']([A-Za-z0-9_-]+)["']\)""", js))
     optional_feature_ids = {
+        "dashboardBlockControls",
+        "dashboardEditPanel",
+        "dashboardOperatorBoard",
+        "dashboardPotentialBody",
         "erpImportUpdateMode",
+        "generalMapCards",
+        "generalMapHero",
+        "kpis",
         "linkImportAnalyze",
         "linkImportFile",
         "linkImportPreview",
         "linkImportStatus",
+        "maturity",
+        "maturityNextButton",
+        "missions",
+        "operatorMovements",
+        "operatorTools",
+        "tasks",
     }
     missing_ids = sorted(static_selectors - html_ids - template_ids - optional_feature_ids)
     check(not missing_ids, f"JS usa IDs estaticos ausentes no HTML/templates: {missing_ids}")
@@ -740,6 +776,33 @@ def smoke_new_tenant_isolation() -> None:
         app_config.TENANTS_DIR = original_tenants_dir
         app_config.LEGACY_LOCAL_CONFIG_PATH = original_legacy_config
         app_config.set_active_tenant("")
+
+
+def smoke_finished_import_status_compat() -> None:
+    conn = open_memory_db()
+    try:
+        conn.execute("INSERT INTO organizations (id, name) VALUES (?, ?)", (ORG_ID, "Loja Smoke"))
+        conn.execute(
+            """
+            INSERT INTO import_batches
+                (id, organization_id, source_system, status, import_mode, finished_at, summary_json)
+            VALUES (?, ?, 'practica_csv', 'finished', 'incremental_sync', CURRENT_TIMESTAMP, ?)
+            """,
+            ("batch_finished_smoke", ORG_ID, json.dumps({"rows": 5, "mapped_rows": 5})),
+        )
+        conn.execute(
+            """
+            INSERT INTO source_files (id, import_batch_id, file_name, file_role, row_count)
+            VALUES (?, ?, ?, 'product_price', 5)
+            """,
+            ("file_finished_smoke", "batch_finished_smoke", "smoke_finished.csv"),
+        )
+        imports = api_imports(conn)
+        check(imports["quality"]["status"] == "ready", "Lote finished legado nao foi tratado como concluido.")
+        file_names = [item["file_name"] for item in imports["local_reference"]["files"]]
+        check("smoke_finished.csv" in file_names, "Lote finished legado nao apareceu na referencia local.")
+    finally:
+        conn.close()
 
 
 def smoke_skills() -> None:
@@ -1016,8 +1079,36 @@ def smoke_erp_context_materialization() -> None:
             "Estoque ERP com contexto nao foi materializado.",
         )
         check(
-            materialize_erp_product_sale(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inferred_product_code",
-            "Venda ERP com codigo herdado deveria ser bloqueada.",
+            materialize_erp_product_sale(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=second, row_number=2) == "inserted_inherited",
+            "Venda ERP agrupada deveria aceitar produto herdado da linha anterior.",
+        )
+        conn.execute(
+            """
+            INSERT INTO products (id, organization_id, source_code, name, normalized_name)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (PRODUCT_FAST, ORG_ID, "P001", "Produto Giro Rapido", "produto_giro_rapido"),
+        )
+        conn.execute(
+            """
+            INSERT INTO product_sales (organization_id, store_id, product_id, sold_at, quantity, gross_amount)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (ORG_ID, STORE_ID, PRODUCT_FAST, "2026-05-10", 1, 10),
+        )
+        older_sale = {
+            "normalized": {
+                "produto.codigo_produto": "P902",
+                "produto.nome_produto": "Produto Venda Antiga",
+                "venda.data_venda": "2026-05-01",
+                "venda.quantidade_vendida": "1",
+                "venda.valor_venda": "10,00",
+            },
+            "raw": {"codigo_produto": "P902", "data_venda": "2026-05-01"},
+        }
+        check(
+            materialize_erp_product_sale(conn, org=ORG_ID, batch_id="batch_context_smoke", store_id=STORE_ID, record=older_sale, row_number=3) == "inserted",
+            "Venda ERP antiga e nova nao deve virar duplicada pela maior data global.",
         )
     finally:
         conn.close()
@@ -1230,6 +1321,61 @@ def smoke_customer_import_contracts(conn: sqlite3.Connection) -> None:
     assert_customers_top_contract(customers)
     check(any(row["name"] == "Cliente Smoke" for row in customers), "Ranking de clientes nao retornou cliente do fixture.")
 
+    crm = api_customer_crm(conn, CUSTOMER_FAST)
+    assert_customer_crm_contract(crm)
+    check(crm["profile"]["commercial_status"] == "follow_up", "CRM do cliente deveria iniciar em acompanhamento.")
+    crm = upsert_customer_crm(
+        conn,
+        {
+            "customer_id": CUSTOMER_FAST,
+            "owner_name": "Vendedor Smoke",
+            "commercial_status": "negotiating",
+            "priority": "high",
+            "next_action": "call",
+            "next_action_at": "2026-01-20",
+            "tags": ["recorrente", "condicao especial"],
+            "internal_notes": "Observacao ficticia do smoke.",
+        },
+    )
+    assert_customer_crm_contract(crm)
+    check(crm["profile"]["owner_name"] == "Vendedor Smoke", "CRM do cliente nao salvou responsavel.")
+    customers = api_customers(conn)
+    customer_row = next((row for row in customers if row["id"] == CUSTOMER_FAST), None)
+    check(customer_row is not None, "Ranking de clientes perdeu cliente apos upsert CRM.")
+    check(customer_row.get("crm_status") == "negotiating", "Ranking de clientes nao agregou status CRM.")
+    check(customer_row.get("crm_next_action_at") == "2026-01-20", "Ranking de clientes nao agregou proxima acao CRM.")
+
+    catalog = api_customer_catalog(conn, CUSTOMER_FAST)
+    assert_customer_catalog_contract(catalog)
+    check(catalog["summary"]["candidate_items"] >= 1, "Catalogo do cliente nao sugeriu produto recorrente do historico.")
+    catalog = upsert_customer_catalog_item(
+        conn,
+        {
+            "customer_id": CUSTOMER_FAST,
+            "product_id": PRODUCT_NO_SALES,
+            "status": "active",
+            "origin": "manual",
+            "negotiated_price": 15.5,
+            "minimum_quantity": 2,
+        },
+    )
+    assert_customer_catalog_contract(catalog)
+    check(any(row["product_id"] == PRODUCT_NO_SALES for row in catalog["items"]), "Catalogo nao aceitou produto sem compra historica.")
+    filename, pdf_body = export_sales_order_pdf(
+        conn,
+        {
+            "customer_id": CUSTOMER_FAST,
+            "seller_name": "Vendedor Smoke",
+            "notes": "Pedido ficticio para validar PDF.",
+            "items": [{"product_id": PRODUCT_NO_SALES, "quantity": 2}, {"product_id": PRODUCT_FAST, "quantity": 1}],
+        },
+    )
+    check(filename.endswith(".pdf"), "Pedido de venda nao retornou nome PDF.")
+    check(pdf_body.startswith(b"%PDF-"), "Pedido de venda nao gerou corpo PDF valido.")
+    search = api_products_search(conn, "Sem Venda", 5)
+    assert_products_search_contract(search)
+    check(any(row["product_id"] == PRODUCT_NO_SALES for row in search["rows"]), "Busca de produtos nao encontrou produto sem venda.")
+
     services = api_services(conn)
     assert_services_top_contract(services)
 
@@ -1242,6 +1388,71 @@ def smoke_customer_import_contracts(conn: sqlite3.Connection) -> None:
     imports = api_imports(conn)
     assert_imports_contract(imports)
     check(imports["quality"]["status"] in {"ready", "attention", "blocked", "no_imports"}, "Status de importacao invalido.")
+
+
+class _SmokeServer:
+    server_address = ("127.0.0.1", 8010)
+
+
+class _SmokeHandler:
+    headers = {"Host": "127.0.0.1:8010"}
+    client_address = ("127.0.0.1", 50000)
+    server = _SmokeServer()
+
+
+def smoke_dev_auth_bypass(conn: sqlite3.Connection) -> None:
+    previous_bypass = os.environ.get("PULSO_DEV_AUTH_BYPASS")
+    previous_allow = os.environ.get("PULSO_ALLOW_NETWORK")
+    previous_legacy_allow = os.environ.get("NEXOVAREJO_ALLOW_NETWORK")
+    try:
+        os.environ["PULSO_DEV_AUTH_BYPASS"] = "1"
+        os.environ.pop("PULSO_ALLOW_NETWORK", None)
+        os.environ.pop("NEXOVAREJO_ALLOW_NETWORK", None)
+        payload = api_auth_me(conn, _SmokeHandler())
+        check(payload["authenticated"] is True, "Bypass local deveria autenticar usuario temporario.")
+        check(payload["dev_auth_bypass"] is True, "Bypass local deveria sinalizar dev_auth_bypass.")
+        check(payload["user"]["role"] == "admin", "Bypass local deveria liberar papel admin temporario.")
+
+        os.environ["PULSO_ALLOW_NETWORK"] = "1"
+        blocked = api_auth_me(conn, _SmokeHandler())
+        check(blocked["dev_auth_bypass"] is False, "Bypass nao pode funcionar com PULSO_ALLOW_NETWORK ativo.")
+    finally:
+        if previous_bypass is None:
+            os.environ.pop("PULSO_DEV_AUTH_BYPASS", None)
+        else:
+            os.environ["PULSO_DEV_AUTH_BYPASS"] = previous_bypass
+        if previous_allow is None:
+            os.environ.pop("PULSO_ALLOW_NETWORK", None)
+        else:
+            os.environ["PULSO_ALLOW_NETWORK"] = previous_allow
+        if previous_legacy_allow is None:
+            os.environ.pop("NEXOVAREJO_ALLOW_NETWORK", None)
+        else:
+            os.environ["NEXOVAREJO_ALLOW_NETWORK"] = previous_legacy_allow
+
+
+def smoke_seller_user_role(conn: sqlite3.Connection) -> None:
+    admin = {
+        "id": "admin_smoke",
+        "organization_id": ORG_ID,
+        "role": "admin",
+        "permissions": ["admin"],
+    }
+    payload = {
+        "name": "Vendedor Smoke",
+        "login_name": "vendedor.smoke",
+        "password": "123456",
+        "role": "seller",
+        "active": True,
+        "permissions": ["admin", "imports", "seller", "customers"],
+    }
+    result = upsert_user(conn, payload, admin)
+    seller = next((user for user in result["users"] if user["login_name"] == "vendedor.smoke"), None)
+    check(seller is not None, "Cadastro de vendedor externo nao retornou usuario criado.")
+    check(seller["role"] == "seller", "Usuario vendedor deveria manter papel seller.")
+    permissions = set(seller["permissions"])
+    check({"seller", "customers", "products", "opportunities"}.issubset(permissions), "Vendedor externo sem permissoes operacionais minimas.")
+    check(not {"admin", "imports", "engine"}.intersection(permissions), "Vendedor externo recebeu permissoes administrativas.")
 
 
 def smoke_quote_pdf(conn: sqlite3.Connection) -> None:
@@ -1658,6 +1869,7 @@ def run() -> None:
     smoke_product_profile_upsert()
     smoke_static_assets()
     smoke_new_tenant_isolation()
+    smoke_finished_import_status_compat()
     smoke_skills()
     smoke_imported_settings_guardrails()
     smoke_erp_context_materialization()
@@ -1673,6 +1885,8 @@ def run() -> None:
         run_replenishment_v2_scenarios()
         smoke_pricing(conn)
         smoke_customer_import_contracts(conn)
+        smoke_dev_auth_bypass(conn)
+        smoke_seller_user_role(conn)
         smoke_quotes(conn)
         smoke_supplier_workbench_contract(conn)
         smoke_quote_pdf(conn)
@@ -1691,6 +1905,7 @@ def main() -> int:
         "cadastro produto standalone",
         "assets/contratos frontend",
         "isolamento tenant novo",
+        "status finished legado",
         "skills",
         "configuracao importada",
         "materializacao ERP contextual",
@@ -1703,6 +1918,8 @@ def main() -> int:
         "cenarios motor v2",
         "precificacao",
         "clientes/importacao contratos",
+        "auth bypass desenvolvimento",
+        "perfil vendedor externo",
         "cotacao",
         "contrato mesa fornecedor",
         "pdf de cotacao",

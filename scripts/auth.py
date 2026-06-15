@@ -14,15 +14,18 @@ from uuid import uuid4
 
 from app_config import default_company_name, default_organization_slug
 from db_helpers import default_organization_id, scalar_text
+from http_helpers import is_loopback_host, truthy_env
 
 
 SESSION_COOKIE = "pg_session"
 SESSION_DAYS = 14
 PBKDF2_ITERATIONS = 210_000
 MIN_PASSWORD_LENGTH = 6
+DEV_AUTH_BYPASS_ENV = "PULSO_DEV_AUTH_BYPASS"
 
 MODULES = [
-    {"key": "dashboard", "label": "Mapa Geral", "route": "/painel"},
+    {"key": "seller", "label": "Vendedor", "route": "/vendedor"},
+    {"key": "dashboard", "label": "Painel", "route": "/painel"},
     {"key": "quotes", "label": "Compras", "route": "/compras"},
     {"key": "stock", "label": "Estoque", "route": "/reposicao"},
     {"key": "products", "label": "Produtos", "route": "/produtos"},
@@ -44,7 +47,9 @@ ROUTE_MODULES = {
     "/api/intelligence/maturity": "dashboard",
     "/api/nexo/skills": "engine",
     "/api/products/top": "products",
+    "/api/products/search": "customers",
     "/api/product": "products",
+    "/api/product/media/upsert": "customers",
     "/api/products/mix-decision": "products",
     "/api/products/mix-decision-bulk": "products",
     "/api/products/purchase-settings": "products",
@@ -57,6 +62,13 @@ ROUTE_MODULES = {
     "/api/sales": "opportunities",
     "/api/customers/top": "customers",
     "/api/customer/mix": "customers",
+    "/api/customer/crm": "customers",
+    "/api/customer/crm/upsert": "customers",
+    "/api/customer/catalog": "customers",
+    "/api/customer/catalog/upsert": "customers",
+    "/api/customer/catalog/item/upsert": "customers",
+    "/api/customer/catalog/item/delete": "customers",
+    "/api/sales-order/pdf": "customers",
     "/api/services/top": "customers",
     "/api/imports": "imports",
     "/api/erp/import-preview": "imports",
@@ -177,7 +189,9 @@ def _default_permissions(role: str) -> list[str]:
     keys = _module_keys()
     if role == "admin":
         return keys
-    return [key for key in keys if key not in {"admin", "imports", "engine"}]
+    if role == "seller":
+        return [key for key in ("seller", "customers", "products", "opportunities") if key in keys]
+    return [key for key in keys if key not in {"seller", "admin", "imports", "engine"}]
 
 
 def _permission_rows(conn: sqlite3.Connection, user_id: str) -> list[str]:
@@ -210,6 +224,47 @@ def _user_payload(conn: sqlite3.Connection, row: sqlite3.Row | dict) -> dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "last_login_at": row["last_login_at"],
+    }
+
+
+def dev_auth_bypass_enabled(handler: object | None = None) -> bool:
+    if not truthy_env(DEV_AUTH_BYPASS_ENV):
+        return False
+    if truthy_env("PULSO_ALLOW_NETWORK") or truthy_env("NEXOVAREJO_ALLOW_NETWORK"):
+        return False
+    if handler is None:
+        return True
+    server = getattr(handler, "server", None)
+    server_host = ""
+    if server and getattr(server, "server_address", None):
+        server_host = str(server.server_address[0])
+    client_host = ""
+    if getattr(handler, "client_address", None):
+        client_host = str(handler.client_address[0])
+    host_header = scalar_text(getattr(handler, "headers", {}).get("Host")).split(":", 1)[0]
+    return (
+        is_loopback_host(server_host or "127.0.0.1")
+        and is_loopback_host(client_host or "127.0.0.1")
+        and (not host_header or is_loopback_host(host_header))
+    )
+
+
+def _dev_auth_user(conn: sqlite3.Connection) -> dict:
+    organization_id = default_organization_id(conn) or default_organization_slug() or "dev"
+    now = _now()
+    return {
+        "id": f"{organization_id}:dev_auth_bypass",
+        "organization_id": organization_id,
+        "name": "Dev sem login",
+        "login_name": "dev",
+        "email": "",
+        "role": "admin",
+        "active": True,
+        "permissions": _module_keys(),
+        "created_at": now,
+        "updated_at": now,
+        "last_login_at": now,
+        "dev_auth_bypass": True,
     }
 
 
@@ -299,6 +354,8 @@ def create_session(conn: sqlite3.Connection, user_id: str, handler: object | Non
 
 
 def current_user(conn: sqlite3.Connection, handler: object) -> dict:
+    if dev_auth_bypass_enabled(handler):
+        return _dev_auth_user(conn)
     token = _cookie_value(handler, SESSION_COOKIE)
     if not token:
         return {}
@@ -341,11 +398,13 @@ def require_admin(user: dict) -> None:
 
 def api_auth_me(conn: sqlite3.Connection, handler: object) -> dict:
     user = current_user(conn, handler)
+    is_dev_bypass = bool(user.get("dev_auth_bypass"))
     return {
         "authenticated": bool(user),
-        "needs_bootstrap": not has_users(conn),
+        "needs_bootstrap": False if is_dev_bypass else not has_users(conn),
         "user": user or None,
         "modules": MODULES,
+        "dev_auth_bypass": is_dev_bypass,
     }
 
 
@@ -441,7 +500,7 @@ def upsert_user(conn: sqlite3.Connection, payload: dict, current: dict) -> dict:
     login_name = _normalize_login(payload.get("login_name") or payload.get("login"))
     email = _normalize_email(payload.get("email"))
     role = scalar_text(payload.get("role")) or "member"
-    role = "admin" if role == "admin" else "member"
+    role = role if role in {"admin", "seller"} else "member"
     active = 1 if payload.get("active", True) is not False else 0
     permissions = payload.get("permissions") if isinstance(payload.get("permissions"), list) else _default_permissions(role)
     password = str(payload.get("password") or "")
@@ -492,6 +551,7 @@ def upsert_user(conn: sqlite3.Connection, payload: dict, current: dict) -> dict:
             """,
             (user_id, organization_id, name, login_name, email, hash_password(password), role, active),
         )
-    _set_permissions(conn, user_id, _default_permissions("admin") if role == "admin" else permissions)
+    default_permissions = _default_permissions("admin") if role == "admin" else _default_permissions(role)
+    _set_permissions(conn, user_id, default_permissions if role in {"admin", "seller"} else permissions)
     conn.commit()
     return list_users(conn, current)

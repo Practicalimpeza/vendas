@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -22,7 +23,7 @@ from auth import (
     session_cookie_header,
     upsert_user,
 )
-from api_routes import get_api_payload, get_quote_pdf, post_api_payload
+from api_routes import get_api_payload, get_quote_pdf, post_api_payload, post_sales_order_pdf
 from app_config import active_tenant, app_public_config, resolve_db_path, resolve_public_asset_path
 from installation_state import api_installation_state
 from db_helpers import resolve_period
@@ -48,6 +49,7 @@ WEB_DIR = ROOT / "web"
 SCHEMA_PATH = ROOT / "schema" / "canonical.sql"
 SPA_ROUTES = {
     "/painel",
+    "/vendedor",
     "/hoje",
     "/motor",
     "/produtos",
@@ -298,6 +300,28 @@ class AppHandler(BaseHTTPRequestHandler):
                 conn.close()
             return
 
+        if route == "/api/sales-order/pdf":
+            conn = connect(self.db_path)
+            try:
+                user = current_user(conn, self)
+                if has_users(conn) and not user:
+                    send_api_error(self, "Login necessario.", status=401, code="unauthorized", route=route)
+                    return
+                if not can_access_route(conn, user, route):
+                    send_api_error(self, "Sem permissao para este modulo.", status=403, code="forbidden", route=route)
+                    return
+                try:
+                    filename, body = post_sales_order_pdf(conn, read_payload(self))
+                    send_binary(self, body, "application/pdf", filename)
+                except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+                    send_api_error(self, str(exc), status=400, code="bad_request", route=route)
+                except Exception as exc:
+                    self.log_error("Erro interno em %s: %s", route, exc)
+                    send_api_error(self, "Erro interno ao gerar pedido de venda.", status=500, code="internal_error", route=route)
+            finally:
+                conn.close()
+            return
+
         conn = connect(self.db_path)
         try:
             user = current_user(conn, self)
@@ -326,10 +350,14 @@ class AppHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve o app local.")
-    parser.add_argument("--tenant", default="", help="Slug do cliente em data/tenants/<tenant>.")
-    parser.add_argument("--db", default="", help="Caminho do SQLite. Quando omitido, usa o banco do tenant ou o legado.")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8010)
+    parser.add_argument("--tenant", default=os.environ.get("PULSO_TENANT") or "", help="Slug do cliente em data/tenants/<tenant>.")
+    parser.add_argument(
+        "--db",
+        default=os.environ.get("PULSO_DB_PATH") or "",
+        help="Caminho do SQLite. Quando omitido, usa o banco do tenant ou o legado.",
+    )
+    parser.add_argument("--host", default=os.environ.get("PULSO_HOST") or "127.0.0.1")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT") or os.environ.get("PULSO_PORT") or 8010))
     args = parser.parse_args()
     AppHandler.db_path = resolve_db_path(args.db, args.tenant)
     settings = app_public_config()

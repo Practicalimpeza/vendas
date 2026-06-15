@@ -7,6 +7,15 @@ from api_contracts import api_health
 from app_config import app_public_config
 from commercial import api_commercial_intelligence, api_customer_mix, api_customers, api_sales, api_services
 from company_profile import api_company_profile, update_company_profile
+from customer_catalog import (
+    api_customer_catalog,
+    api_products_search,
+    archive_customer_catalog_item,
+    upsert_customer_catalog,
+    upsert_customer_catalog_item,
+    upsert_product_media,
+)
+from customer_crm import api_customer_crm, upsert_customer_crm
 from db_helpers import parse_int, scalar_text
 from erp_import_flow import api_erp_import_commit, api_erp_import_preview, api_import_reference_folder, api_import_refresh_local, api_imports
 from installation_state import api_installation_state
@@ -46,6 +55,7 @@ from quotes import (
 from relationship_imports import api_link_commit, api_link_inspect, api_link_preview
 from replenishment import api_replenishment, api_stock
 from replenishment_v2 import api_replenishment_v2_compare
+from sales_orders import export_sales_order_pdf
 from supplier_ops import (
     api_brand_suppliers,
     update_brand_supplier,
@@ -112,6 +122,11 @@ def get_api_payload(route: str, conn: sqlite3.Connection, query: dict, period: d
         "/api/intelligence/maturity": lambda: api_maturity(conn),
         "/api/nexo/skills": api_nexo_skills,
         "/api/products/top": lambda: api_top_products(conn, period),
+        "/api/products/search": lambda: api_products_search(
+            conn,
+            scalar_text(query.get("q") or query.get("query")),
+            parse_int(scalar_text(query.get("limit")), 30) or 30,
+        ),
         "/api/products/stock": lambda: api_stock(conn),
         "/api/product": lambda: api_product_detail(conn, scalar_text(query.get("id"))),
         "/api/replenishment": lambda: api_replenishment(conn, period=period),
@@ -122,6 +137,8 @@ def get_api_payload(route: str, conn: sqlite3.Connection, query: dict, period: d
         "/api/actions/today": lambda: api_actions_today(conn),
         "/api/customers/top": lambda: api_customers(conn, period),
         "/api/customer/mix": lambda: api_customer_mix(conn, scalar_text(query.get("id")), period),
+        "/api/customer/crm": lambda: api_customer_crm(conn, scalar_text(query.get("id"))),
+        "/api/customer/catalog": lambda: api_customer_catalog(conn, scalar_text(query.get("id")), period),
         "/api/services/top": lambda: api_services(conn, period),
         "/api/imports": lambda: api_imports(conn),
         "/api/company-profile": lambda: api_company_profile(conn),
@@ -162,8 +179,13 @@ def post_api_payload(route: str, conn: sqlite3.Connection, payload: dict) -> obj
         "/api/products/mix-decision": update_product_mix_decision,
         "/api/products/mix-decision-bulk": update_products_mix_decision_bulk,
         "/api/products/upsert": upsert_product_profile,
+        "/api/product/media/upsert": upsert_product_media,
         "/api/products/purchase-settings": update_product_purchase_settings,
         "/api/products/supplier-reference": update_product_supplier_reference,
+        "/api/customer/catalog/upsert": upsert_customer_catalog,
+        "/api/customer/catalog/item/upsert": upsert_customer_catalog_item,
+        "/api/customer/catalog/item/delete": archive_customer_catalog_item,
+        "/api/customer/crm/upsert": upsert_customer_crm,
         "/api/company-profile": update_company_profile,
         "/api/pricing/product": update_product_pricing,
         "/api/quotes/create": create_quote_request,
@@ -191,3 +213,7 @@ def post_api_payload(route: str, conn: sqlite3.Connection, payload: dict) -> obj
 
 def get_quote_pdf(conn: sqlite3.Connection, query: dict) -> tuple[str, bytes]:
     return export_quote_pdf(conn, scalar_text(query.get("id")))
+
+
+def post_sales_order_pdf(conn: sqlite3.Connection, payload: dict) -> tuple[str, bytes]:
+    return export_sales_order_pdf(conn, payload)

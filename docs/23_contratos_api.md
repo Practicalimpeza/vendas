@@ -72,10 +72,17 @@ Campos obrigatorios:
 - `needs_bootstrap`: booleano indicando se ainda nao existe usuario.
 - `user`: usuario autenticado ou `null`.
 - `modules`: lista de modulos disponiveis na interface.
+- `dev_auth_bypass`: booleano; `true` apenas quando
+  `PULSO_DEV_AUTH_BYPASS=1` esta ativo em localhost e sem exposicao de rede.
 
 Uso de produto: quando `needs_bootstrap` e `true`, a interface mostra o primeiro
 acesso; quando `authenticated` e `false` e ja existem usuarios, a interface fica
 bloqueada pelo gate de login.
+
+Uso de desenvolvimento: `PULSO_DEV_AUTH_BYPASS=1` faz `/api/auth/me` retornar
+um usuario admin temporario chamado `Dev sem login`, sem gravar usuario, senha
+ou sessao. O bypass nao funciona quando `PULSO_ALLOW_NETWORK=1` ou
+`NEXOVAREJO_ALLOW_NETWORK=1` estiver ativo.
 
 ## `/api/app-config`
 
@@ -347,6 +354,157 @@ Campos obrigatorios por linha:
 - `purchases`: quantidade de compras no periodo.
 - `last_purchase`: ultima data de movimento no periodo.
 - `revenue`: receita total do cliente no periodo.
+
+Campos adicionais usados pela carteira comercial:
+
+- `id`, `source_code`, `document`, `customer_type`.
+- `purchase_days`, `first_purchase`, `product_revenue`, `service_revenue`,
+  `avg_ticket`, `days_since`, `avg_gap_days`.
+- Campos CRM manuais agregados quando existirem: `crm_owner_name`,
+  `crm_status`, `crm_priority`, `crm_next_action`, `crm_next_action_at` e
+  `crm_updated_at`.
+
+## `/api/customer/mix`
+
+Contrato pratico: `customer_profile.v1`
+
+Formato: objeto.
+
+Uso de produto: ficha CRM do cliente na tela de Clientes. O endpoint continua
+derivado do historico importado e nao grava estado de CRM.
+
+Campos principais:
+
+- `customer`: cadastro importado do cliente, com `id`, `source_code`, `name`,
+  `canonical_name`, `document`, `customer_type` e `active`.
+- `period`: periodo aplicado.
+- `summary`: totais do cliente, com `products`, `services`, `quantity`,
+  `revenue`, `product_revenue`, `service_revenue`, `service_net_revenue`,
+  `events`, `purchase_days`, `first_purchase`, `last_purchase`, `avg_ticket`,
+  `avg_gap_days`, `days_since`, `product_share`, `service_share`,
+  `core_revenue` e `core_share`.
+- `relationship`: leitura de cadencia, com `status`, `label`, `reason`,
+  `days_since`, `expected_gap_days`, `due_in_days` e
+  `estimated_next_purchase`.
+- `products`: mix de produtos comprados pelo cliente.
+- `services`: servicos comprados pelo cliente.
+- `categories`: concentracao por categoria de produto.
+- `monthly`: serie mensal do cliente.
+- `recent_purchases`: ultimas compras importadas, unindo produtos e servicos.
+
+## `/api/customer/crm`
+
+Contrato: `customer_crm.v1`
+
+Formato: objeto.
+
+Uso de produto: bloco "Gestao comercial" dentro da ficha CRM do cliente. Este
+endpoint guarda informacao manual do vendedor, separada do historico importado.
+
+Campos principais:
+
+- `customer`: cliente da ficha, com `id`, `organization_id`, `source_code`,
+  `name`, `canonical_name`, `document` e `customer_type`.
+- `profile`: perfil comercial manual, com `organization_id`, `customer_id`,
+  `owner_user_id`, `owner_name`, `commercial_status`, `priority`,
+  `next_action`, `next_action_at`, `internal_notes`, `tags`, `updated_at` e
+  `persisted`.
+- `actions`: trilho inicial de acoes do cliente. Na primeira camada e apenas
+  leitura estrutural; cada linha traz `id`, `action_type`, `title`, `due_at`,
+  `status`, `priority`, `owner_name`, `notes`, `created_at` e `updated_at`.
+
+Comando relacionado:
+
+- `POST /api/customer/crm/upsert`: cria ou atualiza o perfil CRM manual do
+  cliente. Aceita `customer_id`, `owner_name`, `commercial_status`, `priority`,
+  `next_action`, `next_action_at`, `tags` e `internal_notes`.
+
+## `/api/customer/catalog`
+
+Contrato: `customer_catalog.v1`
+
+Formato: objeto.
+
+Uso de produto: aba "Catalogo do cliente" dentro da ficha CRM. Diferente de
+`/api/customer/mix`, este endpoint grava estado proprio do app: itens
+negociados, status, condicoes, validade e referencias de foto do produto.
+
+Campos principais:
+
+- `customer`: cliente da ficha, com `id`, `organization_id`, `source_code`,
+  `name`, `canonical_name`, `document` e `customer_type`.
+- `catalog`: catalogo padrao do cliente, com `id`, `name`, `status`,
+  `valid_from`, `valid_until`, `review_at`, `public_notes`, `internal_notes` e
+  `updated_at`.
+- `summary`: totais da aba, com `items`, `active_items`, `draft_items`,
+  `paused_items`, `expiring_items`, `candidate_items` e
+  `negotiated_price_total`.
+- `items`: itens negociados ja gravados. Cada linha traz `id`, `catalog_id`,
+  `customer_id`, `product_id`, snapshots do produto, `status`, `origin`,
+  `negotiated_price`, `discount_pct`, `minimum_quantity`, `package_size`,
+  `valid_from`, `valid_until`, observacoes, dados atuais de produto,
+  `sale_price`, `image_path` e contexto historico do cliente.
+- `candidate_items`: produtos comprados no historico e ainda nao adicionados ao
+  catalogo, ordenados por recorrencia/receita.
+
+Comandos relacionados:
+
+- `POST /api/customer/catalog/upsert`: atualiza status, validade e observacoes
+  do catalogo.
+- `POST /api/customer/catalog/item/upsert`: cria ou atualiza item negociado.
+  Aceita produto sem compra anterior.
+- `POST /api/customer/catalog/item/delete`: arquiva o item negociado.
+
+## `/api/sales-order/pdf`
+
+Formato: comando POST que retorna `application/pdf`.
+
+Uso de produto: gera um pedido de venda operacional a partir de itens do
+catalogo do cliente e/ou itens avulsos do cadastro geral de produtos. O PDF e
+para o financeiro conferir e lancar manualmente no sistema da loja; nao cria
+venda fiscal, nao baixa estoque e nao integra ERP.
+
+Payload principal:
+
+- `customer_id`: cliente da ficha.
+- `seller_name`: nome do vendedor, quando conhecido.
+- `notes`: observacao para financeiro/entrega.
+- `items`: lista com `product_id` e `quantity`.
+
+Regras:
+
+- exige ao menos um item com quantidade maior que zero;
+- recalcula produto e preco no backend usando cadastro e catalogo do cliente;
+- usa preco negociado quando existir, senao o ultimo preco de tabela conhecido;
+- aceita produto que ainda nao esteja no catalogo do cliente como item avulso;
+- retorna arquivo `pedido-venda-<cliente>-<data>.pdf`.
+
+## `/api/products/search`
+
+Contrato: `products_search.v1`
+
+Formato: objeto.
+
+Uso de produto: busca livre dentro da aba de catalogo para adicionar itens que
+o cliente nunca comprou.
+
+Campos principais:
+
+- `query`: termo pesquisado.
+- `rows`: lista com `product_id`, `organization_id`, `source_code`, `name`,
+  `unit`, `brand_name`, `category_name`, `sale_price` e `image_path`.
+
+## `/api/product/media/upsert`
+
+Contrato: `product_media.v1`
+
+Formato: comando POST.
+
+Uso de produto: grava foto principal do produto para uso em catalogo comercial.
+Aceita PNG, JPG ou WEBP ate 3 MB, salva em assets locais/tenant e retorna:
+
+- `product_id`: produto atualizado.
+- `public_path`: caminho publico da imagem, por exemplo `/local-assets/...`.
 
 ## `/api/products/top`
 

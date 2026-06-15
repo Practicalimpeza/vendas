@@ -28,6 +28,13 @@ function updateTopbar(view) {
   if (subtitle) subtitle.textContent = meta.subtitle || "";
   if (question) question.textContent = meta.question || "";
   if (next) next.textContent = meta.next || "";
+  const importButton = document.querySelector("#topbarImportButton");
+  const isDashboard = view === "dashboard";
+  if (importButton && typeof canAccessView === "function") {
+    importButton.hidden = !canAccessView("imports") || !isDashboard;
+  } else if (importButton) {
+    importButton.hidden = !isDashboard;
+  }
 }
 
 function enhanceNavigation() {
@@ -76,6 +83,8 @@ function setView(view, options = {}) {
 }
 
 function renderKpis(kpis) {
+  const target = document.querySelector("#kpis");
+  if (!target) return;
   const items = [
     ["Produtos", number(kpis.products), ""],
     ["Clientes", number(kpis.customers), "blue"],
@@ -84,7 +93,7 @@ function renderKpis(kpis) {
     ["Estoque un.", number(kpis.stock_units), "amber"],
     ["Pendências", number(kpis.open_tasks), ""],
   ];
-  document.querySelector("#kpis").innerHTML = items
+  target.innerHTML = items
     .map(
       ([label, value, color]) => `
         <div class="kpi ${color}">
@@ -175,4 +184,65 @@ function updateFloatingOverlayState() {
   const supplierPopupOpen = Boolean(document.querySelector("#quoteSupplierInspector.open"));
   const productDrawerOpen = Boolean(document.querySelector(".product-drawer-overlay:not(.hidden)"));
   document.body.classList.toggle("popup-open", Boolean(modalOpen || supplierPopupOpen || productDrawerOpen));
+}
+
+function closeFloatingPopups() {
+  const modalOverlay = document.querySelector("#modalOverlay");
+  if (modalOverlay && !modalOverlay.hidden) {
+    closeModal();
+    return true;
+  }
+
+  const dashboardWidgetPopover = document.querySelector(".cockpit-widget-popover");
+  if (dashboardWidgetPopover && typeof clearDashboardCockpitWidgetExpanded === "function") {
+    clearDashboardCockpitWidgetExpanded();
+    return true;
+  }
+
+  const supplierInspector = document.querySelector("#quoteSupplierInspector.open");
+  if (supplierInspector) {
+    state.quoteSupplierPopupOpen = false;
+    state.quoteSupplierEditingId = "";
+    if (typeof renderQuoteSupplierInspectorState === "function") {
+      renderQuoteSupplierInspectorState();
+    } else {
+      supplierInspector.innerHTML = "";
+      supplierInspector.classList.remove("open");
+      document.body.classList.remove("supplier-popup-open");
+      updateFloatingOverlayState();
+    }
+    return true;
+  }
+
+  const openFilterPanels = document.querySelectorAll(".purchase-filter-panel:not([hidden])");
+  if (openFilterPanels.length && typeof closeQuoteSupplierFilterPanels === "function") {
+    closeQuoteSupplierFilterPanels();
+    return true;
+  }
+
+  const productDrawer = document.querySelector("#quoteProductDrawer:not(.hidden), .product-drawer-overlay:not(.hidden)");
+  if (productDrawer) {
+    productDrawer.classList.add("hidden");
+    updateFloatingOverlayState();
+    return true;
+  }
+
+  const whatsappOverlay = document.querySelector("#whatsapp.chat-overlay-open");
+  if (whatsappOverlay) {
+    if (typeof setWhatsAppOverlay === "function") {
+      setWhatsAppOverlay(false);
+    } else {
+      whatsappOverlay.classList.remove("chat-overlay-open");
+      document.body.classList.remove("whatsapp-overlay-open");
+    }
+    return true;
+  }
+
+  const dashboardEditing = document.querySelector("#dashboard.dashboard-editing");
+  if (dashboardEditing && typeof setDashboardEditMode === "function") {
+    setDashboardEditMode(false);
+    return true;
+  }
+
+  return false;
 }

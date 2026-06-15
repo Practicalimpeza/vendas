@@ -28,7 +28,7 @@ def api_summary(conn: sqlite3.Connection, period: dict | None = None) -> dict:
     service_where, service_params = date_where("emitted_at", period, "WHERE")
     raw_days = period.get("period_days")
     period_days = raw_days if isinstance(raw_days, int) else None
-    use_daily = period_days is not None and period_days <= 60
+    use_daily = period_days is not None
     bucket_len = 10 if use_daily else 7
     granularity = "day" if use_daily else "month"
     return {

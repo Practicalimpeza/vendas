@@ -94,10 +94,14 @@ function filterWorkbenchRows(filter) {
 function applyWorkbenchView() {
   const filter = state.quoteWorkbenchFilter || "all";
   const visible = quoteWorkbenchRowsForCurrentView();
-  const tbody = document.querySelector("#quoteDetail tbody");
-  if (tbody) tbody.innerHTML = quoteProductRows(visible);
-  const groupSelect = document.querySelector("#quoteWorkbenchGroup");
-  if (groupSelect) groupSelect.value = state.quoteWorkbenchGroup || "flat";
+  if (typeof bumpQuoteRowCells === "function") bumpQuoteRowCells();
+  const itemsTable = typeof ensureQuoteItemsTable === "function" ? ensureQuoteItemsTable() : null;
+  if (itemsTable) {
+    itemsTable.setRows(visible);
+  } else {
+    const tbody = document.querySelector("#quoteDetail tbody");
+    if (tbody) tbody.innerHTML = quoteProductRows(visible);
+  }
   const onlySelect = document.querySelector("#quoteWorkbenchOnly");
   if (onlySelect) onlySelect.value = state.quoteWorkbenchOnly || "all";
   document.querySelectorAll("#quoteDetail .qf-pill").forEach((pill) => {

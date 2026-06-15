@@ -273,15 +273,15 @@ async function openCompanyProfileModal() {
             ${companyProfileField("city", "Cidade", profile.city, { maxlength: 120 })}
             ${companyProfileField("state", "UF", profile.state, { maxlength: 40 })}
             ${companyProfileField("postal_code", "CEP", profile.postal_code, { maxlength: 30 })}
-            ${companyProfileField("country", "Pais", profile.country || "Brasil", { maxlength: 80 })}
+            ${companyProfileField("country", "País", profile.country || "Brasil", { maxlength: 80 })}
           </div>
           ${companyProfileField("document_footer", "Rodapé padrão dos documentos", profile.document_footer, { textarea: true, rows: 2, maxlength: 500, placeholder: "Ex.: Obrigado pela preferência. Valores sujeitos a confirmação." })}
           ${companyProfileField("default_payment_terms", "Condições comerciais padrão", profile.default_payment_terms, { textarea: true, rows: 2, maxlength: 300, placeholder: "Ex.: Pagamento faturado, entrega combinada com compras." })}
-          ${companyProfileField("notes", "Observacoes internas", profile.notes, { textarea: true, rows: 3, maxlength: 700 })}
+          ${companyProfileField("notes", "Observações internas", profile.notes, { textarea: true, rows: 3, maxlength: 700 })}
         </section>
         <aside class="company-profile-preview">
           <div class="company-profile-preview-head">
-            <span>Pr?via</span>
+            <span>Prévia</span>
             <label class="text-button company-logo-inline-button">
               Trocar logo
               <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-company-logo-file hidden />
@@ -324,7 +324,7 @@ async function openCompanyProfileModal() {
           overlay.querySelector("#companyLogoCropPreview").src = dataUrl;
           saveState.textContent = "Ajuste a logo e clique em aplicar";
         } catch (error) {
-          saveState.textContent = "N?o foi poss?vel ajustar essa logo.";
+          saveState.textContent = "Não foi possível ajustar essa logo.";
         }
       };
       const bindCompanyLogoEditor = () => {
@@ -372,7 +372,7 @@ async function openCompanyProfileModal() {
         const allowed = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
         if (!allowed.includes(file.type) || file.size > 2_000_000) {
           event.target.value = "";
-          saveState.textContent = "Envie uma logo PNG, JPG, WEBP ou SVG com at? 2 MB.";
+          saveState.textContent = "Envie uma logo PNG, JPG, WEBP ou SVG com até 2 MB.";
           return;
         }
         const reader = new FileReader();

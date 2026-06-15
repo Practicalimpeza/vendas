@@ -1141,6 +1141,25 @@ def api_replenishment_v2(conn: sqlite3.Connection, limit: int = 300, period: dic
         clear_package_rupture = classification["stockout_with_recent_demand"] and (
             signals["qty_30"] > 0 or signals["sale_days_180"] >= 3 or abc_class in {"A", "B"}
         )
+        small_package_topoff = (
+            package_size > 1
+            and raw_need > 0
+            and raw_need <= max(1.0, package_size * 0.25)
+            and projected_stock_units > forecast["p50"] * max(lead_time_days, 1)
+            and not classification["stockout_with_recent_demand"]
+            and not forced_purchase
+        )
+        if small_package_topoff and suggested_quantity > 0 and status in {"urgent", "buy_now"}:
+            status = "watch"
+            package_review_required = True
+            suggested_quantity = 0.0
+            technical_quantity = raw_need
+            package_math["rounded_quantity"] = 0.0
+            package_math["excess_units"] = 0.0
+            base_reason = (
+                f"Necessidade bruta de {raw_need:g} un. e menor que a embalagem de compra "
+                f"({package_size:g} un.); estoque cobre o prazo. Nao gera compra automatica."
+            )
         if package_coverage_days is not None and package_coverage_days >= LARGE_PACKAGE_COVERAGE_DAYS and suggested_quantity > 0:
             package_review_required = True
             if suggested_quantity > package_size:

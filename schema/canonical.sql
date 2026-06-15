@@ -311,6 +311,21 @@ CREATE TABLE IF NOT EXISTS product_pricing_settings (
     PRIMARY KEY (organization_id, product_id)
 );
 
+CREATE TABLE IF NOT EXISTS product_media (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    product_id TEXT NOT NULL REFERENCES products(id),
+    media_type TEXT NOT NULL DEFAULT 'image',
+    public_path TEXT NOT NULL,
+    alt_text TEXT DEFAULT '',
+    is_primary INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    source_kind TEXT NOT NULL DEFAULT 'upload',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, product_id, public_path)
+);
+
 CREATE TABLE IF NOT EXISTS supplier_product_rules (
     organization_id TEXT NOT NULL REFERENCES organizations(id),
     supplier_id TEXT NOT NULL REFERENCES suppliers(id),
@@ -351,6 +366,99 @@ CREATE TABLE IF NOT EXISTS services (
     last_seen_import_batch_id TEXT REFERENCES import_batches(id),
     source_payload_json TEXT NOT NULL DEFAULT '{}',
     UNIQUE (organization_id, normalized_name)
+);
+
+CREATE TABLE IF NOT EXISTS customer_catalogs (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    customer_canonical_name TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT 'Catalogo do cliente',
+    status TEXT NOT NULL DEFAULT 'draft',
+    owner_user_id TEXT DEFAULT '',
+    owner_name TEXT DEFAULT '',
+    valid_from TEXT DEFAULT '',
+    valid_until TEXT DEFAULT '',
+    review_at TEXT DEFAULT '',
+    public_notes TEXT DEFAULT '',
+    internal_notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, customer_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS customer_catalog_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    catalog_id TEXT NOT NULL REFERENCES customer_catalogs(id),
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    product_id TEXT NOT NULL REFERENCES products(id),
+    product_name_snapshot TEXT NOT NULL DEFAULT '',
+    source_code_snapshot TEXT NOT NULL DEFAULT '',
+    unit_snapshot TEXT NOT NULL DEFAULT '',
+    negotiated_price NUMERIC,
+    discount_pct NUMERIC,
+    minimum_quantity NUMERIC NOT NULL DEFAULT 0,
+    package_size NUMERIC NOT NULL DEFAULT 1,
+    valid_from TEXT DEFAULT '',
+    valid_until TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft',
+    origin TEXT NOT NULL DEFAULT 'manual',
+    public_notes TEXT DEFAULT '',
+    internal_notes TEXT DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (catalog_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_catalog_events (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    catalog_id TEXT NOT NULL REFERENCES customer_catalogs(id),
+    item_id INTEGER,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    event_type TEXT NOT NULL,
+    actor_user_id TEXT DEFAULT '',
+    actor_name TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS customer_crm_profiles (
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    customer_canonical_name TEXT NOT NULL DEFAULT '',
+    owner_user_id TEXT DEFAULT '',
+    owner_name TEXT DEFAULT '',
+    commercial_status TEXT NOT NULL DEFAULT 'follow_up',
+    priority TEXT NOT NULL DEFAULT 'normal',
+    next_action TEXT DEFAULT '',
+    next_action_at TEXT DEFAULT '',
+    internal_notes TEXT DEFAULT '',
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_id, customer_id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_actions (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL REFERENCES organizations(id),
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    customer_canonical_name TEXT NOT NULL DEFAULT '',
+    action_type TEXT NOT NULL DEFAULT 'follow_up',
+    title TEXT NOT NULL DEFAULT '',
+    due_at TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    priority TEXT NOT NULL DEFAULT 'normal',
+    owner_user_id TEXT DEFAULT '',
+    owner_name TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    completed_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS inventory_snapshots (
@@ -716,6 +824,7 @@ CREATE INDEX IF NOT EXISTS idx_products_org_name ON products(organization_id, no
 CREATE INDEX IF NOT EXISTS idx_inventory_product_date ON inventory_snapshots(organization_id, store_id, product_id, snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_price_product_date ON price_snapshots(organization_id, product_id, snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_cost_product_date ON cost_snapshots(organization_id, product_id, snapshot_date);
+CREATE INDEX IF NOT EXISTS idx_product_media_product ON product_media(organization_id, product_id, is_primary, sort_order);
 CREATE INDEX IF NOT EXISTS idx_product_sales_date ON product_sales(organization_id, store_id, sold_at);
 CREATE INDEX IF NOT EXISTS idx_product_sales_product ON product_sales(organization_id, product_id, sold_at);
 CREATE INDEX IF NOT EXISTS idx_product_sales_customer ON product_sales(organization_id, customer_id, sold_at);
@@ -737,6 +846,13 @@ CREATE INDEX IF NOT EXISTS idx_action_items_target ON action_items(organization_
 CREATE INDEX IF NOT EXISTS idx_operational_decisions_org_created ON operational_decisions(organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_operational_decisions_entity ON operational_decisions(organization_id, entity_type, entity_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_operational_decisions_type ON operational_decisions(organization_id, decision_type, decision_value, created_at);
+CREATE INDEX IF NOT EXISTS idx_customer_catalogs_customer ON customer_catalogs(organization_id, customer_id, status);
+CREATE INDEX IF NOT EXISTS idx_customer_catalog_items_catalog ON customer_catalog_items(catalog_id, status, sort_order);
+CREATE INDEX IF NOT EXISTS idx_customer_catalog_items_product ON customer_catalog_items(organization_id, product_id, status);
+CREATE INDEX IF NOT EXISTS idx_customer_catalog_events_catalog ON customer_catalog_events(catalog_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_customer_crm_profiles_status ON customer_crm_profiles(organization_id, commercial_status, priority, next_action_at);
+CREATE INDEX IF NOT EXISTS idx_customer_actions_customer ON customer_actions(organization_id, customer_id, status, due_at);
+CREATE INDEX IF NOT EXISTS idx_customer_actions_due ON customer_actions(organization_id, status, due_at, priority);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_agents_org_active ON whatsapp_agents(organization_id, active, sort_order, name);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_conversations_org_status ON whatsapp_conversations(organization_id, status, last_message_at);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_conversations_owner ON whatsapp_conversations(organization_id, owner_user_id, status);

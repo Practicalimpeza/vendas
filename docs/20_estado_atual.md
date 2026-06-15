@@ -1,6 +1,6 @@
 # Estado Atual do NexoVarejo
 
-Atualizado em 2026-05-22.
+Atualizado em 2026-06-15.
 
 ## Momento do produto
 
@@ -32,6 +32,13 @@ release candidate coerente, testavel e demonstravel.
   `NEXOVAREJO_ALLOW_NETWORK=1`.
 - Autenticacao local com bootstrap do primeiro administrador, login, logout,
   sessoes, permissoes por modulo e administracao de usuarios.
+- Perfil `seller` para vendedor externo, com entrada natural no portal mobile
+  `/vendedor` e permissoes padrao limitadas a vendedor, clientes, produtos e
+  vendas.
+- Bypass de autenticacao apenas para desenvolvimento local:
+  `PULSO_DEV_AUTH_BYPASS=1` cria um usuario admin temporario em memoria para
+  localhost. Ele nao grava senha, nao cria usuario real e e bloqueado quando
+  `PULSO_ALLOW_NETWORK=1` ou `NEXOVAREJO_ALLOW_NETWORK=1` estiver ativo.
 - Perfil da empresa e dados de organizacao no schema canonico.
 - Importacao da base Practica e importacao assistida de planilhas ERP.
 - Reconciliacao de importacao com `quality`, `readiness`, issues, conflitos,
@@ -67,6 +74,14 @@ release candidate coerente, testavel e demonstravel.
 - Precificacao acionavel com custo importado/manual, papel do produto, margem,
   preco alvo e trilha de auditoria.
 - Clientes, servicos e inteligencia comercial com filas de relacionamento.
+  Clientes ja funciona como mesa comercial: ficha CRM historica, perfil CRM
+  manual por cliente, responsavel/status/prioridade/proxima acao/tags,
+  catalogo negociado por cliente e exportacao imprimivel do catalogo.
+- Portal do vendedor em `/vendedor`, com hub mobile para clientes, produtos,
+  vendas e geracao de pedido PDF reaproveitando os fluxos existentes.
+- Roteiro de beta online do portal vendedor em
+  `docs/26_deploy_portal_vendedor.md`, mantendo dados reais em volume
+  persistente fora do GitHub.
 - Central de Acoes, Motor do Nexo, maturidade, trilhas operacionais e memoria
   operacional.
 - WhatsApp CRM com webhook, conversas, agentes, departamentos, fila, detalhe da
@@ -128,6 +143,10 @@ release candidate coerente, testavel e demonstravel.
    `organization_id`.
 6. Implementar ou validar rotina simples de backup/restauracao antes de beta com
    dados reais fora do ambiente atual.
+7. Publicar uma beta controlada do portal vendedor com repositorio privado,
+   volume persistente, `PULSO_DATA_DIR`, backup manual testado e usuarios
+   `seller`. A migracao para Postgres/libSQL continua etapa posterior, com
+   dependencia Python aprovada e teste de isolamento.
 
 ## Nao resolver agora
 

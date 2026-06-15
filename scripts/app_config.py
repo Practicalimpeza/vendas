@@ -8,9 +8,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_CONFIG_PATH = ROOT / "config" / "white_label" / "default.json"
-LEGACY_DB_PATH = ROOT / "data" / "nexovarejo.db"
-LEGACY_LOCAL_CONFIG_PATH = ROOT / "data" / "local" / "app_config.json"
-TENANTS_DIR = ROOT / "data" / "tenants"
+DATA_DIR = Path(os.environ.get("PULSO_DATA_DIR") or ROOT / "data").expanduser()
+LEGACY_DB_PATH = DATA_DIR / "nexovarejo.db"
+LEGACY_LOCAL_CONFIG_PATH = DATA_DIR / "local" / "app_config.json"
+TENANTS_DIR = DATA_DIR / "tenants"
 CONFIG_SCHEMA = "pulso.white_label.v1"
 LEGACY_CONFIG_SCHEMAS = {"nexovarejo.white_label.v1"}
 DEFAULT_APP_NAME = "Sistema"
@@ -69,7 +70,7 @@ def tenant_assets_dir(tenant: str | None = None) -> Path:
 
 
 def local_assets_dir() -> Path:
-    return ROOT / "data" / "local" / "assets"
+    return DATA_DIR / "local" / "assets"
 
 
 def local_config_path() -> Path:
@@ -79,7 +80,7 @@ def local_config_path() -> Path:
 
 def import_config_path() -> Path:
     tenant = active_tenant()
-    return tenant_import_config_path(tenant) if tenant else ROOT / "data" / "import_reference.json"
+    return tenant_import_config_path(tenant) if tenant else DATA_DIR / "import_reference.json"
 
 
 def asset_storage_dir() -> Path:
