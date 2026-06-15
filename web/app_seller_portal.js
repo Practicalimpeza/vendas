@@ -1,3 +1,6 @@
+const SELLER_PORTAL_LIST_LIMIT = 12;
+const SELLER_PORTAL_SEARCH_LIMIT = 80;
+
 function sellerPortalCard({ icon, label, value, hint, target }) {
   return `
     <button class="seller-portal-card" type="button" data-seller-target="${escapeAttr(target)}">
@@ -16,6 +19,17 @@ function sellerPortalTerm() {
 function sellerPortalMatch(row = {}, fields = [], term = sellerPortalTerm()) {
   if (!term) return true;
   return fields.some((field) => String(row[field] || "").toLowerCase().includes(term));
+}
+
+function sellerPortalProductId(row = {}) {
+  return row.id || row.product_id || "";
+}
+
+function sellerPortalUpdateCount(selector, shown, total, term = "") {
+  const item = document.querySelector(selector);
+  if (!item) return;
+  const base = term ? "encontrados" : "carregados";
+  item.textContent = `Mostrando ${number(shown)} de ${number(total)} ${base}`;
 }
 
 async function ensureSellerPortalData() {
@@ -50,9 +64,10 @@ function sellerPortalEmpty(label) {
 
 function sellerCustomerRows(rows = []) {
   const term = sellerPortalTerm();
-  const matches = rows
-    .filter((row) => sellerPortalMatch(row, ["name", "document", "source_code", "crm_owner_name"], term))
-    .slice(0, 8);
+  const filtered = rows
+    .filter((row) => sellerPortalMatch(row, ["name", "document", "source_code", "crm_owner_name"], term));
+  const matches = filtered.slice(0, SELLER_PORTAL_LIST_LIMIT);
+  sellerPortalUpdateCount("#sellerPortalCustomersCount", matches.length, filtered.length, term);
   if (!matches.length) return sellerPortalEmpty("Nenhum cliente encontrado.");
   return matches.map((row) => `
     <button class="seller-portal-row" type="button" data-seller-customer-id="${escapeAttr(row.id || "")}">
@@ -69,7 +84,7 @@ function sellerCustomerSearchRows(term = "") {
   const normalized = term.trim().toLowerCase();
   const matches = (state.customers || [])
     .filter((row) => sellerPortalMatch(row, ["name", "document", "source_code", "crm_owner_name"], normalized))
-    .slice(0, 30);
+    .slice(0, SELLER_PORTAL_SEARCH_LIMIT);
   if (!matches.length) return sellerPortalEmpty("Nenhum cliente encontrado.");
   return matches.map((row) => `
     <button class="seller-portal-row" type="button" data-seller-search-customer-id="${escapeAttr(row.id || "")}">
@@ -116,14 +131,85 @@ async function openSellerCustomerSearch() {
   );
 }
 
+function sellerProductSearchRows(rows = []) {
+  if (!rows.length) return sellerPortalEmpty("Nenhum produto encontrado.");
+  return rows.map((row) => `
+    <button class="seller-portal-row" type="button" data-seller-search-product-id="${escapeAttr(sellerPortalProductId(row))}">
+      <div>
+        <strong>${escapeHtml(row.name || "Produto")}</strong>
+        <span>${escapeHtml([row.source_code ? `Codigo ${row.source_code}` : "", row.brand_name, row.unit].filter(Boolean).join(" · "))}</span>
+      </div>
+      <em>${row.sale_price ? money(row.sale_price) : compactMoney(row.revenue || 0)}</em>
+    </button>
+  `).join("");
+}
+
+async function openSellerProductSearch() {
+  const initialRows = (state.products || []).slice(0, SELLER_PORTAL_SEARCH_LIMIT);
+  let requestId = 0;
+  openModal(
+    "Buscar produto",
+    `
+      <section class="seller-customer-search">
+        <input class="inline-input seller-portal-search" id="sellerProductSearchInput" type="search" placeholder="Nome, codigo, marca ou fornecedor" autofocus>
+        <p class="seller-search-meta" id="sellerProductSearchMeta">Digite pelo menos 2 caracteres para buscar no cadastro completo.</p>
+        <div class="seller-customer-search-results" id="sellerProductSearchResults"></div>
+      </section>
+    `,
+    (body) => {
+      const input = body.querySelector("#sellerProductSearchInput");
+      const meta = body.querySelector("#sellerProductSearchMeta");
+      const results = body.querySelector("#sellerProductSearchResults");
+      const renderLocal = () => {
+        results.innerHTML = sellerProductSearchRows(initialRows);
+      };
+      const renderRemote = async () => {
+        const term = (input?.value || "").trim();
+        const currentRequest = ++requestId;
+        if (term.length < 2) {
+          if (meta) meta.textContent = `Mostrando ${number(initialRows.length)} produtos mais vendidos.`;
+          renderLocal();
+          return;
+        }
+        if (meta) meta.textContent = "Buscando no cadastro completo...";
+        try {
+          const rows = await apiRows(
+            `/api/products/search?q=${encodeURIComponent(term)}&limit=${SELLER_PORTAL_SEARCH_LIMIT}`,
+            ["product_id", "name", "source_code"],
+            "products_search.v1",
+          );
+          if (currentRequest !== requestId) return;
+          if (meta) meta.textContent = `Mostrando ${number(rows.length)} resultado(s) para "${term}".`;
+          results.innerHTML = sellerProductSearchRows(rows);
+        } catch (error) {
+          if (currentRequest !== requestId) return;
+          if (meta) meta.textContent = error.message || "Nao foi possivel buscar produtos.";
+          results.innerHTML = sellerPortalEmpty("Falha na busca de produtos.");
+        }
+      };
+      renderLocal();
+      input?.focus();
+      input?.addEventListener("input", renderRemote);
+      results?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-seller-search-product-id]");
+        if (!button?.dataset.sellerSearchProductId || typeof openProductModal !== "function") return;
+        closeModal();
+        openProductModal(button.dataset.sellerSearchProductId);
+      });
+    },
+    { modalClass: "seller-customer-search-modal" },
+  );
+}
+
 function sellerProductRows(rows = []) {
   const term = sellerPortalTerm();
-  const matches = rows
-    .filter((row) => sellerPortalMatch(row, ["name", "source_code", "brand_name", "supplier_name"], term))
-    .slice(0, 8);
+  const filtered = rows
+    .filter((row) => sellerPortalMatch(row, ["name", "source_code", "brand_name", "supplier_name"], term));
+  const matches = filtered.slice(0, SELLER_PORTAL_LIST_LIMIT);
+  sellerPortalUpdateCount("#sellerPortalProductsCount", matches.length, filtered.length, term);
   if (!matches.length) return sellerPortalEmpty("Nenhum produto encontrado.");
   return matches.map((row) => `
-    <button class="seller-portal-row" type="button" data-seller-product-id="${escapeAttr(row.id || "")}">
+    <button class="seller-portal-row" type="button" data-seller-product-id="${escapeAttr(sellerPortalProductId(row))}">
       <div>
         <strong>${escapeHtml(row.name || "Produto")}</strong>
         <span>${escapeHtml([row.source_code, row.brand_name].filter(Boolean).join(" · "))}</span>
@@ -135,9 +221,10 @@ function sellerProductRows(rows = []) {
 
 function sellerSalesRows(rows = []) {
   const term = sellerPortalTerm();
-  const matches = rows
-    .filter((row) => sellerPortalMatch(row, ["item", "cliente", "codigo", "tipo"], term))
-    .slice(0, 8);
+  const filtered = rows
+    .filter((row) => sellerPortalMatch(row, ["item", "cliente", "codigo", "tipo"], term));
+  const matches = filtered.slice(0, SELLER_PORTAL_LIST_LIMIT);
+  sellerPortalUpdateCount("#sellerPortalSalesCount", matches.length, filtered.length, term);
   if (!matches.length) return sellerPortalEmpty("Nenhuma venda encontrada.");
   return matches.map((row) => `
     <article class="seller-portal-row static">
@@ -235,6 +322,10 @@ function initSellerPortal() {
     const target = button.dataset.sellerTarget || "customers";
     if (target === "customers") {
       openSellerCustomerSearch();
+      return;
+    }
+    if (target === "products") {
+      openSellerProductSearch();
       return;
     }
     if (target === "opportunities") {
