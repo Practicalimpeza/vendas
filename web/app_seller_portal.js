@@ -173,10 +173,15 @@ async function openSellerProductSearch() {
         }
         if (meta) meta.textContent = "Buscando no cadastro completo...";
         try {
-          const rows = await apiRows(
+          const payload = await apiContract(
             `/api/products/search?q=${encodeURIComponent(term)}&limit=${SELLER_PORTAL_SEARCH_LIMIT}`,
-            ["product_id", "name", "source_code"],
             "products_search.v1",
+          );
+          const rows = requireRows(
+            payload.rows || [],
+            ["product_id", "name", "source_code"],
+            "products_search.rows",
+            "/api/products/search",
           );
           if (currentRequest !== requestId) return;
           if (meta) meta.textContent = `Mostrando ${number(rows.length)} resultado(s) para "${term}".`;
